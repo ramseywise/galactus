@@ -71,7 +71,9 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
     (
         "system_directive_in_comment",
-        re.compile(r"(^|[^A-Za-z])(SYSTEM|ADMIN|SYSTEM_OVERRIDE)\s*[:>]", re.IGNORECASE),
+        re.compile(
+            r"(^|[^A-Za-z])(SYSTEM|ADMIN|SYSTEM_OVERRIDE)\s*[:>]", re.IGNORECASE
+        ),
     ),
     ("empty_return_directive", re.compile(r"\breturn\s*\[\s*\]", re.IGNORECASE)),
     (
@@ -83,7 +85,9 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
     (
         "suppression_directive",
-        re.compile(r"(report|flag|return|find)\s+(no|nothing|none|zero)\b", re.IGNORECASE),
+        re.compile(
+            r"(report|flag|return|find)\s+(no|nothing|none|zero)\b", re.IGNORECASE
+        ),
     ),
     (
         "preaudited_claim",

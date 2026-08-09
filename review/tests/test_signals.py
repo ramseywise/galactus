@@ -47,7 +47,14 @@ def test_no_sanyi_md_skips_contracts_with_a_reason():
 
 def test_six_always_on_dimensions_always_active():
     result = active_dimensions({"is_agent_code": False, "has_sanyi_contracts": False})
-    for dim in ("intent", "correctness", "silent_failure", "testing", "safety", "architecture"):
+    for dim in (
+        "intent",
+        "correctness",
+        "silent_failure",
+        "testing",
+        "safety",
+        "architecture",
+    ):
         assert dim in result["active"]
 
 

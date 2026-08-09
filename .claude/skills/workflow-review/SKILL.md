@@ -263,11 +263,27 @@ where `review.json` is the payload you assemble from the stages above:
 ```json
 {
   "findings": [ ... ],             // the Stage 4 merged list
-  "dispatch": [ ... ],             // one entry per dimension: completed | failed | skipped
+  "dispatch": [ ... ],             // one entry per dimension — see the entry shape below
   "injection_hits": [ ... ],       // carried from Stage 3's detect-signals — not recomputed
-  "validation_failures": 0         // dimensions that failed validation twice
+  "validation_failures": 0         // an integer: dimensions that failed validation twice
 }
 ```
+
+Each `dispatch` entry uses the field names in `ReporterDispatchEntry`
+(`review/models.py`) — not the prose labels this skill uses elsewhere:
+
+```json
+{
+  "reporter": "safety",            // the dimension name, not "dimension"
+  "status": "completed",           // completed | skipped | failed | dropped — not "state"
+  "finding_count": 0,              // findings this dimension contributed after validation
+  "skip_reason": null              // required, non-empty, when status is "skipped"
+}
+```
+
+All nine dimensions get a row every run, including the skipped ones — a nine-row table is
+what Stage 7 reports, and rung 1 reads `status` across every row. `validation_failures` is
+a **count**, not a list; passing a list crashes the CLI rather than being rejected cleanly.
 
 It returns `{"merge_decision": "..."}`. That value is the verdict. Write it into the
 report as returned.

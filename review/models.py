@@ -187,10 +187,14 @@ class ReviewFinding(BaseModel):
 
     @model_validator(mode="after")
     def question_state_constrains_impact(self) -> ReviewFinding:
-        if self.evidence_state == EvidenceState.QUESTION and self.severity.merge_impact not in (
-            MergeImpact.QUESTION,
-            MergeImpact.SUGGESTION,
-            MergeImpact.NIT,
+        if (
+            self.evidence_state == EvidenceState.QUESTION
+            and self.severity.merge_impact
+            not in (
+                MergeImpact.QUESTION,
+                MergeImpact.SUGGESTION,
+                MergeImpact.NIT,
+            )
         ):
             raise ValueError(
                 "evidence_state=question cannot carry "
