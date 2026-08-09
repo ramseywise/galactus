@@ -1,0 +1,35 @@
+{
+  "case": "dao-triage-tiering",
+  "invariants": [
+    {
+      "text": "dao did NOT refuse — the repo has a working test harness so it entered the apply loop",
+      "check": "script",
+      "how": "run summary reports a detected harness (make test) and at least one applied fix; absence of the 'no test harness, refused' message"
+    },
+    {
+      "text": "The dead 'import math' was auto-applied (removed) and kept",
+      "check": "script",
+      "how": "post-run discount.py has no 'import math' line; run summary lists it under 'Applied (kept, tests green)'"
+    },
+    {
+      "text": "The pct-clamp / out-of-range finding was surfaced only, never applied",
+      "check": "script",
+      "how": "the 'if pct < 0 or pct > 100' block in discount.py is byte-identical pre vs post; the finding appears under 'Surfaced only (high blast radius)'"
+    },
+    {
+      "text": "The test suite is green after the run (no failing tree left behind)",
+      "check": "script",
+      "how": "make test exits 0 in the post-run scratch copy"
+    },
+    {
+      "text": "Nothing was committed — tree left dirty",
+      "check": "script",
+      "how": "git log shows no new commit vs fixture baseline; git status is non-empty"
+    },
+    {
+      "text": "The tiering rationale is correct: nit=low because no callers, clamp=high because it changes an external contract/error path",
+      "check": "judge",
+      "how": "grader confirms the report justifies each tier by blast radius, not by superficial size"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "case": "dao-revert-on-failure",
+  "invariants": [
+    {
+      "text": "dao applied the suggested low-radius fix and ran the test suite (did not skip the apply loop)",
+      "check": "judge",
+      "how": "run summary / transcript shows the off-by-one fix was applied and make test was run against it"
+    },
+    {
+      "text": "After the run, pagination.py is byte-identical to the fixture original — the bad hunk was reverted",
+      "check": "script",
+      "how": "diff post-run pagination.py against fixtures/dao-revert-on-failure/input/pagination.py -> empty"
+    },
+    {
+      "text": "The final test suite is GREEN — no failing tree left behind",
+      "check": "script",
+      "how": "make test exits 0 in the post-run scratch copy"
+    },
+    {
+      "text": "The reverted fix is recorded under 'Attempted, reverted on test failure' in the run summary",
+      "check": "script",
+      "how": "grep the run summary for the 'Attempted, reverted on test failure' bullet naming pagination.py"
+    },
+    {
+      "text": "The test file was NOT edited to make the bad code pass",
+      "check": "script",
+      "how": "diff post-run test_pagination.py against fixture original -> empty"
+    },
+    {
+      "text": "Nothing was committed — tree left dirty for review",
+      "check": "script",
+      "how": "no new commit vs fixture baseline; git status non-empty"
+    },
+    {
+      "text": "Only that one hunk/file was reverted — no unrelated changes clobbered",
+      "check": "judge",
+      "how": "grader confirms the revert was scoped to pagination.py and did not touch other files"
+    }
+  ]
+}

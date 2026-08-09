@@ -1,0 +1,35 @@
+{
+  "case": "review-catches-by2",
+  "invariants": [
+    {
+      "text": "Finding includes BY-2 code, not just BY-1",
+      "check": "script",
+      "how": "grep -q 'BY-2' output.md"
+    },
+    {
+      "text": "Severity is blocker",
+      "check": "script",
+      "how": "grep -qi 'blocker' output.md"
+    },
+    {
+      "text": "Finding names the env var as the bypass vector",
+      "check": "judge",
+      "how": "Output mentions ENABLE_PII_MASKING or MASKING_ENABLED as the specific mechanism that makes the invariant bypassable"
+    },
+    {
+      "text": "Decision options include revert/redesign/amend",
+      "check": "script",
+      "how": "grep -qiE 'revert|redesign|amend' output.md"
+    },
+    {
+      "text": "No false BY-3 (evidence test is NOT deleted in this diff)",
+      "check": "script",
+      "how": "! grep -q 'BY-3' output.md"
+    },
+    {
+      "text": "Verdict says change-contract structure is altered",
+      "check": "judge",
+      "how": "Verdict section affirms the diff changes or alters the change-contract structure — not 'no contract changes'"
+    }
+  ]
+}

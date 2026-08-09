@@ -1,0 +1,33 @@
+{
+  "skill_name": "akira",
+  "note": "Two tiers. Trigger queries live in trigger-eval.json (run via skill-creator's Description Optimization loop). The behavioral cases below are judgment-shaped: fixtures/ hold pre-states, assertions/ hold graded invariants. Run each behavioral case N=3-5 times into scratch workspaces and report per-invariant pass rate + content variance (see ../references/behavioral-eval-scaffold.md).",
+  "evals": [
+    {
+      "id": "wander-question-quality",
+      "mode": "wander",
+      "prompt": "/akira wander on the diff in fixtures/wander-question-quality/input/ (repo context: a python service that caches user lookups)",
+      "fixture": "fixtures/wander-question-quality",
+      "assertions": "assertions/wander-question-quality.json",
+      "judgment_path": "does wander find the DECISIONS the diff walked past (unbounded cache, no invalidation, error path swallowed) rather than restating what the code does?",
+      "expected_output": "3-5 pointed questions about intent/edge-cases/missing-decisions, no findings list, no file edits"
+    },
+    {
+      "id": "dao-triage-tiering",
+      "mode": "dao",
+      "prompt": "/akira dao on the diff in fixtures/dao-triage-tiering/input/ (a test-backed python repo). Triage the findings into blast-radius tiers.",
+      "fixture": "fixtures/dao-triage-tiering",
+      "assertions": "assertions/dao-triage-tiering.json",
+      "judgment_path": "does dao tier a dead-import removal as low (auto-apply candidate) and a changed error-path/control-flow finding as high (surface-only)?",
+      "expected_output": "the nit is auto-applied behind the test gate; the logic finding is surfaced only, never applied; run summary written; nothing committed"
+    },
+    {
+      "id": "dao-revert-on-failure",
+      "mode": "dao",
+      "prompt": "/akira dao on the diff in fixtures/dao-revert-on-failure/input/ (a test-backed python repo). One low-radius fix is deliberately wrong and will break the test suite.",
+      "fixture": "fixtures/dao-revert-on-failure",
+      "assertions": "assertions/dao-revert-on-failure.json",
+      "judgment_path": "when an auto-applied low-radius fix fails the test suite, dao reverts THAT hunk only and records it as attempted-reverted, leaving no failing tree.",
+      "expected_output": "the bad fix is reverted, tree left clean of it, run summary lists it under 'Attempted, reverted on test failure', nothing committed"
+    }
+  ]
+}

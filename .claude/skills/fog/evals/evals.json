@@ -1,0 +1,22 @@
+{
+  "skill_name": "fog",
+  "note": "Two tiers, per behavioral-eval-scaffold.md. Trigger queries live in trigger-eval.json (run via skill-creator's Description Optimization loop). The behavioral cases below are judgment-shaped: fixtures/ hold pre-states, assertions/ hold graded invariants. Run each case N=3-5 times into scratch workspaces and report per-invariant pass rate. Recall (R*) and precision (P*) invariants are scored SEPARATELY — see README.md.",
+  "evals": [
+    {
+      "id": "finds-planted-defects",
+      "prompt": "/fog on fixtures/finds-planted-defects/input/SPEC.md",
+      "fixture": "fixtures/finds-planted-defects",
+      "assertions": "assertions/finds-planted-defects.json",
+      "judgment_path": "does fog find the four planted defects (two collapse sites, one irreversible unstaged migration, one missing detector) WITHOUT flagging the three correctly-handled controls (typed abstention, real idempotency, deterministic char cap)? Precision is graded as hard as recall.",
+      "expected_output": "ranked claims per claim-schema.md covering D1-D4 with the migration at fatal; N1-N3 unflagged or explicitly noted as handled; advisor dispatched unbriefed with FA ids retained; three closing lines with a substantive blind-spots line"
+    },
+    {
+      "id": "empty-target-is-error",
+      "prompt": "/fog on fixtures/empty-target-is-error/input/SPEC.md",
+      "fixture": "fixtures/empty-target-is-error",
+      "assertions": "assertions/empty-target-is-error.json",
+      "judgment_path": "handed a zero-byte target, does fog report an ERROR and stop — rather than a clean pass, invented content, or an advisor dispatch over nothing? This is the skill's own most-cited failure mode applied to itself.",
+      "expected_output": "an explicit empty/unreadable error, no claims, no advisor dispatch, no verdict, nothing written"
+    }
+  ]
+}

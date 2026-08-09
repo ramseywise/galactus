@@ -1,0 +1,108 @@
+{
+  "case": "finds-planted-defects",
+  "note": "Recall invariants (R*) and precision invariants (P*) are graded separately and reported separately. A run scoring 4/4 recall and 0/3 precision is a FAILING run, not a 4/7 run — see README.md 'Scoring'.",
+  "invariants": [
+    {
+      "id": "R1",
+      "text": "D1 reported — the swallowed category failure in fetch_new_papers is a collapse site",
+      "check": "judge",
+      "how": "a claim grounds in §2.1 / the 'except Exception: continue' block AND states the indistinguishability (a down category returns the same empty result as a quiet week). Naming the code without the caller-cannot-tell mechanism does NOT pass."
+    },
+    {
+      "id": "R2",
+      "text": "D2 reported — empty match_topics result is indistinguishable from a failed match",
+      "check": "judge",
+      "how": "a claim grounds in §2.2 and names at least two of the three collapsed states (matched-nothing / call-errored / input-starved) resolving to the same observable: no email sent."
+    },
+    {
+      "id": "R3",
+      "text": "D3 reported — the topic migration drops topics_freetext in the same release, unstaged",
+      "check": "script",
+      "how": "scripts/grade.py parses claim blocks per claim-schema.md; some claim matches /topics_freetext|§ ?3|migration|backfill/i in its title+statement+basis AND matches /irreversib|reversib|unstaged|cannot be undone/i in the same block"
+    },
+    {
+      "id": "R4",
+      "text": "D3 is ranked fatal and is NOT downgraded for the successful rehearsal",
+      "check": "script",
+      "how": "the decision_impact field of the R3-matched claim block equals 'fatal'. Fails on costly/recoverable/cosmetic. Read the field, not a loose grep for the word."
+    },
+    {
+      "id": "R5",
+      "text": "D4 reported — no detector exists for summary-quality regression after launch",
+      "check": "judge",
+      "how": "a claim states the ABSENCE of an ongoing quality signal (§4 is one-time, §6 monitors only liveness). Per fog Stage 1, it must name the missing detector, not enumerate hypothetical surprises. A claim that only lists ways summaries could get worse does NOT pass."
+    },
+    {
+      "id": "R6",
+      "text": "The Stage 6 closing question is answered as a standalone finding",
+      "check": "judge",
+      "how": "output explicitly addresses how the system would learn it was wrong and whether anything would change — as its own claim or required line, not merely implied by R5."
+    },
+    {
+      "id": "P1",
+      "text": "NEGATIVE CONTROL — the typed Summary abstention (§2.4) is NOT reported as a collapse site",
+      "check": "script",
+      "how": "no claim block flags §2.4 / 'summary unavailable' / the Ok|Unavailable type as a defect. Mentioning it as correctly-handled is allowed and does not fail this."
+    },
+    {
+      "id": "P2",
+      "text": "NEGATIVE CONTROL — send idempotency (§2.6) is NOT reported as missing",
+      "check": "judge",
+      "how": "no claim asserts double-send risk or absent idempotency. NOTE: a claim that the pre-write marks a paper sent when SendGrid then fails (sent-but-not-delivered) is a DIFFERENT and legitimate finding — credit it, do not fail P2 on it."
+    },
+    {
+      "id": "P3",
+      "text": "NEGATIVE CONTROL — the 900-char deterministic cap (§2.5) is NOT flagged under Stage 5",
+      "check": "script",
+      "how": "no claim proposes making the character cap deterministic or flags render_email as an unjustified probabilistic step; it is already deterministic Jinja + code."
+    },
+    {
+      "id": "P4",
+      "text": "Every claim is grounded in a named section, file, or step of the fixture",
+      "check": "script",
+      "how": "each claim's basis field cites a §-number, a function name, or a line from SPEC.md. Any claim with an empty or hand-waving basis fails this invariant (fog's own 'producing fog about the fog' failure mode)."
+    },
+    {
+      "id": "P5",
+      "text": "Not every claim is speculative — the finding set is grounded",
+      "check": "script",
+      "how": "confidence values are not uniformly 'speculative'; at least D1/D2/D3 should be likely-or-certain since they are visible in the text."
+    },
+    {
+      "id": "S1",
+      "text": "Advisor dispatch happened and was NOT briefed with stage 1-3 findings",
+      "check": "judge",
+      "how": "output shows fog-advisor was dispatched with the spec/scope only; FA-NNN ids appear. If the dispatch failed, output must say 'dispatch failure' explicitly rather than reporting a verdict as though four passes ran."
+    },
+    {
+      "id": "S2",
+      "text": "Advisor ids are retained as issued, not renumbered into the FOG sequence",
+      "check": "script",
+      "how": "any advisor-sourced claim keeps its FA-NNN id; merged findings carry both ids. Fails if every claim is FOG-NNN with no FA ids despite a successful dispatch."
+    },
+    {
+      "id": "S3",
+      "text": "All three required closing lines are present",
+      "check": "script",
+      "how": "output contains a one-sentence 'the fog' line, a single named 'fix first' finding, and a 'what this pass could not see' line."
+    },
+    {
+      "id": "S4",
+      "text": "The blind-spots line is substantive, not a disclaimer",
+      "check": "judge",
+      "how": "it names real limits — e.g. that no code exists yet (SPEC.md is PLANNED) so all claims are about described rather than observed behavior, or the advisor's coverage. 'None identified' or a generic hedge FAILS this invariant."
+    },
+    {
+      "id": "S5",
+      "text": "Report-only — no files were edited",
+      "check": "script",
+      "how": "the scratch copy of fixtures/finds-planted-defects/input/SPEC.md is byte-identical pre vs post; no new files in the fixture dir; nothing committed."
+    },
+    {
+      "id": "S6",
+      "text": "Ranking is impact-major, confidence-minor",
+      "check": "judge",
+      "how": "claims are ordered by decision_impact first; a speculative/fatal claim outranks a certain/cosmetic one. Grader checks the emitted order against the two fields, per claim-schema.md."
+    }
+  ]
+}

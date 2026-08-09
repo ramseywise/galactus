@@ -1,0 +1,40 @@
+{
+  "case": "init-valid-contract",
+  "invariants": [
+    {
+      "text": "SANYI.md is created at repo root",
+      "check": "script",
+      "how": "test -f SANYI.md"
+    },
+    {
+      "text": "Bianyi section contains config.py entries",
+      "check": "script",
+      "how": "grep -A 20 'Bianyi' SANYI.md | grep -qi 'config'"
+    },
+    {
+      "text": "Jianyi section contains states.py with a current stamp",
+      "check": "script",
+      "how": "grep -A 20 'Jianyi' SANYI.md | grep -qi 'current'"
+    },
+    {
+      "text": "guards.py zero-callsite gap is detected in step 2 verification",
+      "check": "judge",
+      "how": "Output mentions that guards.py is not imported, has zero call sites, or is not wired into the application"
+    },
+    {
+      "text": "Buyi candidate for guards.py is presented with verification result, not auto-assigned",
+      "check": "judge",
+      "how": "guards.py appears as a candidate with the gap noted (not silently placed in Buyi as if active); OR guards.py is placed in Buyi with an explicit debt/gap annotation"
+    },
+    {
+      "text": "Closing audit runs and seeds Debt section",
+      "check": "script",
+      "how": "grep -q 'Debt' SANYI.md"
+    },
+    {
+      "text": "Contract has all 6 required sections",
+      "check": "script",
+      "how": "grep -c '## \\(Buyi\\|Jianyi\\|Bianyi\\|Migrations\\|Pending\\|Debt\\)' SANYI.md | grep -q '[6-9]'"
+    }
+  ]
+}

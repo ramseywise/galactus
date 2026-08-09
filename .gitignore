@@ -1,0 +1,30 @@
+# Secrets — never commit. The case says lead engineers will read this repo.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local state
+*.db
+*.sqlite3
+.DS_Store
+
+# Hook + review run state — machine-local, regenerated per run
+.claude/logs/
+.claude/docs/review-findings.jsonl
+
+# Consolidation quarantine — staged for deletion, not shipped
+.quarantine/

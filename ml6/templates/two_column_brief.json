@@ -1,0 +1,73 @@
+{
+  "template_id": "two_column_brief",
+  "description": "One-page two-column partnership brief: headline strip, two body columns, a pull quote, a CTA, one logo slot and one hero image slot.",
+  "fields": [
+    {
+      "name": "headline",
+      "kind": "text",
+      "max_words": 9,
+      "min_words": 3,
+      "max_chars": 70,
+      "description": "Top strip, single line at 32pt. Overflow wraps to two lines and pushes the columns off the page."
+    },
+    {
+      "name": "subheadline",
+      "kind": "text",
+      "max_words": 18,
+      "max_chars": 130,
+      "description": "Sits under the headline at 16pt across the full width."
+    },
+    {
+      "name": "column_left",
+      "kind": "text",
+      "max_words": 95,
+      "min_words": 60,
+      "max_chars": 620,
+      "description": "Left body column. Under 60 words leaves visible whitespace at the column foot."
+    },
+    {
+      "name": "column_right",
+      "kind": "text",
+      "max_words": 95,
+      "min_words": 60,
+      "max_chars": 620,
+      "description": "Right body column. Should balance the left column in length."
+    },
+    {
+      "name": "pull_quote",
+      "kind": "text",
+      "max_words": 22,
+      "max_chars": 150,
+      "description": "Boxed quote spanning both columns at 18pt italic."
+    },
+    {
+      "name": "cta",
+      "kind": "text",
+      "max_words": 12,
+      "max_chars": 80,
+      "description": "Footer call to action, single line."
+    },
+    {
+      "name": "hero_image",
+      "kind": "image_placeholder",
+      "description": "Right-hand hero slot, 16:9. Value must be a placeholder token, not a URL."
+    },
+    {
+      "name": "sender_logo",
+      "kind": "image_placeholder",
+      "description": "Header logo slot for the sending company."
+    },
+    {
+      "name": "accent_color",
+      "kind": "color_ref",
+      "description": "Must name a key in theme_colors — not a raw hex value."
+    }
+  ],
+  "theme_colors": {
+    "primary": "#1f3a5f",
+    "secondary": "#4a90a4",
+    "accent": "#e07a3f",
+    "neutral": "#f4f1ea",
+    "ink": "#1a1a1a"
+  }
+}

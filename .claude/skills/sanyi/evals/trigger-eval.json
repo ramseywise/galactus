@@ -1,0 +1,22 @@
+[
+  {"query": "/sanyi init", "should_trigger": true, "note": "explicit init"},
+  {"query": "/sanyi review", "should_trigger": true, "note": "explicit review"},
+  {"query": "/sanyi audit", "should_trigger": true, "note": "explicit audit"},
+  {"query": "check if this diff violates the change contract", "should_trigger": true, "note": "natural phrasing - review"},
+  {"query": "create a SANYI.md for this repo", "should_trigger": true, "note": "natural phrasing - init"},
+  {"query": "does this PR quietly downgrade any invariants?", "should_trigger": true, "note": "Buyi downgrade concern"},
+  {"query": "classify these components into change layers", "should_trigger": true, "note": "layer classification"},
+  {"query": "run the full contract audit and refresh entropy budgets", "should_trigger": true, "note": "natural phrasing - audit"},
+  {"query": "is there a Buyi invariant that's only enforced in a prompt?", "should_trigger": true, "note": "BY-4 concern"},
+  {"query": "check for cross-layer violations in this diff", "should_trigger": true, "note": "violation check"},
+  {"query": "/akira scan repo:atlas", "should_trigger": false, "note": "quality scan, not contract"},
+  {"query": "is this code any good? what bugs are there?", "should_trigger": false, "note": "akira territory - quality"},
+  {"query": "/workflow-review my-feature", "should_trigger": false, "note": "plan fidelity + merge verdict orchestrator"},
+  {"query": "review PR #42 against project standards and give me a merge verdict", "should_trigger": false, "note": "workflow-review territory"},
+  {"query": "make test", "should_trigger": false, "note": "just running tests"},
+  {"query": "refactor this module into smaller files", "should_trigger": false, "note": "refactoring - code-refactor"},
+  {"query": "run a quality check and tell me what I missed", "should_trigger": false, "note": "akira scan/wander"},
+  {"query": "fix the safe findings behind the test suite", "should_trigger": false, "note": "akira dao"},
+  {"query": "what decisions did this diff walk past?", "should_trigger": false, "note": "akira wander"},
+  {"query": "commit these changes and push", "should_trigger": false, "note": "git ops"}
+]

@@ -1,0 +1,28 @@
+diff --git a/user_cache.py b/user_cache.py
+index 1a2b3c4..5d6e7f8 100644
+--- a/user_cache.py
++++ b/user_cache.py
+@@ -1,14 +1,29 @@
+ from __future__ import annotations
+
++_CACHE: dict[int, dict] = {}
++
++
++def get_user(user_id: int) -> dict:
++    """Return the user record, caching lookups by id."""
++    if user_id in _CACHE:
++        return _CACHE[user_id]
++    record = _fetch_from_db(user_id)
++    _CACHE[user_id] = record
++    return record
++
++
++def _fetch_from_db(user_id: int) -> dict:
++    try:
++        return db.query("SELECT * FROM users WHERE id = ?", user_id)
++    except DBError:
++        return {}
++
+
+-def get_user(user_id: int) -> dict:
+-    return db.query("SELECT * FROM users WHERE id = ?", user_id)

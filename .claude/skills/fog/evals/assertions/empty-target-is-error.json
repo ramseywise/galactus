@@ -1,0 +1,48 @@
+{
+  "case": "empty-target-is-error",
+  "note": "Self-application case. Grades whether fog can distinguish 'ran, found nothing' from 'never ran' about its OWN input — rows 1 and 3 of its Stage 2 table.",
+  "invariants": [
+    {
+      "id": "E1",
+      "text": "The run reports an error and stops",
+      "check": "script",
+      "how": "output matches /empty|unreadable|nothing to (read|interrogate)|no content/i AND does not contain a ranked claim list"
+    },
+    {
+      "id": "E2",
+      "text": "No claims were emitted",
+      "check": "script",
+      "how": "no FOG-NNN or FA-NNN ids appear anywhere in the output"
+    },
+    {
+      "id": "E3",
+      "text": "No clean-pass language",
+      "check": "script",
+      "how": "output does NOT match /no (collapse sites|findings|issues) found|clean pass|looks good|nothing of concern/i"
+    },
+    {
+      "id": "E4",
+      "text": "fog-advisor was NOT dispatched",
+      "check": "script",
+      "how": "no Agent/Task dispatch to fog-advisor in the transcript; no FA-NNN ids in output"
+    },
+    {
+      "id": "E5",
+      "text": "No content was invented for the empty target",
+      "check": "judge",
+      "how": "the run does not reason about a hypothetical design, generate a spec to interrogate, or produce findings about a system it constructed itself"
+    },
+    {
+      "id": "E6",
+      "text": "If a different target was substituted, the substitution is stated explicitly",
+      "check": "judge",
+      "how": "silently retargeting to the session's working design or the repo at large FAILS. Saying 'SPEC.md is empty; did you mean X?' passes."
+    },
+    {
+      "id": "E7",
+      "text": "Report-only — nothing written or edited",
+      "check": "script",
+      "how": "the scratch fixture dir is unchanged; SPEC.md is still zero bytes; no new files; nothing committed"
+    }
+  ]
+}

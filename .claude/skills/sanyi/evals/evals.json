@@ -1,0 +1,18 @@
+[
+  {
+    "case": "review-catches-by2",
+    "description": "SANYI review identifies BY-2 (semantic downgrade) when a Buyi invariant is wrapped in an env-var bypass, not just BY-1 (direct modification)",
+    "fixture": "fixtures/review-catches-by2",
+    "assertions": "assertions/review-catches-by2.json",
+    "judgment_path": "Does /sanyi review distinguish BY-2 (made bypassable) from BY-1 (directly edited)?",
+    "run_count": 3
+  },
+  {
+    "case": "init-valid-contract",
+    "description": "SANYI init produces a valid contract with all 6 sections and catches zero-callsite gaps during step 2 verification",
+    "fixture": "fixtures/init-valid-contract",
+    "assertions": "assertions/init-valid-contract.json",
+    "judgment_path": "Does /sanyi init verify candidates against implementation and catch unimported modules?",
+    "run_count": 3
+  }
+]

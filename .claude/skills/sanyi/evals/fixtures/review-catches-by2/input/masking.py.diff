@@ -1,0 +1,25 @@
+diff --git a/masking.py b/masking.py
+index abc1234..def5678 100644
+--- a/masking.py
++++ b/masking.py
+@@ -1,5 +1,7 @@
+ """PII masking module — the Buyi invariant under test."""
+
++import os
+ import re
+
+ PII_PATTERNS = [
+@@ -8,8 +10,11 @@ PII_PATTERNS = [
+     (r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b", "[PHONE]"),
+ ]
+
++MASKING_ENABLED = os.environ.get("ENABLE_PII_MASKING", "true").lower() == "true"
++
+
+ def mask_pii(text: str) -> str:
+-    """Mask PII patterns in text. Always on — no bypass."""
++    """Mask PII patterns in text. Controlled by ENABLE_PII_MASKING env var."""
++    if not MASKING_ENABLED:
++        return text
+     result = text
+     for pattern, replacement in PII_PATTERNS:

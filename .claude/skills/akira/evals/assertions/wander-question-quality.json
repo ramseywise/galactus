@@ -1,0 +1,35 @@
+{
+  "case": "wander-question-quality",
+  "invariants": [
+    {
+      "text": "Output is 3-5 questions (inclusive), not fewer, not more",
+      "check": "script",
+      "how": "count lines ending in '?' (or numbered question items); must be in [3,5]"
+    },
+    {
+      "text": "No file was edited — wander is read-only",
+      "check": "script",
+      "how": "the fixture input/ copy is byte-identical pre vs post run; no diff/patch emitted"
+    },
+    {
+      "text": "Output contains no severity-tagged findings list (that is scan, not wander)",
+      "check": "script",
+      "how": "grep -iE '\\[(blocking|non-blocking|nit)\\]|severity' over the output returns nothing"
+    },
+    {
+      "text": "At least one question targets the unbounded/never-invalidated cache decision",
+      "check": "judge",
+      "how": "grader confirms a question about cache growth, eviction, TTL, or invalidation-on-update (expected.md items 1-2)"
+    },
+    {
+      "text": "At least one question targets the swallowed DBError being cached as an empty record",
+      "check": "judge",
+      "how": "grader confirms a question about caching the {} failure / conflating error vs empty vs missing (expected.md items 3-4)"
+    },
+    {
+      "text": "Questions are diff-specific, not generic boilerplate",
+      "check": "judge",
+      "how": "grader confirms questions reference this diff's actual constructs (_CACHE, _fetch_from_db, the {} fallback), not interchangeable prompts like 'is this tested?'"
+    }
+  ]
+}
