@@ -19,6 +19,8 @@ import argparse
 import json
 import sys
 
+from pydantic import ValidationError
+
 from review.models import ReporterDispatchEntry, ReviewFinding
 from review.signals import active_dimensions, detect_injection, detect_signals
 from review.validate import validate_finding
@@ -53,6 +55,73 @@ def _cmd_detect_signals(args: argparse.Namespace) -> int:
     return 0
 
 
+def _verdict_error(reason: str, message: str) -> int:
+    """Emit a structured payload rejection on stdout and return exit 1.
+
+    Same shape as `validate-finding`'s rejection, and for the same reason: the
+    orchestrator that pipes into this command reads JSON, so a malformed
+    payload must come back as JSON it can branch on rather than as a traceback
+    on stderr that it can only log.
+    """
+    json.dump(
+        {"error": "invalid_payload", "reason": reason, "message": message},
+        sys.stdout,
+        indent=2,
+    )
+    sys.stdout.write("\n")
+    return 1
+
+
+def _parse_verdict_payload(
+    payload: object,
+) -> tuple[list[ReviewFinding], list[ReporterDispatchEntry], list, int]:
+    """Coerce a raw verdict payload into `compute_verdict`'s four arguments.
+
+    Raises `TypeError` on a wrong-typed field and `ValueError` on a well-typed
+    but out-of-range one; the caller treats both as one rejection. The ladder is
+    a pure function over typed inputs, so keeping the enforcement here means
+    `compute_verdict` never has to defend itself against stdin.
+    """
+    if not isinstance(payload, dict):
+        raise TypeError(f"payload must be a JSON object, got {type(payload).__name__}")
+
+    for field in ("findings", "dispatch", "injection_hits"):
+        if not isinstance(payload.get(field, []), list):
+            raise TypeError(
+                f"{field!r} must be a list, got {type(payload[field]).__name__}"
+            )
+
+    # `bool` is an `int` subclass, so it would otherwise slip through as 0/1.
+    validation_failures = payload.get("validation_failures", 0)
+    if isinstance(validation_failures, bool) or not isinstance(
+        validation_failures, int
+    ):
+        raise TypeError(
+            "'validation_failures' must be an integer, got "
+            f"{type(validation_failures).__name__}"
+        )
+    if validation_failures < 0:
+        raise ValueError(
+            f"'validation_failures' must be >= 0, got {validation_failures}"
+        )
+
+    findings_raw = payload.get("findings", [])
+    dispatch_raw = payload.get("dispatch", [])
+    injection_hits = payload.get("injection_hits", [])
+
+    try:
+        findings = [ReviewFinding.model_validate(f) for f in findings_raw]
+    except ValidationError as e:
+        raise ValueError(f"invalid entry in 'findings': {e}") from e
+
+    try:
+        dispatch = [ReporterDispatchEntry.model_validate(d) for d in dispatch_raw]
+    except ValidationError as e:
+        raise ValueError(f"invalid entry in 'dispatch': {e}") from e
+
+    return findings, dispatch, injection_hits, validation_failures
+
+
 def _cmd_verdict(args: argparse.Namespace) -> int:
     """Compute the verdict from a review payload.
 
@@ -60,18 +129,24 @@ def _cmd_verdict(args: argparse.Namespace) -> int:
     validation_failures: int}`. The orchestrator must run this, not read the
     ladder and decide for itself — that is the whole point of the ladder being
     a pure function.
+
+    A malformed payload is a rejection, not a crash: `insufficient_context` is
+    a verdict about a review that ran, so a payload that never parsed must not
+    borrow it. It exits 1 with `error: invalid_payload` instead.
     """
-    payload = json.load(sys.stdin)
-    findings = [ReviewFinding.model_validate(f) for f in payload.get("findings", [])]
-    dispatch = [
-        ReporterDispatchEntry.model_validate(d) for d in payload.get("dispatch", [])
-    ]
-    decision = compute_verdict(
-        findings,
-        dispatch,
-        payload.get("injection_hits", []),
-        payload.get("validation_failures", 0),
-    )
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        return _verdict_error("not_json", f"stdin is not valid JSON: {e}")
+
+    try:
+        findings, dispatch, injection_hits, validation_failures = (
+            _parse_verdict_payload(payload)
+        )
+    except (TypeError, ValueError) as e:
+        return _verdict_error("schema", str(e))
+
+    decision = compute_verdict(findings, dispatch, injection_hits, validation_failures)
     json.dump({"merge_decision": decision.value}, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0
