@@ -1,0 +1,26 @@
+{
+  "id": "RT-001",
+  "reporter": "runtime",
+  "category": "agent_behavior",
+  "evidence_state": "verified",
+  "location": {
+    "files": [
+      {
+        "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+        "start_line": 62,
+        "end_line": 62
+      }
+    ],
+    "symbols": []
+  },
+  "claim": {
+    "title": "Tool boundary violates the runtime convention",
+    "observation": "This breaches the rule stated in .claude/specs/agent-runtime.md but cites no section."
+  },
+  "severity": {
+    "merge_impact": "important"
+  },
+  "basis": ["read .claude/specs/agent-runtime.md"],
+  "comment_type": "request_change",
+  "quoted_span": "import anthropic"
+}

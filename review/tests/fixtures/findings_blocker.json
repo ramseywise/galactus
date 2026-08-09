@@ -1,0 +1,37 @@
+{
+  "findings": [
+    {
+      "id": "SF-001",
+      "reporter": "safety",
+      "category": "security",
+      "evidence_state": "verified",
+      "location": {
+        "files": [
+          {
+            "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+            "start_line": 62,
+            "end_line": 62
+          }
+        ],
+        "symbols": []
+      },
+      "claim": {
+        "title": "A blocking finding",
+        "observation": "Present so the ladder has a blocker to land on."
+      },
+      "severity": {
+        "source_native": "blocker",
+        "merge_impact": "blocker"
+      },
+      "basis": [],
+      "comment_type": "request_change",
+      "quoted_span": "import anthropic"
+    }
+  ],
+  "dispatch": [
+    {"reporter": "safety", "status": "completed", "finding_count": 1},
+    {"reporter": "correctness", "status": "completed", "finding_count": 0}
+  ],
+  "injection_hits": [],
+  "validation_failures": 0
+}

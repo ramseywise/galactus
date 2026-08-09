@@ -39,7 +39,7 @@ Before gathering context, determine the review scope from the branch and repo st
 | Scope | What runs | What's skipped |
 |-------|-----------|----------------|
 | **Full** | All stages (1-8) | Nothing |
-| **Lightweight** | Context brief (slim), lint/tests, worktree check, DoD, verdict | akira-scan, SANYI, plan fidelity |
+| **Lightweight** | Context brief (slim), lint/tests, worktree check, DoD, verdict | conditional dimensions, plan fidelity |
 
 The review artifact is always written regardless of scope — `check-review` in `make ship` gates on it.
 
@@ -90,29 +90,111 @@ Deviations become findings with `merge_impact: important` (justified deviation) 
 
 ## Stage 3: Dispatch Reporters
 
-### Dimension scan (quality + contracts + wander)
+### Dimension scan
 
-Dispatch the reporters as subagents, **all in one message so they run concurrently**.
-Each gets the Stage 1 context brief; none of them re-derives the diff.
+**First, compute which dimensions are active.** Do not decide this by reading the diff
+yourself:
 
-| Reporter | Agent | Dispatch when |
+```bash
+# stdin: the changed-file list as a JSON array of paths
+echo '["path/one.py", "path/two.ts"]' | uv run python -m review.cli detect-signals
+```
+
+It returns `{signals, active, skipped, injection_hits}` — the active dimension list, a
+`skipped` map of `dimension → reason`, and any injection hits found in the changed files.
+**Keep `injection_hits`**: Stage 6 needs it, and it is not recomputed there. Six
+dimensions are always on (`intent`, `correctness`, `silent_failure`, `testing`, `safety`,
+`architecture`); `runtime` and `safeguards` activate on agent-system signal, and
+`contracts` on a `SANYI.md` at the repo root. **Carry the skipped map forward verbatim**
+— Stage 7 §11 must account for all nine dimensions, and a skip without its reason is
+indistinguishable from an omission.
+
+**Then dispatch `review` once per active dimension — every dispatch in a single message,
+`run_in_background: false`.** One message is what makes them concurrent; the foreground
+qualifier is what makes you wait for them. Background dispatches let Stage 4 merge before
+the reporters return, which reads as a clean review of findings that had not arrived yet.
+
+Each dispatch gets **exactly one** `review-*` dimension skill, named explicitly, plus the
+Stage 1 context brief. Never load two dimensions into one dispatch — the ID prefix is what
+proves which skill loaded, and a dispatch carrying two has no unambiguous prefix.
+
+| Input to each dispatch | Value |
+|---|---|
+| Dimension skill | exactly one `review-*` skill, by exact name (table below) |
+| Files | the changed-file list — **the pre-screened subset** for conditional dimensions |
+| Diff | from Stage 1; the reporter never re-derives it |
+| Repo context | review profile + repo-context facts from Stage 1 |
+
+The nine dimensions, their skills, and what activates each:
+
+| Dimension | Skill to load | Active when |
 |---|---|---|
-| Quality | `akira-scan` | Always |
-| Questions | `akira-wander` | Diff scope is non-empty |
-| Contracts | `sanyi-review` | `SANYI.md` exists at the repo root |
+| intent | `review-intent` | always |
+| correctness | `review-correctness` | always |
+| silent_failure | `review-silent-failure` | always |
+| testing | `review-testing` | always |
+| safety | `review-safety` | always |
+| architecture | `review-architecture` | always |
+| runtime | `review-runtime` | agent-system signal |
+| safeguards | `review-safeguards` | agent-system signal |
+| contracts | `review-contracts` | `SANYI.md` at repo root |
 
-This is a fan-out/fan-in: three nodes with distinct specialties, different context, and
-read-only tools, joined by this skill. The separation is the point — **the reporters
-never see each other's findings, and none of them grades its own work.** You are the
-orchestrator; you do not also report.
+`detect-signals` decides the right-hand column — do not re-derive it by eye. The skill
+name is hyphenated even where the dimension is underscored: `silent_failure` loads
+`review-silent-failure`.
 
-Pass each reporter: the changed-file list, the diff, the review profile, and the
-repo-context facts from Stage 1. Require findings in `review-shared`'s schema.
+Conditional dimensions get the file subset that triggered them, not the full list:
+`runtime` and `safeguards` see the agent-system files, `contracts` sees the files covered
+by contract entries. Handing a conditional dimension the whole diff invites findings from
+outside the remit that activated it.
 
-**If a reporter returns nothing, that is a dispatch result you must distinguish from a
-clean scan.** A reporter that errored, timed out, or received an empty file list has not
-approved anything. Record it as a dispatch failure — Stage 6 turns any unexplained
-reporter silence into `insufficient_context`, never into an approval.
+This is a fan-out/fan-in: N nodes with distinct remits, different context, and read-only
+tools, joined by this skill. The separation is the point — **the reporters never see each
+other's findings, and none of them grades its own work.** You are the orchestrator; you do
+not also report.
+
+**When the diff exceeds 25 changed files**, say so in the report and treat dimension
+coverage as degraded: per-dimension attention thins as the file count grows, so an
+`approve` on a large diff is a weaker claim than the same verdict on a small one. Consider
+splitting the review rather than raising the ceiling.
+
+### Recording dispatch outcomes
+
+Every dispatch ends in exactly one of three states, and the distinction is load-bearing:
+
+| State | When | What Stage 6 does with it |
+|---|---|---|
+| `completed` | returned a valid findings array — **including an empty one** | reads the findings; zero is a real result |
+| `failed` | errored, timed out, returned malformed output, or never returned | can mask blockers |
+| `skipped` | `detect-signals` did not activate it | carries its reason to §11 |
+
+**An empty array is `completed`, not `failed`.** A dimension that looked and found nothing
+has reported a clean result. Marking it `failed` trips rung 1 of the ladder — which is
+unconditional — so the injection conjunction at rung 0 never runs, and a poisoned review
+gets the same verdict as a busy one. Distinguishing silence-from-cleanliness from
+silence-from-poison is `verdict.py`'s job, computed from the injection hits and the
+completed-empty set together. It is not yours to pre-judge.
+
+Only a dispatch that produced no usable answer is `failed`.
+
+**Validation failures: retry once, then record.** If `review/validate.py` rejects a
+dispatch's findings (bad prefix, missing `quoted_span`, absent `spec_citation`), re-dispatch
+that dimension once with the rejection reason included. If the second attempt also fails
+validation, record the dimension as `failed` with the validation reason and move on. Never
+hand-repair a reporter's findings into schema compliance yourself — that makes you the
+reporter, and the prefix check exists precisely to catch findings that did not come from
+the skill they claim.
+
+### Bounded corrective round (F6)
+
+If the always-on dimensions surface agent-system signal that `detect-signals` missed — an
+LLM call, a tool definition, a prompt template in a file the detector did not classify —
+dispatch `runtime` and `safeguards` **once, with the newly-identified files.** 
+
+This round is entered **at most once per review and is never re-entered.** Findings from
+the corrective round do not trigger another corrective round, however much new signal they
+surface. Record in §11 that the corrective round ran and what triggered it. An unbounded
+"one more look" loop is how a review stops terminating.
 
 Plan-fidelity findings (Stage 2) are not dispatched — they stay in-session and merge in
 at Stage 4.
@@ -138,9 +220,13 @@ adjust `merge_impact` when cross-reporter context changes the picture — a `hyp
 from one reporter corroborated by another's `verified` finding is stronger than either
 alone. Say so in the report when you do; a silently adjusted severity is unreviewable.
 
-Then append each finding as one JSON line to `.claude/docs/review-findings.jsonl` per
-the persistence format in `review-shared/references/finding-schema.md`. Append-only —
-never rewrite earlier rows.
+A `contracts` finding is the one exception: its `merge_impact` is fixed by its
+`violation_code` through `_MERGE_IMPACT` in `review/validate.py` and is not adjustable
+here. Arguing a `BY-2` down to a nit is exactly what that table exists to prevent.
+
+The merged list is **session state, not a durable record.** Nothing is written to disk —
+the review artifact in Stage 7 is the output. Do not append findings to a JSONL log or
+any other store; this subsystem has no persistence layer by design.
 
 ## Stage 5: DoD Assessment
 
@@ -165,17 +251,35 @@ If a plan doc exists, also check:
 
 ## Stage 6: Judge — Merge Verdict
 
-The verdict is **computed, not judged.** Apply this ladder to the Stage 4 combined list
-(reporter + plan-fidelity + lint findings) in order, and stop at the first match:
+The verdict is **computed, not judged** — and computed by *running* the ladder, not by
+reading it and deciding for yourself:
 
-1. Any reporter/dispatch failure that could mask blockers → `insufficient_context`
-2. Any `merge_impact: blocker` → `request_changes`
-3. Any `merge_impact: important` → `comment`
-4. Otherwise → `approve`
+```bash
+uv run python -m review.cli verdict < review.json
+```
 
-Rule 1 comes first on purpose. A review that could not see part of the diff has not
-approved it, and "no findings" from a reporter that never ran is the single easiest way
-for a broken review to read as a passing one.
+where `review.json` is the payload you assemble from the stages above:
+
+```json
+{
+  "findings": [ ... ],             // the Stage 4 merged list
+  "dispatch": [ ... ],             // one entry per dimension: completed | failed | skipped
+  "injection_hits": [ ... ],       // carried from Stage 3's detect-signals — not recomputed
+  "validation_failures": 0         // dimensions that failed validation twice
+}
+```
+
+It returns `{"merge_decision": "..."}`. That value is the verdict. Write it into the
+report as returned.
+
+**Do not reimplement the ladder in prose here, and do not adjust its output.** The rungs
+live in `review/verdict.py` as a pure function precisely so the decision is reproducible
+and testable rather than re-derived by a model each run. Rung 0 in particular — the
+conjunction of an injection hit *and* at least one completed-but-empty dispatch — is not
+something to eyeball; that is the whole reason it is code.
+
+If the CLI errors or the payload will not validate, the review is `insufficient_context`.
+A verdict you could not compute is not an approval.
 
 You do not get to weigh the findings against each other here. If you believe a blocker is
 overstated, the fix is to argue it down to `important` in Stage 4 — visibly, with a
@@ -218,13 +322,26 @@ Produce the unified report:
 ## 10. Definition of Done Assessment
 [DoD checklist table: item | status | note]
 
-## 11. Reporter Dispatch Summary
-| Reporter | Status | Findings |
+## 11. Dimension Dispatch Table
+| Dimension | Status | Findings |
 |----------|--------|----------|
-| plan-fidelity | ran/skipped | N findings |
-| akira-scan | dispatched/skipped | N findings |
-| SANYI | dispatched/skipped | N findings |
-| lint/tests | ran/skipped | pass/fail |
+| intent | dispatched / skipped (reason) / failed (reason) | N findings |
+| correctness | ... | N findings |
+| silent_failure | ... | N findings |
+| testing | ... | N findings |
+| safety | ... | N findings |
+| architecture | ... | N findings |
+| runtime | ... | N findings |
+| safeguards | ... | N findings |
+| contracts | ... | N findings |
+| plan-fidelity | ran / skipped | N findings |
+| lint/tests | ran / skipped | pass/fail |
+
+**All nine dimensions get a row, every run — no exceptions.** A dimension that did not
+run is `skipped` with the reason `detect-signals` gave, or `failed` with what went wrong.
+Silently omitting a row is the failure this table exists to prevent: a review that covered
+six dimensions and a review that covered nine look identical if only the ones that ran are
+listed. Note here if the bounded corrective round ran and what triggered it.
 
 ## 12. Merge Verdict
 **approve** | **comment** | **request_changes** | **insufficient_context**
@@ -253,7 +370,7 @@ canonical enum member — `EXECUTED` + `Review: passed` when the verdict is `app
 ## Boundaries
 
 - Never commit, push, or merge — Ramsey commits.
-- Never auto-fix findings — report only. Recommend `/akira dao` for safe fixes.
+- Never auto-fix findings — report only. Fixes are the operator's call.
 - Read-only by default; GH review submission requires explicit authorization.
 - Per-reporter failures are reported (not retried infinitely), noted in dispatch summary.
 - Max 3 review rounds — if issues persist, escalate to user.

@@ -1,0 +1,28 @@
+{
+  "id": "CT-001",
+  "reporter": "contracts",
+  "category": "architecture",
+  "evidence_state": "verified",
+  "location": {
+    "files": [
+      {
+        "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+        "start_line": 62,
+        "end_line": 62
+      }
+    ],
+    "symbols": []
+  },
+  "claim": {
+    "title": "Invariant carried as a nit",
+    "observation": "BY-1 is a 不易 invariant violation and cannot be downgraded to a nit."
+  },
+  "severity": {
+    "merge_impact": "nit",
+    "violation_code": "BY-1"
+  },
+  "basis": [],
+  "comment_type": "nit",
+  "quoted_span": "import anthropic",
+  "spec_citation": ".claude/skills/review_contracts/references/violations.md#BY-1"
+}

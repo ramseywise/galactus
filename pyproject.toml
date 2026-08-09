@@ -33,5 +33,5 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["ml6/tests"]
+testpaths = ["ml6/tests", "review/tests"]
 asyncio_mode = "auto"

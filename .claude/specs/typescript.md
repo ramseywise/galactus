@@ -9,7 +9,7 @@
 - Agent state (ADK session, conversation history) → Supabase, not in-memory
 - Error boundaries at route level in Next.js/React
 
-## Don'ts (akira-scan checks these as findings, not just prose)
+## Don'ts (the review dimensions check these as findings, not just prose)
 
 - No API keys in client bundles — Vercel Functions / Next.js API routes only
 - No `console.log` in production paths — use structured logging or remove

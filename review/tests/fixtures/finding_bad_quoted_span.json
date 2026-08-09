@@ -1,0 +1,26 @@
+{
+  "id": "CR-002",
+  "reporter": "correctness",
+  "category": "correctness",
+  "evidence_state": "verified",
+  "location": {
+    "files": [
+      {
+        "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+        "start_line": 62,
+        "end_line": 62
+      }
+    ],
+    "symbols": []
+  },
+  "claim": {
+    "title": "Cited line does not contain the quoted text",
+    "observation": "The span quotes code that appears nowhere near the cited line."
+  },
+  "severity": {
+    "merge_impact": "important"
+  },
+  "basis": [],
+  "comment_type": "request_change",
+  "quoted_span": "subprocess.run(shell=True, cmd=user_input)"
+}

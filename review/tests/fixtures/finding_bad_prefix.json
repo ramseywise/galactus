@@ -1,0 +1,26 @@
+{
+  "id": "SF-001",
+  "reporter": "correctness",
+  "category": "correctness",
+  "evidence_state": "verified",
+  "location": {
+    "files": [
+      {
+        "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+        "start_line": 62,
+        "end_line": 62
+      }
+    ],
+    "symbols": []
+  },
+  "claim": {
+    "title": "Wrong prefix for the declared reporter",
+    "observation": "A correctness finding carrying the safety prefix SF-."
+  },
+  "severity": {
+    "merge_impact": "nit"
+  },
+  "basis": [],
+  "comment_type": "nit",
+  "quoted_span": "import anthropic"
+}

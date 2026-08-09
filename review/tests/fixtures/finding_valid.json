@@ -1,0 +1,30 @@
+{
+  "id": "CR-001",
+  "reporter": "correctness",
+  "category": "correctness",
+  "evidence_state": "verified",
+  "location": {
+    "files": [
+      {
+        "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+        "start_line": 62,
+        "end_line": 62
+      }
+    ],
+    "symbols": ["AnthropicAdapter._ensure_client"]
+  },
+  "claim": {
+    "title": "Client import is lazy",
+    "observation": "The anthropic import happens inside the method rather than at module scope.",
+    "failure_scenario": "Import errors surface on first request rather than at startup.",
+    "impact": "Failure is discovered later than it could be."
+  },
+  "severity": {
+    "source_native": "notice",
+    "merge_impact": "nit"
+  },
+  "basis": ["read ml6/src/galactus/llm/anthropic_adapter.py"],
+  "comment_type": "nit",
+  "quoted_span": "import anthropic",
+  "pre_existing": true
+}

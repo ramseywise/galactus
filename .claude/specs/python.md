@@ -21,7 +21,7 @@
 - Always close connections (context managers or explicit `.close()`)
 - Pydantic models at API boundaries, not raw dicts
 
-## Don'ts (akira-scan checks these as findings, not just prose)
+## Don'ts (the review dimensions check these as findings, not just prose)
 
 - No hardcoded paths, secrets, or hyperparameters — config files / env vars only
 - No pandas, no stdlib `logging`, no `print()` in `src/`

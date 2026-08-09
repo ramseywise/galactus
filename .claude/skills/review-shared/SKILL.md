@@ -1,13 +1,13 @@
 ---
 name: review-shared
-description: "Shared contracts for every review reporter — the canonical finding schema, the evidence model, the context brief, and the merge-decision ladder. Preloaded by /workflow-review, /akira, and /sanyi rather than invoked directly. Load it when writing a new reporter or when two reporters disagree about a finding's severity."
+description: "Shared contracts for every review reporter — the canonical finding schema, the evidence model, the context brief, and the merge-decision ladder. Preloaded by the review and wander agents and used by /workflow-review rather than invoked directly. Load it when writing a new dimension or when two dimensions disagree about a finding's severity."
 ---
 
 # review-shared
 
 The contracts every review reporter writes against. This skill holds no procedure of its
-own — it exists so that `akira-scan`, `akira-wander`, and `sanyi` emit findings a single
-orchestrator can merge without re-reading each reporter's private conventions.
+own — it exists so that all nine `review-*` dimensions emit findings a single orchestrator
+can merge without re-reading each dimension's private conventions.
 
 Load a reference when you need it, not preemptively:
 
@@ -29,18 +29,26 @@ because the reporter could not fully confirm them.
 
 ## Merge-decision ladder
 
-Reporters propose `merge_impact`; the orchestrator decides the verdict. One rule,
-applied in order — the first match wins:
+Reporters propose `merge_impact`; the verdict is **computed** from those proposals by
+`compute_verdict` in `review/verdict.py`, run via:
 
-| Condition | Verdict |
-|---|---|
-| Any finding with `merge_impact: blocker` | `request_changes` |
-| Any finding with `merge_impact: important` | `comment` |
-| Otherwise | `approve` |
+```bash
+uv run python -m review.cli verdict < review.json
+```
 
-Questions never block on their own. A finding that cannot be evaluated without more
-information is `evidence.state: question` and `comment_type: question` — the reviewer
-asks rather than rejects.
+The ladder is a pure function with five rungs, first match winning. It is deliberately
+**not** restated here: a prose copy drifts from the implementation, and a ladder that
+silently disagrees with the code produces verdicts nobody can reproduce. Read
+`review/verdict.py` when you need the rungs; run the CLI when you need a decision.
+
+Two properties worth carrying without reading it:
+
+- **An empty findings array is a real result**, not a failure. A dimension that looked
+  and found nothing has passed cleanly. Only a dispatch that errored, returned malformed
+  output, or never returned is `failed`.
+- **Questions never block on their own.** A finding that cannot be evaluated without more
+  information is `evidence_state: question` with `comment_type: question` — the reviewer
+  asks rather than rejects.
 
 ## Reporter contract
 
@@ -50,8 +58,8 @@ Any new reporter must:
    preserved verbatim. **Never rewrite another system's severity codes.**
 2. Classify every finding into exactly one evidence state before returning it, having
    run the self-verification protocol in `evidence-model.md`.
-3. Claim a unique `id` prefix (`AK`, `AW`, `SY`, …) so merged findings stay traceable to
-   their source.
+3. Carry the `id` prefix its dimension declares in `prefix:` frontmatter (`IN`, `CR`,
+   `SI`, …), so merged findings stay traceable and a wrong-skill dispatch is detectable.
 4. Report only — never fix findings inline. The orchestrator decides what gets acted on.
 
 A reporter that self-verifies is doing its own job; the orchestrator does not re-verify

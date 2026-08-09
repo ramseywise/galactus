@@ -41,9 +41,9 @@ ask, or run `/assumption-audit` first.
 ## Stage 1 — Choose the attack angles
 
 Do **not** dispatch identical attackers. Redundancy finds the same threat N times;
-diversity finds N different threats. This is the same reason the review graph gives
-`akira-scan`, `akira-wander`, and `sanyi-review` different jobs rather than three defect
-scanners.
+diversity finds N different threats. This is the same reason the review subsystem gives
+each `review-*` dimension a different remit — and keeps `wander` separate from `review`
+— rather than running one defect scanner N times.
 
 Standard angles — pick 3–5 that actually apply, and say which you dropped and why:
 
