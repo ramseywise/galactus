@@ -1,12 +1,13 @@
-"""The cross-artifact test: skills and core must agree on the nine prefixes.
+"""The cross-artifact test: skills and core must agree on the ten prefixes.
 
-DESIGNED RED until Step 7 of the prototyping-review-subsystem plan creates the
-nine `review-*` skills. That is the dependency made checkable rather than
-asserted in prose — Step 7's completion is what turns this green.
+Green since Step 7 of the prototyping-review-subsystem plan created the original
+nine `review-*` skills; `review-leakage` made it ten.
 
 `models.py` is authoritative and the skills follow it, never the reverse. This
-test fails loudly if Step 7 adds a tenth skill, renames one, or picks a prefix
-the code does not know about.
+test is what makes registration code rather than directory convention: adding a
+`review-*` directory without its `Reporter` member and `REPORTER_ID_PREFIX`
+entry turns it red, as does renaming one or picking a prefix the code does not
+know about.
 """
 
 from __future__ import annotations

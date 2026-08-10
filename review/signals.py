@@ -2,14 +2,14 @@
 
 Regex-based, no LLM calls. Two jobs:
 
-- `detect_signals` / `active_dimensions` decide which of the nine dimensions
+- `detect_signals` / `active_dimensions` decide which of the ten dimensions
   run, and record the skipped ones *with reasons* — a dispatch table that omits
   what did not run cannot be mandatory-complete.
 - `detect_injection` scans reviewed files for injection-shaped content. Its
   output is evidence in the brief *and* rung 0's second conjunct.
 
 Ported from `guacamayo/review/signals.py`, dropping `is_pipeline_code` and its
-two pattern lists — no dimension in the nine-way menu consumes it.
+two pattern lists — no dimension in the ten-way menu consumes it.
 """
 
 from __future__ import annotations
@@ -40,6 +40,42 @@ _AGENT_PATH_PATTERNS = [
     re.compile(r"(?:^|/)agents/"),
     re.compile(r"(?:^|/)\w+_agent/"),
     re.compile(r"(?:^|/)prompts/"),
+]
+
+# Import patterns indicating tabular-ML code. Deliberately narrower than "any
+# numeric library": numpy and matplotlib alone are not ML and would drag every
+# plotting script into a leakage review.
+_ML_IMPORT_PATTERNS = [
+    re.compile(r"from\s+sklearn\b"),
+    re.compile(r"import\s+sklearn\b"),
+    re.compile(r"from\s+catboost\b"),
+    re.compile(r"import\s+catboost\b"),
+    re.compile(r"from\s+lightgbm\b"),
+    re.compile(r"import\s+lightgbm\b"),
+    re.compile(r"from\s+xgboost\b"),
+    re.compile(r"import\s+xgboost\b"),
+    re.compile(r"from\s+imblearn\b"),
+    re.compile(r"import\s+imblearn\b"),
+    re.compile(r"import\s+pandas\b"),
+    re.compile(r"from\s+pandas\b"),
+]
+
+# Call-shape patterns. An import list alone misses a module that receives an
+# already-built estimator and fits it — which is exactly where fit-before-split
+# ordering lives.
+_ML_CALL_PATTERNS = [
+    re.compile(r"\.fit\s*\("),
+    re.compile(r"\.fit_transform\s*\("),
+    re.compile(r"\.predict(?:_proba)?\s*\("),
+    re.compile(r"\btrain_test_split\s*\("),
+]
+
+# Path patterns indicating ML code location.
+_ML_PATH_PATTERNS = [
+    re.compile(r"(?:^|/)ml/"),
+    re.compile(r"(?:^|/)models/"),
+    re.compile(r"(?:^|/)features/"),
+    re.compile(r"(?:^|/)training/"),
 ]
 
 # Injection-shaped content. This list is owned here, not borrowed: the four
@@ -98,7 +134,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
 ]
 
-# The six dimensions that run on every review, and the conditional three.
+# The six dimensions that run on every review, and the conditional four.
 _ALWAYS_ON = [
     "intent",
     "correctness",
@@ -127,9 +163,11 @@ def detect_signals(files: list[str], repo_root: str = ".") -> dict[str, bool]:
 
     Returns:
         - is_agent_code: activate `runtime` + `safeguards`
+        - is_ml_code: activate `leakage`
         - has_sanyi_contracts: SANYI.md present — activate `contracts`
     """
     is_agent_code = False
+    is_ml_code = False
 
     for raw_path in files:
         path_str = raw_path.replace("\\", "/")
@@ -146,8 +184,21 @@ def detect_signals(files: list[str], repo_root: str = ".") -> dict[str, bool]:
         ):
             is_agent_code = True
 
+        # ML detection is content-first and Python-only. A path match alone is
+        # not enough: `ml/README.md` and `models/schema.sql` live under matching
+        # directories and contain no fit path to review. Requiring content means
+        # a false activation needs an actual ML import or call in the file.
+        if not is_ml_code and path_str.endswith(".py"):
+            resolved = _resolve(path_str, repo_root)
+            if _file_has_pattern(resolved, _ML_IMPORT_PATTERNS) or (
+                any(p.search(path_str) for p in _ML_PATH_PATTERNS)
+                and _file_has_pattern(resolved, _ML_CALL_PATTERNS)
+            ):
+                is_ml_code = True
+
     return {
         "is_agent_code": is_agent_code,
+        "is_ml_code": is_ml_code,
         "has_sanyi_contracts": _find_sanyi_md(repo_root),
     }
 
@@ -186,6 +237,15 @@ def active_dimensions(signals: dict[str, bool]) -> dict[str, object]:
         reason = "no agent-framework import or agent path in the changed files"
         skipped["runtime"] = reason
         skipped["safeguards"] = reason
+
+    if signals.get("is_ml_code"):
+        active.append("leakage")
+    else:
+        # Recorded rather than omitted, and this dimension is the case that
+        # motivated the rule: a leakage reporter that silently never runs is
+        # indistinguishable from one that ran and found nothing — which is the
+        # exact failure `leakage` exists to catch, turned on the dispatcher.
+        skipped["leakage"] = "no ML import, fit call, or ML path in the changed files"
 
     if signals.get("has_sanyi_contracts"):
         active.append("contracts")

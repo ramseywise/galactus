@@ -28,3 +28,17 @@ build/
 
 # Consolidation quarantine — staged for deletion, not shipped
 .quarantine/
+
+# Case-study data — personal financial information about identifiable people.
+# Never commit. Synthetic fixtures only in tests and docs.
+enam/data/
+!enam/data/.gitkeep
+*.csv
+*.parquet
+*.xlsx
+
+# Trained model artifacts — regenerated from code, never committed
+models/
+*.pkl
+*.joblib
+*.cbm

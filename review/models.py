@@ -4,7 +4,7 @@ Ported from `guacamayo/review/schemas/models.py`, narrowed to what a prototyping
 review needs: no fingerprints, no sweep records, no trend reports, no
 `ReviewReport` — the orchestrator writes its report as markdown.
 
-The nine-way `REPORTER_ID_PREFIX` map is authoritative. The `review_*` skills
+The ten-way `REPORTER_ID_PREFIX` map is authoritative. The `review_*` skills
 follow it; `review/tests/test_prefix_map.py` fails loudly when they drift.
 """
 
@@ -54,9 +54,11 @@ class MergeDecision(str, Enum):
 
 class Category(str, Enum):
     CORRECTNESS = "correctness"
-    # RELIABILITY and OPERATIONS have no emitting dimension today — Parallax's
-    # `reliability-operations` was deliberately dropped from the nine-dimension
-    # menu. Kept so a tenth dimension can be added without a schema change.
+    # RELIABILITY and OPERATIONS still have no emitting dimension — Parallax's
+    # `reliability-operations` was deliberately dropped from the original
+    # nine-dimension menu. Kept so a dimension can be added without a schema
+    # change, which is what `leakage` (the tenth) did: it emits DATA and
+    # CORRECTNESS, both already present, so no Category was added for it.
     RELIABILITY = "reliability"
     SECURITY = "security"
     DATA = "data"
@@ -69,11 +71,15 @@ class Category(str, Enum):
 
 
 class Reporter(str, Enum):
-    """The nine review dimensions.
+    """The ten review dimensions.
 
     Guacamayo's legacy members (`akira_scan`, `sanyi`, `structure`,
     `agent_quality`) are not carried over: galactus has no persisted findings,
     so there is no back-compat obligation.
+
+    `LEAKAGE` is the tabular-ML analogue of `SILENT_FAILURE` and is justified by
+    the same argument: a leaked feature does not raise — it returns AUC 0.97 and
+    reads as success.
     """
 
     INTENT = "intent"
@@ -85,6 +91,7 @@ class Reporter(str, Enum):
     RUNTIME = "runtime"
     SAFEGUARDS = "safeguards"
     CONTRACTS = "contracts"
+    LEAKAGE = "leakage"
 
 
 # Maps dimension reporter → required finding ID prefix (e.g. correctness → "CR").
@@ -100,6 +107,7 @@ REPORTER_ID_PREFIX: dict[str, str] = {
     Reporter.RUNTIME: "RT",
     Reporter.SAFEGUARDS: "SG",
     Reporter.CONTRACTS: "CT",
+    Reporter.LEAKAGE: "LK",
 }
 
 
@@ -172,7 +180,7 @@ class ReviewFinding(BaseModel):
     def dimension_id_prefix_matches_reporter(self) -> ReviewFinding:
         """Under the agent collapse this is skill-load verification, not naming.
 
-        One `review` agent serves all nine dimensions, so the prefix is the only
+        One `review` agent serves all ten dimensions, so the prefix is the only
         in-band evidence that the dispatch loaded the skill it was told to.
         """
         expected = REPORTER_ID_PREFIX.get(self.reporter)
