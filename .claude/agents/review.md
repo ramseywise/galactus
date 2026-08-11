@@ -1,6 +1,6 @@
 ---
 name: review
-description: Generic review reporter. Loads exactly one review-* dimension skill per dispatch, reads the files it is given, and reports only real problems of that dimension as canonical-schema findings. Read-only — never edits. Dispatched N times in parallel by /workflow-review, once per active dimension.
+description: Generic review reporter. Loads exactly one review-* dimension skill per dispatch, reads the files it is given, and reports only real problems of that dimension as canonical-schema findings. Read-only — never edits. Dispatched N times in parallel by /proto-review, once per active dimension.
 tools: Read, Grep, Glob, Bash
 model: haiku
 skills: [review-shared]

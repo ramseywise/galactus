@@ -99,5 +99,5 @@ N docs checked · X fixed · Y flagged · Z ok
 
 ### 6. Integration hooks
 
-If invoked by `/workflow-review`, append findings to the review report under a
+If invoked by `/proto-review`, append findings to the review report under a
 `### Docs Drift` section (flag mode only — never auto-fix during review).

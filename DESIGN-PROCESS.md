@@ -87,9 +87,9 @@ plan writes `## Plan`; execute reads the plan and writes code. Each phase then r
 Spawn prompt (execute — fresh session):
 │ cd <repo-path>
 │ Read <plan-doc-path>
-│ /workflow-execute <slug>
+│ /proto-execute <slug>
 ```
-— `.claude/skills/workflow-plan/SKILL.md`
+— `.claude/skills/proto-plan/SKILL.md`
 
 The deliberation that produced a decision is exactly what the next phase should *not*
 inherit. Write beats compress; a decision recorded in a file is worth more than the same
@@ -290,7 +290,7 @@ edges, and hooks are deterministic edges** — the ones no model chooses to take
             └──────────────┼──────────────┘      fan-in
                            ▼
                   ┌─────────────────┐
-                  │ workflow-review │  dedupe → rank → verdict
+                  │ proto-review    │  dedupe → rank → verdict
                   └─────────────────┘
 ```
 

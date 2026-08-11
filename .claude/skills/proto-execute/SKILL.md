@@ -1,5 +1,5 @@
 ---
-name: workflow-execute
+name: proto-execute
 description: "Phase 3. Implements the active plan doc from .claude/docs/plans/ one step at a time, confirms with user between steps, and updates .claude/docs/CHANGELOG.md when the workflow uses one. Target-repo aware: pass repo:<name> to run against another workspace repo."
 disable-model-invocation: true
 allowed-tools: Read Grep Glob Bash Edit Write
@@ -25,7 +25,7 @@ the session's — so that repo's own sessions and /wake find them (pointers, not
 
 ## Before starting
 
-1. Find the active doc: `grep -lE '^Status:[[:space:]]*IN_PROGRESS' .claude/docs/plans/*.md`; if none, take the most recent `Status: READY` file. If the newest candidate is `PLANNED` or `REFINED` it has not cleared the gate — say so, point at `/workflow-refine`, and execute it only if the user says to anyway
+1. Find the active doc: `grep -lE '^Status:[[:space:]]*IN_PROGRESS' .claude/docs/plans/*.md`; if none, take the most recent `Status: READY` file. If the newest candidate is `PLANNED` or `REFINED` it has not cleared the gate — say so, point at `/proto-refine`, and execute it only if the user says to anyway
 2. Read the active doc fully; set its `Status:` line to `IN_PROGRESS` before starting (one token, no suffix — extra detail goes in `Outstanding:` on the next line)
 3. `git status` + `uv run pytest --tb=no -q` — if baseline tests fail, stop and report
 
@@ -73,7 +73,7 @@ Any departure from the plan — even small — should be recorded in CHANGELOG.m
 **Phase checkpoint**: when all steps are done, call `/compact "phase: execute → review"` before switching.
 The PreCompact hook writes a final execute-phase snapshot and compacts so review starts with clean context.
 
-**Next step**: `/workflow-review` after all steps are complete — run BEFORE committing so
+**Next step**: `/proto-review` after all steps are complete — run BEFORE committing so
 findings can be fixed without amend/fixup commits. User commits after review passes.
 
 ## Exit
@@ -92,14 +92,14 @@ When all plan steps are done and tests pass:
 ```
 ──────────────────────────────────────
 ✅ Execution complete.
-👉 Next: /workflow-review <slug>
+👉 Next: /proto-review <slug>
 🧠 Model: fable
 
 Spawn prompt:
 ┌─────────────────────────────────────
 │ cd <repo-path>
 │ Read <plan-doc-path>
-│ /workflow-review <slug>
+│ /proto-review <slug>
 └─────────────────────────────────────
 ──────────────────────────────────────
 ```

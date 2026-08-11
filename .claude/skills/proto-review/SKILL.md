@@ -1,12 +1,12 @@
 ---
-name: workflow-review
-description: "Phase 4 review — plan fidelity + multi-reporter code review + DoD assessment + merge verdict. Run BEFORE committing (pre-commit quality gate) so fixes avoid amend/fixup commits. Also usable for PR reviews. Triggers: 'review PR #42', '/workflow-review', '/workflow-review my-feature', 'check the PR', 'review the diff', 'code-pr 42'."
+name: proto-review
+description: "Phase 4 review — plan fidelity + multi-reporter code review + DoD assessment + merge verdict. Run BEFORE committing (pre-commit quality gate) so fixes avoid amend/fixup commits. Also usable for PR reviews. Triggers: 'review PR #42', '/proto-review', '/proto-review my-feature', 'check the PR', 'review the diff', 'code-pr 42'."
 skills: [review-shared]
 allowed-tools: Read Grep Glob Bash Agent
 ---
 
 Review implementation against plan (if one exists) AND review code quality via
-multi-reporter orchestration. Primary use: pre-commit quality gate after `/workflow-execute`
+multi-reporter orchestration. Primary use: pre-commit quality gate after `/proto-execute`
 (review before committing so fixes are clean, not amend/fixup). Also handles standalone PR reviews.
 
 `$ARGUMENTS` — one of:
@@ -424,7 +424,7 @@ When the verdict is **request_changes**:
 ```
 ──────────────────────────────────────
 🔄 Review complete — changes requested.
-👉 Next: fix findings, then /workflow-review <slug>
+👉 Next: fix findings, then /proto-review <slug>
 🧠 Model: (same session)
 ──────────────────────────────────────
 ```

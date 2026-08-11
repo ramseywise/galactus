@@ -280,7 +280,9 @@ def main() -> int:
     result.assert_no_transform_outside_pipeline()
 
     summary = summarise(result, verdict, out=args.report)
-    write_fraud_report(result, summary, args.report, title="ml/fraud proving run — lebanese-blonde sample")
+    write_fraud_report(
+        result, summary, args.report, title="ml/fraud proving run — lebanese-blonde sample"
+    )
 
     if args.summary_json:
         args.summary_json.write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
