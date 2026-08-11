@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-from galactus.layout.validator import count_words, validate
+from galactus.guardrails.validator import count_words, validate
 from galactus.models import FieldConstraint, LayoutTemplate
 
 FILLER_WORD = "and"
@@ -214,7 +214,7 @@ def _synthesize(field: FieldConstraint, template: LayoutTemplate) -> str:
 
 
 def _fit_placeholder(value: str, field: FieldConstraint) -> str:
-    from galactus.layout.validator import PLACEHOLDER_RE
+    from galactus.guardrails.validator import PLACEHOLDER_RE
 
     if PLACEHOLDER_RE.match(value):
         return value

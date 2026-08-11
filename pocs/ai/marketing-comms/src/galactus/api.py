@@ -33,10 +33,9 @@ from galactus.config import Settings
 from galactus.generate import generate_collateral
 from galactus.ingest.facts import ingest_pdf_bytes
 from galactus.layout.contract import TemplateNotFoundError, load_template_cached
-from galactus.llm.anthropic_adapter import AnthropicAdapter
-from galactus.llm.port import LLM, LLMError
+from galactus.model.gateway import LLM, AnthropicAdapter, LLMError
 from galactus.models import PipelineState
-from galactus.obs import bind_job, clear_job, configure_structlog
+from galactus.observability import bind_job, clear_job, configure_structlog
 from galactus.store import Store
 
 DEFAULT_TEMPLATE_ID = "two_column_brief"

@@ -6,9 +6,9 @@
   "location": {
     "files": [
       {
-        "path": "ai-marketing-comms/src/galactus/llm/anthropic_adapter.py",
-        "start_line": 62,
-        "end_line": 62
+        "path": "pocs/ai/marketing-comms/src/galactus/model/gateway.py",
+        "start_line": 111,
+        "end_line": 111
       }
     ],
     "symbols": []

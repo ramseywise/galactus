@@ -117,9 +117,11 @@ def _render_row(header: list[str], cells: list[str]) -> str:
     subject_header, subject = header[0], cells[0]
     lead = f"{subject_header} {subject}".strip() if subject_header else subject
 
+    # strict=False on purpose: a ragged row is normal in extracted PDF tables, and
+    # truncating to the shorter of the two beats raising on a real document.
     pairs = [
         f"{head} {value}".strip() if head else value
-        for head, value in zip(header[1:], cells[1:])
+        for head, value in zip(header[1:], cells[1:], strict=False)
         if value
     ]
 

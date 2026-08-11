@@ -27,9 +27,9 @@ import structlog
 from galactus.ingest.tables import facts_from_table, row_span_contains_cells
 from galactus.ingest.text import facts_from_pages, resolve_span
 from galactus.ingest.vision import image_to_message, render_page_png
-from galactus.llm.port import LLM, LLMError
+from galactus.model.gateway import LLM, LLMError
 from galactus.models import Fact
-from galactus.obs import OP_VISION, span
+from galactus.observability import OP_VISION, span
 
 log = structlog.get_logger(__name__)
 

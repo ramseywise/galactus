@@ -35,7 +35,7 @@ from galactus.ingest.vision import (
     page_images,
     render_page_png,
 )
-from galactus.llm.port import LLMError
+from galactus.model.gateway import LLMError
 from galactus.models import Fact
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"

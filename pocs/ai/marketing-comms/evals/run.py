@@ -36,11 +36,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from galactus.config import Settings
 from galactus.generate import generate_collateral
+from galactus.guardrails.validator import is_valid
 from galactus.layout.contract import load_template_cached
-from galactus.layout.validator import is_valid
-from galactus.llm.port import LLM
+from galactus.model.gateway import LLM
 from galactus.models import Fact, LayoutTemplate, PipelineState
-from galactus.obs import configure_structlog
+from galactus.observability import configure_structlog
 
 CASES_PATH = Path(__file__).parent / "cases.jsonl"
 
@@ -430,7 +430,11 @@ def summarize_table(rows: list[dict[str, Any]]) -> str:
     widths = {h: max(len(h), *(len(str(row.get(h, ""))) for row in rows)) for h in headers}
 
     def line(values: list[str]) -> str:
-        return "| " + " | ".join(v.ljust(widths[h]) for h, v in zip(headers, values)) + " |"
+        return (
+            "| "
+            + " | ".join(v.ljust(widths[h]) for h, v in zip(headers, values, strict=True))
+            + " |"
+        )
 
     out = [
         line(headers),
@@ -506,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
         # different shape than production, and the format would go untested.
         configure_structlog(Settings.load().log_level)
     else:
-        from galactus.llm.anthropic_adapter import AnthropicAdapter
+        from galactus.model.gateway import AnthropicAdapter
 
         settings = Settings.load()
         settings.require_api_key()

@@ -13,8 +13,7 @@ from typing import Any
 
 import pytest
 from galactus.config import ConfigError, Settings
-from galactus.llm.anthropic_adapter import MAX_TOKENS, AnthropicAdapter
-from galactus.llm.port import LLM, LLMError
+from galactus.model.gateway import LLM, MAX_TOKENS, AnthropicAdapter, LLMError
 
 
 @dataclass

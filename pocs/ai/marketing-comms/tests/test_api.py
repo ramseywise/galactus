@@ -19,8 +19,8 @@ import pytest
 from fastapi.testclient import TestClient
 from galactus.api import app, get_llm, get_settings, get_store
 from galactus.config import Settings
-from galactus.layout.validator import validate
-from galactus.llm.port import LLMError
+from galactus.guardrails.validator import validate
+from galactus.model.gateway import LLMError
 from galactus.store import Store
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
