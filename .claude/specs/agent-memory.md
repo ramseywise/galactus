@@ -62,6 +62,10 @@ For long-running or multi-step agents:
 
 Checkpointing is the mechanism; retry policy is the orchestrator's responsibility (see `agent-reliability.md §2`).
 
+**In a streaming design, the turn is the checkpoint unit.** "After each plan step" has no mid-utterance analogue — there is no step boundary between audio frames, and a checkpoint taken at frame 400 of an utterance would capture a partial ASR hypothesis that the next 200ms may revise (`agent-voice.md §3`). Checkpoint at **turn boundaries**: when the endpointer commits a turn end and the transcript finalizes. Between those points, session state is in-memory and treated as loseable, which is a deliberate trade — a mid-turn crash costs one turn, and the alternative costs the latency budget on every frame.
+
+Two consequences follow. A checkpoint written at a turn boundary must record whether the previous turn completed or was superseded (`agent-reliability.md §3`) — resuming a session with a truncated turn recorded as complete puts words in the caller's ears that they never heard. And session metadata gains a session ID distinct from the run ID, since one call spans many turns.
+
 **Schema constraints on the short-term store:**
 
 - **Freeze the schema before any agent writes to it.** Retrofitting is expensive — the same rule `agent-architecture.md §4` states as "add fields, never remove or rename."
@@ -194,6 +198,18 @@ Stages A–D are what gets built; E is what gets skipped, and skipping it is wha
 **But consolidation also makes erasure hard.** *"Deletion support is the requirement that constrains architecture rather than merely adding a feature."* A right-to-erasure request must reach every representation: the structured store, the vector index, derived session summaries, and **any consolidated memory that merged this user's facts with others**. *"Once 'user is allergic to dairy' has been merged into a summary, deleting the source message does not delete the fact."* That is a direct argument against aggressive consolidation and in favour of keeping memories traceable to their originating turn.
 
 > The two consolidation rules point the same way — traceability — but they are separate arguments: one is a correctness constraint, the other a compliance one. A design that satisfies rollback may still fail erasure.
+
+**Erasure is an obligation, not an implementation detail.** The framing above treats deletion support as an architectural constraint, which understates it: under GDPR Art. 17 a data subject can compel it, on a deadline, whether or not the architecture makes it convenient. "Deletion support constrains architecture" is the engineering consequence; the obligation is the cause. Legal basis and the special-category rules live in `agent-safety.md §7a` — not restated here.
+
+**In a voice design the erasure scope is wider than text, and it is three artifacts:**
+
+| Artifact | Why it is in scope separately |
+|---|---|
+| **Audio** | The recording is special-category data on its own — a voice identifies its speaker regardless of the words. Redacting the transcript does not touch it. |
+| **Transcript** | Ordinary personal data, in the usual stores plus the trace backend. |
+| **Derived context** | Summaries, extracted entities, embeddings, and any consolidated memory built from the call — the merged-fact problem above, which survives deletion of both the audio and the transcript. |
+
+Deleting one or two of the three is the common failure, and it is silent: the request is marked satisfied while the fact remains recoverable. A voice design should be able to answer "where does audio for a given session live, and what deletes it" before it takes its first call — audio tends to accumulate in places the erasure path never learned about, such as the trace backend (`agent-observability.md §6`) and the telephony provider's own recording store.
 
 Also required at this layer: RBAC/ABAC on memory endpoints governing both read *and* modify; AES-256 at rest and TLS in transit.
 

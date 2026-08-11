@@ -24,6 +24,7 @@ Answer in order; stop at the first "yes":
 
 | Question | Yes → |
 |---|---|
+| Does this agent need a persistent **bidirectional** audio connection — the user speaks while the agent is still speaking, and the agent must hear it? | **See "Realtime / duplex" below** — the three options there, not the three in this table |
 | Does this agent need to run in a TypeScript/Node runtime — e.g. it's the API routes of a Vercel-hosted frontend, and should deploy as part of that same build with no separate Python service? | **Vercel AI SDK** |
 | Deploying on GCP / Vertex AI, want a managed session service and a maintained scaffolder CLI (`agent-starter-pack`)? | **ADK** |
 | Need fine-grained custom control flow — branching, loops, parallel fan-out/fan-in, or human-in-the-loop gates at arbitrary points in the graph? | **LangGraph** |
@@ -37,6 +38,34 @@ agent service (rather than hosting the agent loop itself) doesn't need Vercel AI
 at all — that's just an HTTP client calling whichever of ADK/LangGraph the backend
 agent uses; only pick Vercel AI SDK when the agent loop itself needs to run in the
 TS process.
+
+---
+
+## Realtime / duplex
+
+A duplex design is one where audio flows both ways at once: the user can interrupt
+mid-sentence, and the agent has to notice. It is asked first because it is the only
+question here that changes the *answer set* rather than choosing within it — the three
+options below are not the three above, and the request/response reasoning that follows
+does not apply. The tell is that no protocol event marks the end of a turn; turn end is
+inferred from the audio stream. See `agent-voice.md`, and `agent-architecture.md §6a`
+for why the loop layer is a different shape.
+
+| Condition | Pick |
+|---|---|
+| Deploying on GCP, Gemini-first, and the agent also needs tools and sub-agents | **ADK** — `run_live()` is the bidirectional primitive; see `cap-streaming.md` |
+| Voice is the product, the transport matters more than the graph, and Gemini is not a requirement | **OpenAI Realtime** (or another voice-first realtime API) |
+| The conversation is duplex but the *work behind it* needs real control flow — branching, retrieval, human-in-the-loop | **External voice framework + agent graph** — a voice runtime (LiveKit, Pipecat, a realtime API) owns the audio loop and calls a LangGraph/ADK agent per finalized turn |
+
+The third row is the common case for anything non-trivial, and it is a two-component
+design, not a framework choice: the voice runtime owns turn-taking, barge-in, and the
+latency budget; the graph owns the reasoning. Keep the boundary at the finalized
+transcript. Do not put a graph inside the audio loop — the graph's latency is
+unbounded and the audio loop's is not.
+
+Runtime streaming support for all four frameworks — event taxonomies, cancellation
+propagation, and ADK's `run_live()` — is in `cap-streaming.md`. Read it rather than
+re-deriving it here.
 
 ---
 

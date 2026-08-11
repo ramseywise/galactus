@@ -73,6 +73,20 @@ These constraints are non-negotiable for stateless deployments (Vercel, Cloud Ru
 - **Cold start cost** — tool initialization, model client setup, and prompt loading happen on every cold start unless the platform caches function instances.
 - **State externalization** — conversation history, session state, checkpoints → persistent store. Load at request start; write at request end.
 
+### The duplex exception
+
+These constraints are scoped to **request/response deployments** — they hold for every tool-calling leaf, including the leaves inside a voice turn. They do not hold for the session process itself.
+
+A duplex voice session *is* a long-lived background task: a media connection held open for minutes, with in-memory state (endpointer, partial hypotheses, playback cursor) that cannot round-trip to a store between audio frames without blowing the latency budget. "No background tasks" and "no in-memory session manager" describe exactly what a voice session must do. So a duplex design does not run on a stateless function — it runs on a process that outlives the request, and the two rules become a boundary rather than a prohibition: **stateless below the session, stateful at it.**
+
+What the session process owns, and what nothing else will do for it:
+
+- **Connection lifetime** — the session ends when the media connection ends, not when a response is returned. There is no `return` to hang cleanup off.
+- **Reconnect** — a dropped WebRTC or SIP leg may re-establish. Whether the session resumes or restarts is a design decision, not a transport default.
+- **Cleanup on disconnect** — the caller hanging up is the common exit path, and it arrives as a transport event rather than a completed turn. Audio buffers, the ASR stream, and any in-flight TTS must be released on it, including when the hangup lands mid-generation.
+
+Timeout bound and cold start still apply, but they bind differently: the ceiling is the session, not the turn, and a cold start inside a live call is audible. See `agent-voice.md §7`.
+
 > **Conflict — flagged, not resolved.** The wiki treats several of these as **disqualifiers**, not constraints to design around. Serverless is the wrong choice when: *"responses take **> 30 seconds** (function timeouts)... you need persistent connections (WebSockets, streaming)... you need in-memory state between requests."* And it unifies them: ***"three of the four exclusions are the same underlying constraint: the function does not outlive the request."***
 >
 > Two tensions with the text above. (1) The generic **30s** ceiling sits below this spec's own Pro (60s) and Enterprise (300s) tiers, which are presented as viable envelopes. (2) *"Stream early"* is offered here as a way to live inside the timeout, while the wiki lists streaming as a disqualifier for the category — *"good fit for low-traffic tools (< 100 requests/day) that don't need streaming. **Not ideal for chat applications that need persistent connections.**"* A reader combining this spec's stateless default with §6's streaming guidance builds exactly the combination the wiki rules out. Also unlisted above: cold starts of **1–3s on first request**. *(Source: `infra/serverless-deployment.md`)*

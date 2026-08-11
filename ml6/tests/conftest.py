@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from galactus.layout.contract import load_template
 from galactus.models import LayoutTemplate
 

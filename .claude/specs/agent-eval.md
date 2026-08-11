@@ -59,6 +59,25 @@ A single run is not a measurement. The wiki states the arithmetic plainly: `pass
 
 *(Source: `eval/eval-non-determinism.md`)*
 
+### Streaming: replay the components, not the pipeline
+
+"Reset the environment between trials" assumes the environment is resettable. In a duplex audio design it is not, end to end. Real speech varies in timing, prosody, overlap, and background noise; the endpointer's decision depends on the exact millisecond a pause began; a barge-in lands where it lands. Feed the same recorded audio twice and the turn boundaries can differ — so the interesting failures, which are the timing ones, are precisely the ones that will not reproduce on demand.
+
+Split the eval rather than pretending otherwise:
+
+- **Deterministic, replayable per component.** A fixed audio file through ASR yields a comparable transcript. A fixed transcript through the LLM yields a comparable decision. A fixed text through TTS yields comparable audio. Each of these is a normal regression test with the reset rule intact, and each should exist.
+- **Statistical, not replayable, for the assembled pipeline.** Live or simulated conversations measured in aggregate over `n` sessions, reported as distributions — p50/p95 latency per hop, barge-in handling rate, endpointing error rate in both directions. `pass^k` framing from above applies directly: a turn that works 90% of the time survives a ten-turn call 35% of the time.
+
+A design that only has the first kind of eval has tested three components and zero conversations.
+
+### Task success is the metric; WER is a component number
+
+The standard ASR metric is word error rate, and it is the wrong headline for an agent. WER counts transcription errors uniformly — it does not know that mishearing "yes" as "yeah" costs nothing while misreading a date, a dose, or a phone number costs the whole task. Two systems at identical WER can have very different booking-success rates, and the one with better WER is not reliably the better agent.
+
+**Primary metric: did the caller accomplish what they called to do?** Booking completed, question answered, correctly transferred. Everything else is diagnostic.
+
+**WER is demoted to component-level** — useful for detecting an ASR regression in isolation, alongside per-slot accuracy on the fields that actually matter (see `agent-voice.md §5` on critical slots, where the deterministic confirmation gate lives). Report it, do not optimize against it, and never let it stand in for task success in a summary. The same caution applies to any component metric that is easy to measure and easy to mistake for the goal.
+
 ---
 
 ## 3. Gate ladder

@@ -36,6 +36,8 @@ Four span types cover a complete agent trace. All are nested under a root `invok
 | **Tool execution** | `execute_tool` | One tool call (input → output) |
 | **Retrieval** | `retrieve` | RAG/search query + results |
 
+> **Streaming variant — the tree assumption fails.** "All are nested under a root `invoke_agent` span" holds because a request/response turn has one root and its children close inside it. A duplex voice session has neither property. The shape is `session → turn → {asr, llm, tts}`, and those leaf spans **overlap**: TTS begins emitting audio while the LLM is still generating, so `tts` opens before `llm` closes. This is not instrumentation sloppiness to be cleaned up — it is the design, and it is where the latency budget is won. Tooling that assumes strict nesting will render it wrong or drop spans silently. The session, not the turn, is the root. OTel GenAI semconv does not cover audio; see §6 for the local attribute extension and `agent-voice.md §9`.
+
 Minimum required attributes per span:
 
 ```
@@ -162,6 +164,29 @@ Do not wait for a standard on these — keep them local:
 - **Output evaluation / quality scoring** — no `gen_ai.*` attribute covers this. Use project-local labels (e.g., `eval.grounding_score`, `eval.pass`).
 - **Safety scoring** — agent-specific; wire into the span as custom attributes.
 - **Grounding / citation checks** — project-local (see `agent-safety.md §1`).
+- **Audio** — nothing in the semconv covers audio frames, VAD confidence, or TTS buffer state. Duplex designs need the extension below.
+
+### The audio attribute extension
+
+Local until the GenAI SIG standardizes audio. These names are canonical here and are duplicated in `agent-voice.md §9` — **change them in both places or in neither.**
+
+| Attribute | Meaning |
+|---|---|
+| `vad.confidence` | Endpointer confidence at the turn-end decision |
+| `asr.confidence_score` | Confidence on the final transcript |
+| `asr.n_best_count` | Alternatives retained |
+| `tts.latency_ms` | Time to first audio out |
+| `audio.codec` | Codec in use on this leg |
+| `latency_to_first_token` | The dominant hop in the latency budget |
+| `turn_duration_ms` | Wall-clock for the full turn |
+
+The last two are the ones a dashboard should default to: `latency_to_first_token` is where a voice design is usually lost, and `turn_duration_ms` is the only span-level number a non-engineer can read as "how long did the caller wait."
+
+### Audio retention is a legal question, not an ops one
+
+§7's three audit purposes set retention by what debugging and compliance *want*. Audio inverts that: it is special-category personal data under GDPR Art. 9 — a recording carries identity in the voice itself, independently of what was said, so it cannot be de-identified by redacting the transcript.
+
+The consequence for this spec: **a voice design sets a retention window for audio explicitly, and it is shorter than the trace retention around it.** Traces, transcripts, and audio are three artifacts with three windows, not one policy. Keeping audio "as long as the traces" is the default that fails an erasure request. Derive the window from the lawful basis, not from disk cost, and record it where the trace config lives so it is auditable. Erasure must reach audio, transcript, and derived context alike — see `agent-memory.md §5b` and `agent-safety.md §7a`.
 
 ### Post scores as scores, not as metadata
 

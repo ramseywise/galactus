@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from galactus.ml6.evals.run import (  # noqa: E402
+from evals.run import (
     CaseResult,
     EvalCase,
     ScriptedEvalLLM,
@@ -33,8 +33,7 @@ from galactus.ml6.evals.run import (  # noqa: E402
     run_case,
     summarize_table,
 )
-
-from galactus.models import Fact  # noqa: E402
+from galactus.models import Fact
 
 
 def _result(
@@ -264,7 +263,9 @@ async def test_a_clean_case_passes_on_the_first_call(template):
 
 
 async def test_an_overshooting_case_repairs_once_and_converges(template):
-    case = EvalCase(case_id="over", prompt="Be expansive.", template_id="two_column_brief")
+    case = EvalCase(
+        case_id="over", prompt="Be expansive.", template_id="two_column_brief"
+    )
     llm = ScriptedEvalLLM(template, overshoot=True, stubborn=False)
 
     result = await run_case(case, llm)
@@ -277,7 +278,9 @@ async def test_an_overshooting_case_repairs_once_and_converges(template):
 
 
 async def test_a_stubborn_case_exhausts_the_budget_and_falls_back(template):
-    case = EvalCase(case_id="stuck", prompt="Never comply.", template_id="two_column_brief")
+    case = EvalCase(
+        case_id="stuck", prompt="Never comply.", template_id="two_column_brief"
+    )
     llm = ScriptedEvalLLM(template, overshoot=True, stubborn=True)
 
     result = await run_case(case, llm)
@@ -313,7 +316,9 @@ async def test_run_all_preserves_case_order(template):
         for i in range(3)
     ]
 
-    results = await run_all(cases, ScriptedEvalLLM(template, overshoot=False, stubborn=False))
+    results = await run_all(
+        cases, ScriptedEvalLLM(template, overshoot=False, stubborn=False)
+    )
 
     assert [r.case_id for r in results] == ["c0", "c1", "c2"]
 
@@ -340,7 +345,11 @@ def test_stress_fields_breach_only_the_named_fields(template):
 
 def test_bad_color_emits_a_hex_literal(template):
     llm = ScriptedEvalLLM(
-        template, overshoot=True, stubborn=True, stress_fields=frozenset(), bad_color=True
+        template,
+        overshoot=True,
+        stubborn=True,
+        stress_fields=frozenset(),
+        bad_color=True,
     )
     color_field = next(f for f in template.fields if f.kind == "color_ref")
 
@@ -370,7 +379,12 @@ def test_report_names_every_metric():
     results = [_result("a"), _result("b", used_fallback=True, repair_attempts=3)]
     report = format_report(results, compute_metrics(results))
 
-    for label in ("Contract pass rate", "Repair convergence", "Fallback rate", "Grounding rate"):
+    for label in (
+        "Contract pass rate",
+        "Repair convergence",
+        "Fallback rate",
+        "Grounding rate",
+    ):
         assert label in report
 
 

@@ -11,7 +11,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from galactus.generate import (
     build_prompt,
     build_repair_prompt,
@@ -93,7 +92,9 @@ async def test_exhausts_budget_then_falls_back(state, template, clean_draft):
     bad = _too_long(clean_draft)
     llm = FakeLLM([bad])
 
-    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=3)
+    draft, used_fallback = await generate_collateral(
+        state, template, llm, max_repairs=3
+    )
 
     # One initial call plus three repairs.
     assert llm.call_count == 4
@@ -108,7 +109,9 @@ async def test_exhausts_budget_then_falls_back(state, template, clean_draft):
 async def test_fallback_draft_is_valid_even_from_garbage(state, template):
     llm = FakeLLM([{"headline": "x", "bogus_field": "y"}])
 
-    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=1)
+    draft, used_fallback = await generate_collateral(
+        state, template, llm, max_repairs=1
+    )
 
     assert used_fallback is True
     assert validate(draft, template) == []
@@ -117,7 +120,9 @@ async def test_fallback_draft_is_valid_even_from_garbage(state, template):
 async def test_zero_repair_budget_falls_back_immediately(state, template, clean_draft):
     llm = FakeLLM([_too_long(clean_draft)])
 
-    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=0)
+    draft, used_fallback = await generate_collateral(
+        state, template, llm, max_repairs=0
+    )
 
     assert llm.call_count == 1
     assert used_fallback is True
@@ -156,7 +161,9 @@ async def test_late_success_still_reports_no_fallback(state, template, clean_dra
     bad = _too_long(clean_draft)
     llm = FakeLLM([bad, bad, bad, clean_draft])
 
-    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=3)
+    draft, used_fallback = await generate_collateral(
+        state, template, llm, max_repairs=3
+    )
 
     assert llm.call_count == 4
     assert used_fallback is False

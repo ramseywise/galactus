@@ -26,6 +26,11 @@ writing agent code, not after. Each opens with a durable question it answers. St
 know. Read it alongside the layer ref, not instead of one — it owns abstention,
 asymmetric cost, and reversibility, which no single layer does.
 
+`agent-voice.md` applies only to duplex/streaming designs — audio flowing both directions
+at once. Where it applies, read it *instead of* the §4 Loop guidance, not alongside: a
+duplex loop has no turn boundary, so the loop rules are not stricter there, they are
+inapplicable. Where the design is request → response → done, ignore it entirely.
+
 `langgraph.md`, `python.md`, `typescript.md` are stack bindings — read after the
 `agent-*` refs, never instead of them.
 

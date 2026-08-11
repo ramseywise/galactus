@@ -16,9 +16,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator, Literal
+from typing import Any, Literal
 
 JobStatus = Literal["queued", "running", "succeeded", "failed"]
 
@@ -101,9 +102,7 @@ class Store:
 
     # -- PDFs ---------------------------------------------------------------
 
-    def put_pdf(
-        self, company_id: str, role: str, filename: str, content: bytes
-    ) -> str:
+    def put_pdf(self, company_id: str, role: str, filename: str, content: bytes) -> str:
         """Store an uploaded PDF and return its generated id."""
         pdf_id = str(uuid.uuid4())
         with self._connect() as conn:
@@ -114,7 +113,9 @@ class Store:
             )
         return pdf_id
 
-    def get_pdfs(self, company_id: str, role: str | None = None) -> list[dict[str, Any]]:
+    def get_pdfs(
+        self, company_id: str, role: str | None = None
+    ) -> list[dict[str, Any]]:
         """Return every stored PDF for a company, optionally filtered by role."""
         sql = "SELECT * FROM pdfs WHERE company_id = ?"
         params: list[Any] = [company_id]
@@ -140,9 +141,7 @@ class Store:
             )
         return job_id
 
-    def update_job(
-        self, job_id: str, status: JobStatus, **fields: Any
-    ) -> None:
+    def update_job(self, job_id: str, status: JobStatus, **fields: Any) -> None:
         """Set a job's status, merging `fields` into its payload."""
         with self._connect() as conn:
             row = conn.execute(

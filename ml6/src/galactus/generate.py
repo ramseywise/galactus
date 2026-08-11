@@ -24,11 +24,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from galactus.ml6.src.galactus.layout.fallback import fallback
-from galactus.ml6.src.galactus.layout.validator import validate
-from galactus.ml6.src.galactus.llm.port import LLM
-from galactus.ml6.src.galactus.models import Fact, LayoutTemplate, PipelineState, Violation
-from galactus.ml6.src.galactus.obs import OP_GENERATE, OP_REPAIR, span
+from galactus.layout.fallback import fallback
+from galactus.layout.validator import validate
+from galactus.llm.port import LLM
+from galactus.models import Fact, LayoutTemplate, PipelineState, Violation
+from galactus.obs import OP_GENERATE, OP_REPAIR, span
 
 DEFAULT_MAX_REPAIRS = 3
 """Repair attempts before falling back.
@@ -62,9 +62,8 @@ def schema_for(template: LayoutTemplate) -> dict[str, Any]:
             "type": "string",
             "description": _field_description(field),
         }
-        if field.kind == "text":
-            if field.max_chars is not None:
-                prop["maxLength"] = field.max_chars
+        if field.kind == "text" and field.max_chars is not None:
+            prop["maxLength"] = field.max_chars
         properties[field.name] = prop
 
     return {
@@ -83,9 +82,11 @@ def build_prompt(state: PipelineState, template: LayoutTemplate) -> str:
     from those facts rather than from the model's own knowledge.
     """
     sections = [
-        "You are writing marketing collateral that must fit a fixed page "
-        "layout. The layout is not negotiable: text that exceeds its limits "
-        "overflows the page and the piece is unusable.",
+        (
+            "You are writing marketing collateral that must fit a fixed page "
+            "layout. The layout is not negotiable: text that exceeds its limits "
+            "overflows the page and the piece is unusable."
+        ),
         "",
         f"# Layout: {template.template_id}",
         template.description,
@@ -102,8 +103,10 @@ def build_prompt(state: PipelineState, template: LayoutTemplate) -> str:
         sections += [
             "",
             "# Source facts",
-            "Every factual claim must come from these. Do not introduce "
-            "figures, dates, names, or claims that are not here.",
+            (
+                "Every factual claim must come from these. Do not introduce "
+                "figures, dates, names, or claims that are not here."
+            ),
             "",
             facts,
         ]
@@ -111,13 +114,13 @@ def build_prompt(state: PipelineState, template: LayoutTemplate) -> str:
     sections += [
         "",
         "# Rules",
-        "- Respect every word and character limit exactly. Count before you "
-        "answer.",
-        "- Image fields take a placeholder token such as `{{hero_image}}` — "
-        "never a URL, path, or description. The layout engine supplies the "
-        "image.",
-        "- Color fields name one of the theme colors listed above — never a "
-        "hex value.",
+        "- Respect every word and character limit exactly. Count before you answer.",
+        (
+            "- Image fields take a placeholder token such as `{{hero_image}}` — "
+            "never a URL, path, or description. The layout engine supplies the "
+            "image."
+        ),
+        "- Color fields name one of the theme colors listed above — never a hex value.",
         "- Return only the JSON object.",
     ]
 
@@ -138,8 +141,10 @@ def build_repair_prompt(
     re-derive the arithmetic, it forwards it.
     """
     lines = [
-        "The draft below breaks the layout contract. Fix every listed problem "
-        "and return the complete corrected JSON object.",
+        (
+            "The draft below breaks the layout contract. Fix every listed problem "
+            "and return the complete corrected JSON object."
+        ),
         "",
         "# Problems",
     ]
@@ -151,11 +156,15 @@ def build_repair_prompt(
         "",
         "# Rules",
         "- Return every field, not only the corrected ones.",
-        "- Preserve the meaning and the source facts. Fixing length is an "
-        "editing task, not a rewriting task — and never invent content to "
-        "reach a minimum.",
-        "- Do not break a limit that is currently satisfied while fixing one "
-        "that is not.",
+        (
+            "- Preserve the meaning and the source facts. Fixing length is an "
+            "editing task, not a rewriting task — and never invent content to "
+            "reach a minimum."
+        ),
+        (
+            "- Do not break a limit that is currently satisfied while fixing one "
+            "that is not."
+        ),
         "- Return only the JSON object.",
     ]
 

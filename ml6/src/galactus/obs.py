@@ -20,9 +20,10 @@ spec it came from.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Iterator
+from typing import Any
 
 import structlog
 
@@ -97,7 +98,9 @@ class AgentSpan:
         if self.cache_read_tokens:
             attrs["gen_ai.usage.cache_read_input_tokens"] = self.cache_read_tokens
         if self.cache_creation_tokens:
-            attrs["gen_ai.usage.cache_creation_input_tokens"] = self.cache_creation_tokens
+            attrs["gen_ai.usage.cache_creation_input_tokens"] = (
+                self.cache_creation_tokens
+            )
         if self.error:
             attrs["error.message"] = self.error
         return attrs

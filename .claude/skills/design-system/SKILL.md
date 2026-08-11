@@ -48,7 +48,11 @@ one silently assumes the demo case.
 
 1. **How many, how often?** Requests per day → per second → peak. One line of arithmetic.
 2. **What is the latency budget, and who is waiting?** A human watching a spinner and a
-   nightly batch job justify opposite designs at the context and loop layers.
+   nightly batch job justify opposite designs at the context and loop layers. A caller in
+   a live conversation is a **third case, not a stricter version of the first**: nobody is
+   watching anything, and the budget is set by conversational turn-taking — a silence past
+   roughly a second reads as the line dropping, not as the system thinking. That budget is
+   spent per hop, not end to end (§4b).
 3. **What does one run cost, and what is the ceiling?** Tokens × price × runs. An agent
    loop without a cost ceiling is a denial-of-wallet surface, not a budget question.
 4. **If there is a loop: what bounds it?** Max iterations, max spend, wall-clock cap.
@@ -71,6 +75,7 @@ question. Offer a row instead:
 | Prototype | demo-scale, <10 users | none — demo tolerance | free tier / trivial |
 | Real but small | tens of users, <1k runs/day | name one target (e.g. p95 < 10s) | a real monthly number |
 | Production | a stated projection | p95 target, with alerting | a real monthly number, with alerting |
+| Voice / duplex | concurrent calls, not runs/day | p95 first-audio-out < 800ms; barge-in stop < 200ms | per-minute of connected call, not per-run |
 
 **An accepted default is a resolved answer, not an unknown.** Record it with its
 provenance — `~500 runs/day (real-but-small tier default, unvalidated)` — and move on.
@@ -98,8 +103,8 @@ sensitive.
 
 ## Stage 1 — Walk the five layers
 
-The stack nests: **prompt ⊂ context ⊂ harness**, then **loop**, then **graph**. Walk it
-in that order. Each layer gets an explicit answer or an explicit deferral naming what
+The stack nests: **prompt ⊂ context ⊂ harness**, then **loop** (or **streaming loop**, if
+the design is duplex — §4b), then **graph**. Walk it in that order. Each layer gets an explicit answer or an explicit deferral naming what
 would force it later. **A layer you skipped silently is the one that fails in
 production.**
 
@@ -189,6 +194,39 @@ event-driven, (4) hill-climbing. Levels 1–3 automate work; level 4 automates i
 Prefer deterministic verification over model judgment wherever a check exists. Model
 self-grading is gameable — anchor on tests, compilers, linters, and use model judgment
 only above that floor.
+
+### 4b. Streaming loop — the duplex case
+
+Only if audio (or any duplex stream) flows both directions continuously. §4's five
+components remain necessary but are **not sufficient**: every one of them assumes a turn
+that *ends*, and a duplex loop has no `stop_reason` to end on. Five additional components
+are required. Read `.claude/specs/agent-voice.md` before answering them — this list is the
+minimum bar, not the guidance.
+
+1. **Endpointing** — what decides the user stopped talking, when no protocol event says
+   so. Acoustic silence alone is wrong (85–90%); production blends acoustic and semantic
+   signals. State the mechanism and that its thresholds are tuned empirically, not
+   derived. Both failure directions are real: cutting the user off, and waiting through a
+   pause they meant as a comma.
+2. **Barge-in and cancellation** — what happens when the user speaks while the agent is
+   speaking. Name what gets cancelled (TTS playback, the in-flight LLM stream, or both),
+   and what the history records: what the agent *generated*, what the user actually
+   *heard*, and the interruption marker. There is no standard serialization for this —
+   design it explicitly rather than inheriting a framework's.
+3. **Latency budget, decomposed per hop** — not one end-to-end number. Endpointing hold
+   + ASR finalize + LLM time-to-first-token + TTS first-audio, summing to a stated target.
+   LLM TTFT dominates, so **model tier is the latency knob** — that is a design-time
+   constraint on the whole graph, not deployment tuning.
+4. **Session lifetime** — a call is a long-lived stateful process, which contradicts the
+   stateless-request default at `agent-runtime.md`. Name what owns connection lifetime,
+   reconnect, and cleanup when the caller drops mid-turn.
+5. **Partial-hypothesis handling** — streaming ASR emits hypotheses that revise. Name what
+   the system is allowed to act on before a transcript is final, and what must wait for
+   the final. Acting on an interim hypothesis that later revises is a silent-failure class
+   with no analogue in text.
+
+Termination in a streaming loop binds the **session**, not the turn: turns per session,
+wall-clock, and spend. §4's iteration cap still applies to tool calls *within* a turn.
 
 ### 5. Graph — nodes and permitted transitions
 
@@ -317,10 +355,13 @@ What you'd pull up to diagnose a bad run. Redaction requirements, if any.
 ## Context
 ## Harness
 ## Loop
+## Streaming loop
 ## Graph
 ## HITL
 
 Each section: the decision, or `DEFERRED — <what would force this later>`.
+`## Streaming loop` is `N/A for request/response designs` — say that rather than
+deleting the heading, so a reader can tell the case was considered.
 
 ## Simulation
 Three scenarios with turn-by-turn walkthroughs.

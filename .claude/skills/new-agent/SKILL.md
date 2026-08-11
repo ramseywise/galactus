@@ -22,7 +22,7 @@ templates; framework/scaffold docs are workflow guides.
 | Arg | Default | Description |
 |-----|---------|-------------|
 | `<name>` | required | snake_case agent name, e.g. `order_support`, `insights_agent` |
-| `--framework` | ask via `framework-selection` | `adk` or `langgraph` |
+| `--framework` | ask via `framework-selection` | `adk` or `langgraph`. A duplex/voice design is not scaffolded here — see Step 2. |
 | `--domain` | `general` | Free-form label injected into prompts/README |
 | `--output` | framework default (see below) | Override the output directory |
 
@@ -42,6 +42,13 @@ templates; framework/scaffold docs are workflow guides.
 Read `references/framework-selection.md` and walk its decision table with
 the user, or infer from project context (existing agent code, deployment target
 mentioned) and confirm before proceeding. Do not silently default.
+
+**If the answer is realtime/duplex, stop scaffolding.** This skill produces a
+request/response agent, and its templates assume a turn that ends. A duplex design
+needs a voice runtime that owns turn-taking and barge-in; what this skill can scaffold
+is the *graph behind it*, called per finalized turn — so pick that framework from the
+same table and scaffold only that half, saying plainly which half is missing. Read
+`agent-voice.md` before designing the audio loop.
 
 ### Step 3 — Scaffold
 

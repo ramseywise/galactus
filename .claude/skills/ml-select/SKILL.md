@@ -236,38 +236,72 @@ horizon copied from an illustration is indistinguishable from one somebody chose
 field is parked, its value in the emitted config is a placeholder that cannot be mistaken
 for an answer.
 
+**`Status:` is two independent axes, not one enum.** Data state and confirmation state
+compose — a pre-data framing run with no operator present is both, and a config that
+records only one of them overstates itself. Write both, always:
+
+| Axis | Values | Set by |
+|---|---|---|
+| data | `PRE-DATA` / `PROFILED` | whether a profile backs the selection |
+| confirmation | `UNCONFIRMED` / `CONFIRMED` | whether an operator read the pair back |
+
+`Status: PRE-DATA / UNCONFIRMED` is the honest stamp for a framing dry-run.
+`PROFILED / CONFIRMED` is the only combination that authorises a run.
+
 ```markdown
 # ML config — <problem name>
-Status: PRE-DATA | PROFILED | DRAFT-UNCONFIRMED
+Status: <PRE-DATA|PROFILED> / <UNCONFIRMED|CONFIRMED>
 Profile: <path to the /ml-transform output, or "none — pre-data">
 
 ## Selection
 family:        classification
 output:        binary
 target:        <label_column>      # provisional — see Parked #1
-group_column:  debtor_id
-splitter:      temporal            # cohort_month; group-aware on debtor_id
-sampling:      class_weight        # provisional — see Parked #3
+group_column:  patient_id          # source: Q6 — repeated visits per patient
+splitter:      temporal            # source: Q5 — admission_date; group-aware on patient_id
+sampling:      <strategy>          # provisional — see Parked #3
 calibrate:     true                # score feeds a cost threshold — source: Q4
-models:        [logistic, catboost, lightgbm]   # logistic is the baseline, always
-metric:        pr_auc              # primary; precision@k reported alongside
-seed:          42
+models:        [logistic, <candidate>]   # logistic is the baseline, always; every
+                                         # other entry names its source or is not here
+metric:        pr_auc              # source: Q4 — minority class is the decision class
+seed:          42                  # arbitrary by design — see below
 
 ## Parked
-1. **Label horizon** — 30/60/90d unconfirmed, and "paid" undefined (settlement or any
-   payment). Trigger: resolve with the client before modelling. `target` carries a
-   placeholder, not a chosen horizon; a change re-runs everything.
-2. **Treatment effect — BLOCKING.** If historical collection actions are in the data,
-   propensity learns "accounts we chased, paid". Trigger: check for action-log columns
-   during profiling. Would change the **family**, not just the config, so `family` above
-   is provisional until this resolves.
+1. **Label horizon** — readmission within 30d or 90d unconfirmed. Trigger: resolve with
+   the clinical lead before modelling. `target` carries a placeholder, not a chosen
+   horizon; a change re-runs everything.
+2. **Treatment effect — BLOCKING.** If prior interventions are in the data, the model
+   learns "patients we followed up, returned less". Trigger: check for intervention
+   columns during profiling. Would change the **family**, not just the config, so
+   `family` above is provisional until this resolves.
 3. **Cost asymmetry** — unknown, NOT assumed 1:1. Trigger: before the threshold is set.
    Sampling is provisional and the decision rule does not ship until this resolves.
 ```
 
+The worked example above is a **different domain on purpose**. An example drawn from the
+problem the skill is most often run against is not an illustration — it is a pre-filled
+answer sheet, and the values in it get carried across because they look derived.
+
+**`seed` is the one field that is arbitrary and should say so.** No question sets it,
+nothing about the data implies it, and it needs a value for the run to be reproducible.
+Write it, and write *why it is not a finding*: it exists so two runs match, not because
+42 was chosen over 7 for a reason. Parking it would be false precision; silently
+inheriting it as though it were derived is the failure this line prevents. Any field
+that reaches the config without passing through a question gets the same treatment —
+named as arbitrary, in place, rather than left to look decided.
+
 **Baselines are not optional.** `logistic` (classification) and `linear` (prediction)
 are always in `models`. If boosting cannot beat the baseline meaningfully, that is a real
 finding about the features — which requires the baseline to have run.
+
+**Every non-baseline candidate carries its source, inline, or it does not go in the
+list.** `catboost  # source: brief's modelling position` earns its place; a name that
+arrived because it is a reasonable thing to try does not. This is the rule that most
+often fails silently, because a plausible model list is indistinguishable from a
+justified one at a glance — and unlike a horizon or a threshold, nothing downstream ever
+contradicts it. An unsourced candidate is not a harmless extra: it spends fold budget,
+it enters the comparison table as though someone chose it, and if it wins, the report
+attributes the result to a decision nobody made.
 
 ## Hand off
 
@@ -288,12 +322,17 @@ cites when a number looks better than it should.
    when no operator is present to confirm it, before the pair is emitted `provisional`
    and parked under the non-interactive rule above. The pair is the registry key; a model
    named first is a preference searching for a justification.
-2. **Never fill a parked question with a default.** Placeholder plus park entry plus
-   `provisional`, or nothing.
-3. **Never emit a config without its `## Parked` section**, even when empty — an absent
+2. **Never fill a parked question with a default** — including from this file's own
+   worked example. Placeholder plus park entry plus `provisional`, or nothing. Every
+   concrete value in the emitted config either cites a source or is a `<placeholder>`;
+   there is no third category, and "it is a reasonable thing to try" is not a source.
+3. **The pair travels together.** Whatever is done to `family` is done to `output` —
+   confirmed together, parked together, marked provisional together. Half a confirmed
+   registry key is an unconfirmed registry key.
+4. **Never emit a config without its `## Parked` section**, even when empty — an absent
    section and a genuinely empty one must not look the same. Empty reads `## Parked\n
    None — every question above was answered.`
-4. **Do not select on a described problem alone when the data exists.** Unprofiled data
+5. **Do not select on a described problem alone when the data exists.** Unprofiled data
    plus an available frame is a refusal, not a caveat.
-5. State the consequence when asking. Every question above carries its *why it matters*;
+6. State the consequence when asking. Every question above carries its *why it matters*;
    an operator who cannot see what turns on an answer guesses.

@@ -7,8 +7,12 @@ every fixture — the fallback provably always satisfies the contract.
 from __future__ import annotations
 
 import pytest
-
-from galactus.layout.fallback import FILLER_WORD, fallback, fallback_report, was_degraded
+from galactus.layout.fallback import (
+    FILLER_WORD,
+    fallback,
+    fallback_report,
+    was_degraded,
+)
 from galactus.layout.validator import count_words, validate
 from galactus.models import FieldConstraint, LayoutTemplate
 
@@ -199,9 +203,10 @@ def test_padding_uses_neutral_filler_not_invented_content(clean_draft, template)
 def test_missing_text_field_is_synthesized_valid(clean_draft, template):
     del clean_draft["column_right"]
     result = fallback(clean_draft, template)
-    assert count_words(result["column_right"]) >= template.field_by_name(
-        "column_right"
-    ).min_words
+    assert (
+        count_words(result["column_right"])
+        >= template.field_by_name("column_right").min_words
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +217,9 @@ def test_missing_text_field_is_synthesized_valid(clean_draft, template):
 @pytest.mark.parametrize(
     "bad_value", ["https://example.com/x.png", "logo.png", "the logo", "", "{{Bad}}"]
 )
-def test_bad_image_placeholder_becomes_the_field_token(clean_draft, template, bad_value):
+def test_bad_image_placeholder_becomes_the_field_token(
+    clean_draft, template, bad_value
+):
     clean_draft["hero_image"] = bad_value
     assert fallback(clean_draft, template)["hero_image"] == "{{hero_image}}"
 

@@ -1,6 +1,6 @@
 ---
 name: design-prototype
-description: "Designer role — spike/explore before committing. Use when the question is feasibility, not implementation: 'does this work?'. Fast validation mode: state the question, write minimum code, observe, decide (adopt/adapt/discard). Triggers on: 'prototype this', 'spike on X', 'try this approach', 'explore this API', 'validate this idea', 'feasibility check'."
+description: "Designer role — spike/explore before committing. Use when the question is feasibility, not implementation: 'does this work?'. Fast validation mode: state the question, write minimum code, observe, decide (adopt/adapt/discard). Quick-start mode runs a time-boxed spike loop; its ML variant adds profiling before framing and requires a baseline metric plus a passing leakage check as the stage-4 contract. Triggers on: 'prototype this', 'spike on X', 'try this approach', 'explore this API', 'validate this idea', 'feasibility check', 'quick-start', 'ml quick-start', 'spike a model on this dataset'."
 disable-model-invocation: true
 allowed-tools: Read Bash Grep Glob Write WebSearch WebFetch
 ---
@@ -36,7 +36,25 @@ Prototype or explore $ARGUMENTS. Apply all rules below strictly.
 ## Routing
 - First word `quick-start` → **Quick-start mode** (below): time-boxed spike loop for
   take-homes and live exercises. Serial by default.
+- First word `ml`, **or** a quick-start whose subject is a model trained on a dataset →
+  Quick-start mode with the **ML variant** (below). The variant changes three stages; the
+  other four run as written.
 - Otherwise → default prototyping mode (rules above).
+
+**The first word is the fallback, not the mechanism.** Nobody opening a take-home types
+`ml` first, and a router that only matches a keyword sends the most leakage-prone work
+down the path with no leakage check in it. Read the subject: a request to predict, score,
+classify, cluster, or forecast *from a dataset* is ML, whatever word it starts with.
+Fitting a model is the tell — calling a model is not, so an LLM-backed feature is the
+agentic path even when the prose says "AI".
+
+**When it is genuinely ambiguous, ask.** One sentence, before stage 1: *"This looks like
+it trains a model on historical data — ML variant, or the standard loop?"* The failure
+this prevents is silent and one-directional: the standard loop has no stage that would
+catch a leak, so an ML problem routed to it produces a confident metric nobody checked,
+while an agentic problem routed to the ML variant merely runs a profiling stage that finds
+nothing. **Do not default to the agentic path to resolve the ambiguity** — the cost of the
+two wrong guesses is not symmetric, and the cheap one is not the default.
 
 ## Quick-start mode
 
@@ -110,6 +128,57 @@ rather than asked.
 - Never skip stage 3 or stage 4. A spike without a decision point is just typing; a spike
   without a contract is just a demo. Stage 4 may shrink to a single test; it may not
   shrink to zero.
+
+### ML variant
+
+Same seven stages, same checkpoints, same dial. Three of them change, because the thing
+that makes an ML spike fail is not the thing that makes an agentic spike fail: an agentic
+spike fails loudly, by not working, and an ML spike fails quietly, by reporting a number
+that will not survive contact with real data.
+
+| Stage | Changes to | Why |
+|---|---|---|
+| 1. Frame | **Frame, then profile** — run `/ml-transform` on the actual frame before stage 2 | Every decision downstream (grouping, time axis, encoding, sampling) is a property of the data, and framing written without it is guesswork that reads as a plan |
+| 3. Decide | Adds `/ml-select` — the `(family, output)` pair, read back and confirmed | Naming a model before the pair is settled picks the tool first and the problem second |
+| 4. Contract | **A baseline metric *and* a passing leakage check.** Both, or the stage is not done | A metric alone is satisfiable by a leak; the leakage check is what makes the metric mean anything |
+
+**Stage 1 gains a profiling step, and it comes before the framing is fixed.** The intake's
+two asked roots still apply — archetype and audience — but the derivations shown in the
+read-back are different: `(family, output)`, target definition, time structure, grouping,
+and cost asymmetry. Do not show those as derived. They are the answers `/ml-transform` and
+`/ml-select` produce, and shown-not-asked is the wrong tier for a value that decides
+whether the model is measuring anything. Anything neither profiled nor answered is parked
+with a trigger, exactly as elsewhere — *"'I don't know' never blocks the render"* holds
+here unchanged.
+
+**Stage 4 is where the variant earns its place.** The base loop's rule is "the failing
+test that defines done"; here that is two artifacts, and the second one is the one people
+skip:
+
+1. **A baseline metric** — the score a trivial model gets. Majority class for
+   classification, the mean for regression, and the metric named before it is computed.
+   A model that beats nothing has not been shown to work; a model whose baseline was
+   computed afterwards has been graded on a curve it drew itself.
+2. **A leakage check that passes** — run the `leakage` review dimension over the training
+   path. It is red until the split is group-aware where the data is grouped, time-ordered
+   where the data has a time axis, and every transform is fitted inside the fold.
+
+The ordering rule from the base loop applies with more force, not less: **show the red
+first.** A leakage check written after a good score exists is a check under pressure to
+pass. And the base loop's guardrail — *say what would make it fail before you make it
+pass* — has a specific form here: name the column that would leak, and the split that
+would leak it, before the check runs.
+
+**The stage-4 inversion generalizes directly.** "Build the checker before the generator"
+below is the same rule: the leakage check is the checker, the training path is the
+generator, and the check is a pure function over the code — no fit, no data, no cost. It
+can be red before a model exists.
+
+**An implausibly good first score is a finding, not a result.** 0.99 AUC on a first pass
+is a leak until proven otherwise, and it is reported that way at stage 7 rather than
+celebrated at stage 5. The base loop's omissions rule covers this — *say the omissions out
+loud* — but the ML failure mode is worse than an omission, because a leaked score is
+positive evidence for a claim that is false.
 
 ### Observed — galactus, 2026-08-08
 

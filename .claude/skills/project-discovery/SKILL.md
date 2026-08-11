@@ -103,6 +103,14 @@ If the pain point spans archetypes (e.g., "find regulations AND draft a summary
 letter"), name the primary (where the hard problem lives) and note the secondary
 as a phase-2 add-on.
 
+Then ask once: **"Does anyone talk to this out loud — a phone call, a live voice
+assistant — where they'd expect to interrupt it mid-sentence?"** A yes makes the
+design realtime/duplex, which is a different build and a different budget: interrupt
+handling and a sub-second latency target are load-bearing, not polish. Push the tier
+in Step 3 up one, and read `agent-voice.md` before scoping. A voice *interface* over
+a request/response system — press to record, wait, get an answer — is not duplex and
+does not carry this cost.
+
 ### Step 3 — Complexity budget
 
 Ask: **"How much time and people do you have?"**

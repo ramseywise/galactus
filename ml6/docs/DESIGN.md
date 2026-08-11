@@ -138,16 +138,58 @@ pull its receiver-role PDFs into `sender_facts` and collapse the very
 separation the grounding block is built on.
 `test_a_company_on_both_sides_does_not_leak_across_roles` pins it.
 
-`ingest_pdf_bytes` runs a **hybrid** extraction:
+`ingest_pdf_bytes` runs a **hybrid** extraction over the three input kinds the
+brief names — text, images, and tables:
 
 - **Text path** (pymupdf) — extracts text and records, for each fact, the page
   and character span it came from.
+- **Table path** (`ingest/tables.py`) — one fact per data row, rendered against
+  the header. See below; tables need their own path because the text path
+  actively destroys them.
 - **Vision path** — only for pages with fewer than `MIN_PAGE_TEXT_CHARS = 200`
   characters of extractable text, i.e. scans and image-heavy slides. Facts from
   this path carry `VISION_CONFIDENCE = 0.7` and no verifiable span.
 
 The gate is a cost decision as much as a quality one: vision is charged per
 page, and running it over pages that already yielded clean text buys nothing.
+
+#### Why tables are not just text
+
+A PDF table has no sentence terminators, so `get_text()` returns one cell per
+line and the sentence splitter glues the whole grid into a single run-on fact:
+
+```
+Corridor Volume On-time Chicago-Dallas 184,000 96.2% Newark-Atlanta 141,500 93.8% …
+```
+
+Every number is present and every number is unattributed. A model drafting from
+that can pair 96.2% with any corridor in the grid and still appear grounded,
+because the digits genuinely are in the source. For a brief whose stated
+requirement is factual correctness, that is the worst available failure: wrong
+and confident, with a citation that checks out.
+
+So the row is the unit. Each data row becomes one fact carrying its own subject:
+
+```
+Corridor Chicago-Dallas: Volume 184,000; On-time 96.2%.
+```
+
+Cell-level facts would carry no subject; table-level facts would reproduce the
+original ambiguity. The row is the smallest span in which a value keeps its
+meaning.
+
+Rewriting the row means it can no longer equal its source span, so table facts
+declare `origin="table"` and are verified by a different rule: the span must
+*contain* every value the row asserts. A fact whose span drifts onto a
+neighbouring row fails that check
+(`test_a_row_fact_citing_another_rows_span_is_dropped`). The exact-match rule is
+relaxed for this origin only, not loosened globally.
+
+Once a page's rows are recovered structurally, that page's text is withheld from
+the sentence splitter — otherwise the prompt would carry the ambiguous run-on
+alongside the precise rows. `find_tables` is heuristic, so a page whose tables
+fail to parse keeps its text facts and logs the reason rather than failing the
+upload.
 
 **4. Ground** — `verify_facts` drops any fact whose claimed span does not
 resolve in the source text. This is a **block, not a warning**. A fact that
@@ -326,7 +368,11 @@ because they are hedges.
    in rendered width rather than words.
 2. **Fixtures are synthesized, not ML6's real PDFs.** The ingest gate at 200
    characters per page is tuned against invented documents. Real collateral
-   would move that number.
+   would move that number. The same caveat applies harder to tables: the
+   fixtures' grids are ruled and regular, which is the case `find_tables`
+   handles best. Borderless or multi-row-header tables are where it degrades,
+   and the design's answer there is to fall back to the text path, not to
+   guess at structure.
 3. **Vision facts are unverifiable by construction.** They carry a confidence
    score and no span, so the grounding rate counts them as ungrounded. That is
    the honest accounting, not a bug — but it means a corpus that is mostly scans

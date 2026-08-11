@@ -239,6 +239,12 @@ engagement status," you know the actor without asking.
 
 12. **What's the thinnest slice that demonstrates value?**
     - What must be working for someone to say "yes, this is useful"?
+    - **If the design is realtime/duplex** (audio both directions, see
+      `agent-voice.md`), the thinnest slice is *one complete turn with barge-in* —
+      the user speaks, the agent answers, and the user interrupts mid-answer and is
+      heard. Not one request/response exchange. A voice PoC that cannot be
+      interrupted has skipped the part that is actually hard, and the latency and
+      cancellation work it defers is most of the build.
 
 13. **What are the top 2–3 risks this POC should validate?**
     (These become the eval suite's primary grading targets.)

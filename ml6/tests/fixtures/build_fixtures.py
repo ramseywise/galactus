@@ -95,7 +95,9 @@ def _draw_table(page: pymupdf.Page, table: dict) -> None:
     characters to exist, not enough to parse into facts. That is precisely the
     case the vision path covers.
     """
-    page.insert_text((_MARGIN, _MARGIN), table["title"], fontname=_BODY_FONT, fontsize=14)
+    page.insert_text(
+        (_MARGIN, _MARGIN), table["title"], fontname=_BODY_FONT, fontsize=14
+    )
 
     col_x = [_MARGIN, _MARGIN + 160, _MARGIN + 280]
     row_y = _MARGIN + 40
@@ -109,7 +111,9 @@ def _draw_table(page: pymupdf.Page, table: dict) -> None:
     for row_index, row in enumerate(table["rows"], start=1):
         y = row_y + row_index * row_height
         for col_index, cell in enumerate(row):
-            page.insert_text((col_x[col_index], y), cell, fontname=_BODY_FONT, fontsize=10)
+            page.insert_text(
+                (col_x[col_index], y), cell, fontname=_BODY_FONT, fontsize=10
+            )
 
     _draw_rules(page, col_x, row_y, row_height, len(table["rows"]))
 

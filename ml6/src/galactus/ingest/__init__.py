@@ -10,9 +10,9 @@ which path found them. The grounding check downstream treats them differently:
 a text fact can be verified against the page bytes, a vision fact cannot.
 """
 
-from galactus.ml6.src.galactus.ingest.facts import ingest_pdf, ingest_pdf_bytes
-from galactus.ml6.src.galactus.ingest.text import extract_text_facts
-from galactus.ml6.src.galactus.ingest.vision import (
+from galactus.ingest.facts import ingest_pdf, ingest_pdf_bytes
+from galactus.ingest.text import extract_text_facts
+from galactus.ingest.vision import (
     encode_image_base64,
     image_to_message,
     page_images,

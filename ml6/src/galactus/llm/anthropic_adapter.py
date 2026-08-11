@@ -19,8 +19,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from galactus.ml6.src.galactus.config import Settings
-from galactus.ml6.src.galactus.llm.port import LLMError
+from galactus.config import Settings
+from galactus.llm.port import LLMError
 
 MAX_TOKENS = 8000
 """Ceiling for a single collateral draft.
@@ -91,9 +91,7 @@ class AnthropicAdapter:
         except anthropic.RateLimitError as exc:
             raise LLMError("rate limited by the Anthropic API") from exc
         except anthropic.APIStatusError as exc:
-            raise LLMError(
-                f"Anthropic API returned status {exc.status_code}"
-            ) from exc
+            raise LLMError(f"Anthropic API returned status {exc.status_code}") from exc
         except anthropic.APIConnectionError as exc:
             raise LLMError("could not reach the Anthropic API") from exc
 
@@ -112,9 +110,7 @@ def _extract_json(response: Any) -> dict[str, Any]:
     if stop_reason == "refusal":
         raise LLMError("model declined to produce output for this prompt")
     if stop_reason == "max_tokens":
-        raise LLMError(
-            f"response hit the {MAX_TOKENS}-token ceiling and is incomplete"
-        )
+        raise LLMError(f"response hit the {MAX_TOKENS}-token ceiling and is incomplete")
 
     blocks = getattr(response, "content", None) or []
     text = "".join(

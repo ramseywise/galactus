@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import re
 
-from galactus.ml6.src.galactus.models import FieldConstraint, LayoutTemplate
-from galactus.ml6.src.galactus.layout.validator import count_words, validate
+from galactus.layout.validator import count_words, validate
+from galactus.models import FieldConstraint, LayoutTemplate
 
 FILLER_WORD = "and"
 """Neutral padding for under-length fields. Semantically empty by design — the
@@ -195,10 +195,7 @@ def _pad_to_words(text: str, min_words: int, field: FieldConstraint) -> str:
     words = text.split() if text.strip() else []
     while len(words) < min_words:
         candidate = [*words, FILLER_WORD]
-        if (
-            field.max_chars is not None
-            and len(" ".join(candidate)) > field.max_chars
-        ):
+        if field.max_chars is not None and len(" ".join(candidate)) > field.max_chars:
             break
         words = candidate
     return " ".join(words)
@@ -219,7 +216,7 @@ def _synthesize(field: FieldConstraint, template: LayoutTemplate) -> str:
 
 
 def _fit_placeholder(value: str, field: FieldConstraint) -> str:
-    from galactus.ml6.src.galactus.layout.validator import PLACEHOLDER_RE
+    from galactus.layout.validator import PLACEHOLDER_RE
 
     if PLACEHOLDER_RE.match(value):
         return value

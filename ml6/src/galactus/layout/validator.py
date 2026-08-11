@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from galactus.ml6.src.galactus.models import FieldConstraint, LayoutTemplate, Violation
+from galactus.models import FieldConstraint, LayoutTemplate, Violation
 
 PLACEHOLDER_RE = re.compile(r"^\{\{[a-z0-9_]+\}\}$")
 """Image placeholder tokens look like `{{hero_image}}` — never a URL or a path."""
@@ -90,8 +90,7 @@ def _check_text(name: str, value: str, field: FieldConstraint) -> list[Violation
                 actual=words,
                 limit=field.max_words,
                 repair_hint=(
-                    f"Shorten '{name}' from {words} to at most "
-                    f"{field.max_words} words."
+                    f"Shorten '{name}' from {words} to at most {field.max_words} words."
                 ),
             )
         )
@@ -146,7 +145,9 @@ def _check_image_placeholder(name: str, value: str) -> list[Violation]:
     ]
 
 
-def _check_color_ref(name: str, value: str, template: LayoutTemplate) -> list[Violation]:
+def _check_color_ref(
+    name: str, value: str, template: LayoutTemplate
+) -> list[Violation]:
     if value in template.theme_colors:
         return []
 

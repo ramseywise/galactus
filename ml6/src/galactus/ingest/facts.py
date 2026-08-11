@@ -22,11 +22,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from galactus.ml6.src.galactus.ingest.text import facts_from_pages, resolve_span
-from galactus.ml6.src.galactus.ingest.vision import image_to_message, render_page_png
-from galactus.ml6.src.galactus.llm.port import LLM, LLMError
-from galactus.ml6.src.galactus.models import Fact
-from galactus.ml6.src.galactus.obs import OP_VISION, span
+import structlog
+
+from galactus.ingest.tables import facts_from_table, row_span_contains_cells
+from galactus.ingest.text import facts_from_pages, resolve_span
+from galactus.ingest.vision import image_to_message, render_page_png
+from galactus.llm.port import LLM, LLMError
+from galactus.models import Fact
+from galactus.obs import OP_VISION, span
+
+log = structlog.get_logger(__name__)
 
 MIN_PAGE_TEXT_CHARS = 200
 """Below this a page's text layer is treated as insufficient.
@@ -87,9 +92,11 @@ async def ingest_pdf(
     import pymupdf
 
     with pymupdf.open(pdf_path) as doc:
-        pages = [page.get_text() for page in doc]
+        pages, table_facts = _read_pages(doc)
 
-    return await _ingest(pdf_path, pages, llm, force_vision=force_vision)
+    return await _ingest(
+        pdf_path, pages, llm, table_facts=table_facts, force_vision=force_vision
+    )
 
 
 async def ingest_pdf_bytes(
@@ -103,9 +110,11 @@ async def ingest_pdf_bytes(
     import pymupdf
 
     with pymupdf.open(stream=data, filetype="pdf") as doc:
-        pages = [page.get_text() for page in doc]
+        pages, table_facts = _read_pages(doc)
 
-    return await _ingest(data, pages, llm, force_vision=force_vision)
+    return await _ingest(
+        data, pages, llm, table_facts=table_facts, force_vision=force_vision
+    )
 
 
 def verify_facts(facts: list[Fact], pages: list[str]) -> list[Fact]:
@@ -125,6 +134,16 @@ def verify_facts(facts: list[Fact], pages: list[str]) -> list[Fact]:
         source = resolve_span(fact.source_span, pages)
         if source is None:
             continue
+
+        if fact.origin == "table":
+            # A table row is rephrased to keep its subject attached, so it can
+            # never equal its own span. The values it asserts still have to be
+            # in there — see `tables.row_span_contains_cells`.
+            if not row_span_contains_cells(_normalize(source), fact.text):
+                continue
+            verified.append(fact)
+            continue
+
         if _normalize(source) != _normalize(fact.text):
             continue
 
@@ -181,14 +200,77 @@ async def extract_vision_facts(
     ]
 
 
+def _read_pages(doc: object) -> tuple[list[str], list[Fact]]:
+    """Read page text and table facts in a single pass over an open document.
+
+    Both entry points need the same two things from the same `pymupdf.Document`,
+    and `find_tables` needs the live page object rather than its text, so the
+    table path has to run while the document is open.
+
+    A page whose tables are unreadable yields no table facts and keeps its text
+    facts — `find_tables` is heuristic, and a malformed grid is a reason to fall
+    back to the text path, not to fail the upload.
+    """
+    pages: list[str] = []
+    table_facts: list[Fact] = []
+
+    for page_number, page in enumerate(doc, start=1):
+        page_text = page.get_text()
+        pages.append(page_text)
+
+        try:
+            tables = page.find_tables().tables
+        except Exception as exc:  # noqa: BLE001 - heuristic detector, any failure is recoverable
+            log.warning("table_detect_failed", page=page_number, error=str(exc))
+            continue
+
+        for table_index, table in enumerate(tables):
+            try:
+                rows = table.extract()
+            except Exception as exc:  # noqa: BLE001 - one bad grid must not fail the upload
+                log.warning(
+                    "table_extract_failed",
+                    page=page_number,
+                    table=table_index,
+                    error=str(exc),
+                )
+                continue
+            table_facts.extend(facts_from_table(rows, page_text, page_number))
+
+    return pages, table_facts
+
+
+def _ingest_pages_without_tables(
+    pages: list[str], table_facts: list[Fact]
+) -> list[str]:
+    """Blank out pages whose tables were recovered structurally.
+
+    The sentence splitter turns a grid into one run-on fact holding every value
+    in the table with no row structure — exactly the misattribution the table
+    path removes. Leaving both in means the prompt carries the ambiguous version
+    alongside the precise one, so the page's text is withheld from the sentence
+    splitter once its rows are covered.
+
+    Only the pages that produced table facts are blanked, and only for fact
+    extraction: the `pages` list used for span verification is untouched, so
+    table spans still resolve against the real page text.
+    """
+    covered = {fact.page for fact in table_facts}
+    return ["" if number in covered else text for number, text in enumerate(pages, 1)]
+
+
 async def _ingest(
     pdf_source: str | Path | bytes,
     pages: list[str],
     llm: LLM | None,
     *,
+    table_facts: list[Fact] | None = None,
     force_vision: bool,
 ) -> list[Fact]:
-    facts = verify_facts(facts_from_pages(pages), pages)
+    table_facts = table_facts or []
+
+    text_source = _ingest_pages_without_tables(pages, table_facts)
+    facts = verify_facts(facts_from_pages(text_source) + table_facts, pages)
 
     if llm is None:
         return facts

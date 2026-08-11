@@ -13,7 +13,6 @@ from typing import Any
 
 import pymupdf
 import pytest
-
 from galactus.ingest.facts import (
     MIN_PAGE_TEXT_CHARS,
     VISION_CONFIDENCE,
@@ -48,7 +47,9 @@ class FakeVisionLLM:
     """Returns a scripted list of claims for every vision call."""
 
     def __init__(self, claims: list[str] | None = None, error: bool = False) -> None:
-        self.claims = claims if claims is not None else ["A table row states 96.2 percent."]
+        self.claims = (
+            claims if claims is not None else ["A table row states 96.2 percent."]
+        )
         self.error = error
         self.calls = 0
 
@@ -156,7 +157,9 @@ def test_a_fact_whose_span_does_not_match_is_dropped():
 
 def test_a_fact_with_an_unresolvable_span_is_dropped():
     pages = ["The company shipped four hundred units last year."]
-    orphan = Fact(text="Anything at all here", source_span="p7:0-10", page=7, origin="text")
+    orphan = Fact(
+        text="Anything at all here", source_span="p7:0-10", page=7, origin="text"
+    )
 
     assert verify_facts([orphan], pages) == []
 
@@ -289,10 +292,15 @@ async def test_vision_facts_are_extracted_from_the_table_page(fixture_pdf):
 
 
 async def test_ingest_without_an_llm_degrades_to_text_only(fixture_pdf):
+    """No provider means no vision facts — the offline paths still run.
+
+    Text and tables are both local, so the assertion is that nothing *asserted*
+    (vision) appears, not that every fact came from the sentence splitter.
+    """
     facts = await ingest_pdf(fixture_pdf, llm=None)
 
     assert len(facts) >= 5
-    assert all(f.origin == "text" for f in facts)
+    assert not [f for f in facts if f.origin == "vision"]
 
 
 async def test_a_failed_vision_call_does_not_lose_the_text_facts(fixture_pdf):
@@ -302,7 +310,7 @@ async def test_a_failed_vision_call_does_not_lose_the_text_facts(fixture_pdf):
 
     assert llm.calls == 1
     assert len(facts) >= 5
-    assert all(f.origin == "text" for f in facts)
+    assert not [f for f in facts if f.origin == "vision"]
 
 
 async def test_blank_vision_claims_are_discarded(fixture_pdf):

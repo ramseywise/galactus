@@ -127,7 +127,13 @@ class Fact(BaseModel):
     source_span: str
     page: int | None = None
     confidence: float = 1.0
-    origin: Literal["text", "vision"] = "text"
+    origin: Literal["text", "vision", "table"] = "text"
+    """Which extraction path produced this fact, and so how it gets verified.
+
+    `text` spans must read back exactly; `table` spans must contain every value
+    the row asserts (the row is rephrased to keep its subject, so exact match is
+    impossible); `vision` has no span to check. See `ingest.facts.verify_facts`.
+    """
 
 
 class PipelineState(BaseModel):

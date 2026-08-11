@@ -24,6 +24,8 @@ Layer 5: Escalation    — friction signals route to human; non-fatal errors are
 
 Layers 1 and 4 are mandatory for any agent that surfaces output to a user. Layers 2, 3, and 5 are context-dependent — apply when the agent does retrieval (layers 2+3) or supports human handoff (layer 5).
 
+> **Layer 1 under streaming ASR.** "Pre-input" presumes stable input text to inspect before anything acts on it. Streaming ASR does not provide one: it emits partial hypotheses that revise as more audio arrives, so the string a filter would sanitize at 300ms may not be the string that exists at 600ms. Sanitizing every partial wastes the latency budget and can act on text the caller never said; sanitizing only the final transcript means the layer runs *after* any speculative work already started on partials. Neither is free — a duplex design must state which it chose. The safe default is to gate on **finalized transcripts only** and to start no side-effecting work on a partial (`agent-voice.md §5`). Layer 4 is unaffected in principle but tightens in practice: audio already played cannot be retracted, so a post-generate check must clear text *before* it reaches TTS, not before it reaches the user.
+
 The offline eval pipeline (LLM-as-judge grading) sits **outside** this hot path. Runtime layers must be fast (< 5ms each). Semantic grading is the eval harness's job, not a runtime guard.
 
 > **Conflict — flagged, not resolved.** The wiki's own per-layer latency figures do not fit under a blanket 5ms ceiling: L1 <1ms, L2 0ms, **L3 (CRAG) 0–300ms**, L4 <1ms, L5 0ms. Layer 3 is documented at up to 60× the stated bound. The wiki justifies the spend in context rather than in isolation — retrieval + rerank already costs 500–1500ms and generation 800–2000ms, and the *"score delta guard... saves 1–2s"* by skipping generation on poor evidence. So a gate can be net-negative latency even at 300ms. Either the <5ms rule applies only to gates that do not themselves make a retrieval-quality judgement, or CRAG is not a "layer" under the model above. Unreconciled. *(Source: `infra/safeguards-five-layers.md`)*
@@ -306,6 +308,28 @@ Cloud sandboxes carry a lifecycle problem the table doesn't show: *"they cost mo
 Above **>10K conversations/day**, LLM-based masking becomes expensive — *"revisit with a purpose-built NER model."*
 
 The hard rule: **"the masking layer must not be skippable or bypassable. This is a hard gate."** Note also the opposite-direction failure the rules above don't consider — over-masking degrades the very content the agent is reasoning over, so a masker with no false-positive measurement is as unaudited as a guardrail that never fires (§1). *(Source: `infra/pii-masking-approaches.md`)*
+
+---
+
+## 7a. Regulated domains — health data over a voice channel
+
+§7's PII machinery is necessary and not sufficient once the domain is regulated. Masking answers *what leaves the system*; this section answers *whether you may process it at all*, and it binds before any of §7's controls run. Scope note: the rules below are EU/French, drawn from a healthcare voice engagement. The shape generalizes; the citations do not.
+
+**Health data is special-category (GDPR Art. 9).** Art. 9 prohibits processing by default and requires a specific lifted basis. Two matter here: **explicit consent** (Art. 9(2)(a)) and **provision of health care** (Art. 9(2)(h)). Legitimate interest is not on the list — the fallback most product designs assume is unavailable. And the trigger is lower than expected: a caller stating who they wish to see reveals health data by implication, so a booking system holds Art. 9 data from the first useful turn, before any diagnosis is discussed.
+
+**Consent in a voice channel is not a checkbox.** There is no UI. Consent must be captured as **recorded verbal consent** — the request and the answer both in the audio, timestamped and retrievable — which makes the recording itself the consent artifact and puts it under the retention rules it is meant to authorize. Design consequences: ask before the first special-category turn, not at the end; script it so a "yes" is unambiguous; and record refusal as durably as agreement, since a refused call must not silently proceed.
+
+**Recording the caller is a second, separate basis.** France requires informing both parties. Consent to *process health data* and consent to *be recorded* are distinct permissions; a design that collects one and assumes the other is non-compliant even when the caller plainly agreed to something.
+
+**HDS hosting (Hébergeur de Données de Santé).** French health data must sit with a certified host. This is an infrastructure constraint that lands on model choice, not just storage: an inference or ASR provider processing the audio is processing health data, so the *whole pipeline* — telephony leg, ASR, LLM, TTS, trace backend — must satisfy it. HDS is routinely the constraint that eliminates an otherwise-preferred vendor, so establish it before benchmarking anything (`agent-voice.md §1`).
+
+**Secret médical.** Independent of GDPR and stricter. Medical confidentiality binds disclosure of patient information as a professional obligation; a voice agent must not confirm to a caller that a given person is a patient, has an appointment, or is known to the practice. The default answer to identity questions is refusal — a helpful agent is the failure mode here.
+
+**AI Act Art. 50 — the caller must be told they are talking to a machine.** Disclosure is required unless it is obvious to a reasonable person, and a fluent voice agent is precisely the case where it is not. Disclose in the opening turn, before consent capture, in plain words rather than legalese. This composes badly with barge-in: a caller who interrupts the greeting may never hear the disclosure, so the design needs a rule for re-asserting it rather than losing it to an interruption.
+
+**Erasure reaches audio, transcript, and derived context** — three artifacts, not one. See `agent-memory.md §5b` for scope and `agent-observability.md §6` for the retention window.
+
+> **Not legal advice, and not a substitute for counsel.** This section exists so a design surfaces these constraints at design time rather than at launch. Every item above is a question to route to a DPO, not a control to self-certify.
 
 ---
 

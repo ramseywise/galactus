@@ -35,3 +35,7 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["ml6/tests", "review/tests"]
 asyncio_mode = "auto"
+# `package = false` means nothing installs `galactus` into the venv, so the import root
+# has to be declared here. `ml6/` is on the path too: `evals/` is a script directory
+# imported as `evals.run` by `ml6/tests/test_evals.py`.
+pythonpath = ["ml6/src", "ml6"]

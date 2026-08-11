@@ -92,6 +92,8 @@ A turn ends when the model emits a **stop_reason** that is not a tool call. The 
 - `max_tokens` — truncation; must be treated as an error, not a completion.
 - Context-window budget exhausted — harness must compact before re-invoking (see `agent-context.md`).
 
+> **Streaming variant.** The above assumes a turn that ends with a protocol event. In a duplex audio stream there is no `stop_reason` — turn end is *inferred* by an endpointer on the audio stream, which is a probabilistic judgement rather than a protocol event, and can be wrong in both directions (cutting the user off, or waiting through a pause they meant as a comma). See `agent-voice.md §3`. The iteration-cap rule below still applies unchanged; note only that a streaming design also needs a *session*-level cap — turns per session, wall-clock, spend — which the per-turn cap does not provide.
+
 The harness (not the model) decides the **maximum iteration count**. Always set one.
 
 ### At what granularity
@@ -294,6 +296,14 @@ Loop shape and subagent topology decide *how* work flows; they do not decide wha
 
 - **A step that returns the same thing on empty input as on success is a collapse site.** This bears on §5's orchestrator responsibilities: a subagent that fails to dispatch must be distinguishable from one that ran and found nothing. Merging them means a broken node reads as a clean one.
 - **Rank by blast radius, not confidence.** Where the orchestrator triages subagent output, consequence is the sort key — not how certain the reporter was.
+
+---
+
+## 6a. Duplex designs are a different loop shape
+
+Everything above assumes a turn that ends (§2). When audio — or any stream — flows both directions concurrently, that assumption fails at the loop layer, and the five-layer stack reads `prompt ⊂ context ⊂ harness`, then **streaming loop**, then graph. `design-system` §4b names the same variant and lists its five required components; `agent-voice.md` is the depth.
+
+The test for which applies: **can you point at the protocol event that ends a turn?** If yes, this spec's §2 governs. If turn end is inferred from the stream rather than signalled by it, the design is duplex — read `agent-voice.md`, and treat §2's guidance as inapplicable rather than merely stricter.
 
 ---
 

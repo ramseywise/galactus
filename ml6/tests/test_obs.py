@@ -18,8 +18,6 @@ from typing import Any
 
 import pytest
 import structlog
-from structlog.testing import capture_logs
-
 from galactus.generate import generate_collateral
 from galactus.models import PipelineState
 from galactus.obs import (
@@ -31,6 +29,7 @@ from galactus.obs import (
     configure_structlog,
     span,
 )
+from structlog.testing import capture_logs
 
 
 class ScriptedLLM:
@@ -40,7 +39,9 @@ class ScriptedLLM:
         self.responses = responses
         self.calls = 0
 
-    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+    async def complete_structured(
+        self, prompt: str, schema: dict[str, Any]
+    ) -> dict[str, Any]:
         self.calls += 1
         return dict(self.responses[min(self.calls - 1, len(self.responses) - 1)])
 
@@ -79,7 +80,9 @@ def rendered_logs():
         lg.setLevel(logging.INFO)
 
     def read() -> list[dict[str, Any]]:
-        return [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
+        return [
+            json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()
+        ]
 
     try:
         yield read
@@ -142,9 +145,8 @@ def test_cache_attrs_are_omitted_when_there_was_no_cache_activity():
 
 
 def test_span_logs_one_line_carrying_its_metadata():
-    with capture_logs() as logs:
-        with span(OP_GENERATE, "m", stage="generate", attempt=0):
-            pass
+    with capture_logs() as logs, span(OP_GENERATE, "m", stage="generate", attempt=0):
+        pass
 
     assert len(logs) == 1
     assert logs[0]["event"] == "agent_span"
@@ -156,10 +158,12 @@ def test_span_logs_one_line_carrying_its_metadata():
 
 def test_a_failing_call_is_still_logged_and_the_error_still_raises():
     """A log of only the successes is not a log worth keeping."""
-    with capture_logs() as logs:
-        with pytest.raises(RuntimeError, match="provider is down"):
-            with span(OP_GENERATE, "m"):
-                raise RuntimeError("provider is down")
+    with (
+        capture_logs() as logs,
+        pytest.raises(RuntimeError, match="provider is down"),
+        span(OP_GENERATE, "m"),
+    ):
+        raise RuntimeError("provider is down")
 
     assert len(logs) == 1
     assert logs[0]["status"] == "ERROR"
@@ -175,7 +179,9 @@ async def test_a_clean_run_emits_exactly_one_generate_span(clean_draft, template
     state = PipelineState(job_id="job-clean")
 
     with capture_logs() as logs:
-        await generate_collateral(state, template, ScriptedLLM([clean_draft]), model="m")
+        await generate_collateral(
+            state, template, ScriptedLLM([clean_draft]), model="m"
+        )
 
     spans = [entry for entry in logs if entry["event"] == "agent_span"]
     assert [s["operation"] for s in spans] == [OP_GENERATE]
@@ -211,7 +217,9 @@ async def test_repair_spans_carry_the_violation_count_they_were_answering(
     assert repairs[0]["violation_count"] >= 1
 
 
-async def test_an_exhausted_budget_emits_a_span_for_every_attempt(clean_draft, template):
+async def test_an_exhausted_budget_emits_a_span_for_every_attempt(
+    clean_draft, template
+):
     """Four calls, four spans — the fallback itself is not a model call."""
     state = PipelineState(job_id="job-exhausted")
     llm = ScriptedLLM([_too_long(clean_draft)])
@@ -236,7 +244,9 @@ async def test_spans_name_the_model_they_were_told_about(clean_draft, template):
             state, template, ScriptedLLM([clean_draft]), model="claude-sonnet-5"
         )
 
-    assert all(e["model"] == "claude-sonnet-5" for e in logs if e["event"] == "agent_span")
+    assert all(
+        e["model"] == "claude-sonnet-5" for e in logs if e["event"] == "agent_span"
+    )
 
 
 # ---------------------------------------------------------------------------

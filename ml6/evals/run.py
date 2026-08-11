@@ -30,17 +30,17 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from galactus.config import Settings  # noqa: E402
-from galactus.generate import generate_collateral  # noqa: E402
-from galactus.layout.contract import load_template_cached  # noqa: E402
-from galactus.layout.validator import is_valid  # noqa: E402
-from galactus.llm.port import LLM  # noqa: E402
-from galactus.models import Fact, LayoutTemplate, PipelineState  # noqa: E402
-from galactus.obs import configure_structlog  # noqa: E402
+from galactus.config import Settings
+from galactus.generate import generate_collateral
+from galactus.layout.contract import load_template_cached
+from galactus.layout.validator import is_valid
+from galactus.llm.port import LLM
+from galactus.models import Fact, LayoutTemplate, PipelineState
+from galactus.obs import configure_structlog
 
 CASES_PATH = Path(__file__).parent / "cases.jsonl"
 
@@ -54,8 +54,43 @@ all. One shared token would fire on a company name alone.
 """
 
 _STOPWORDS = frozenset(
-    """a an and are as at be by for from has have in is it its of on or that the
-    to with we our their this these those will can more than over under""".split()
+    [
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "has",
+        "have",
+        "in",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "to",
+        "with",
+        "we",
+        "our",
+        "their",
+        "this",
+        "these",
+        "those",
+        "will",
+        "can",
+        "more",
+        "than",
+        "over",
+        "under",
+    ]
 )
 
 _TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9.%-]*")
@@ -126,11 +161,30 @@ class ScriptedEvalLLM:
     runs out and the fallback engages.
     """
 
-    LOREM = (
-        "meridian calder partnership shipments corridor network delivery freight "
-        "logistics carriers routing terminals capacity coverage performance "
-        "operations customers enterprise regional volume reliability service"
-    ).split()
+    LOREM: ClassVar[list[str]] = [
+        "meridian",
+        "calder",
+        "partnership",
+        "shipments",
+        "corridor",
+        "network",
+        "delivery",
+        "freight",
+        "logistics",
+        "carriers",
+        "routing",
+        "terminals",
+        "capacity",
+        "coverage",
+        "performance",
+        "operations",
+        "customers",
+        "enterprise",
+        "regional",
+        "volume",
+        "reliability",
+        "service",
+    ]
 
     def __init__(
         self,
@@ -390,7 +444,11 @@ def summarize_table(rows: list[dict[str, Any]]) -> str:
     }
 
     def line(values: list[str]) -> str:
-        return "| " + " | ".join(v.ljust(widths[h]) for h, v in zip(headers, values)) + " |"
+        return (
+            "| "
+            + " | ".join(v.ljust(widths[h]) for h, v in zip(headers, values))
+            + " |"
+        )
 
     out = [
         line(headers),
@@ -422,8 +480,10 @@ def format_report(results: list[CaseResult], metrics: dict[str, Any]) -> str:
         "",
         f"Cases:                {metrics['cases']}",
         f"Contract pass rate:   {metrics['contract_pass_rate']}%  (valid on first generation)",
-        f"Repair convergence:   {convergence if convergence is not None else 'n/a'}"
-        "  (mean attempts, converged cases)",
+        (
+            f"Repair convergence:   {convergence if convergence is not None else 'n/a'}"
+            "  (mean attempts, converged cases)"
+        ),
         f"Fallback rate:        {metrics['fallback_rate']}%  (deterministic truncation)",
         f"Grounding rate:       {metrics['grounding_rate']}%  (traceable to a source span)",
         "",

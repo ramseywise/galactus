@@ -27,6 +27,20 @@ Every tool should answer "yes" to all four questions before shipping:
 
 Tools that fail #1 need a confirmation step in the agent loop before execution. Tools that fail #4 need explicit serialization or a locking strategy noted in their documentation.
 
+### A fifth question, in a duplex design: fast enough?
+
+Schema, naming, and error contracts transfer to voice unchanged — everything in §3 through §7 applies as written. What text guidance never has to ask is how long a tool takes, because in chat the answer is invisible: a spinner sits there for two seconds and nobody minds.
+
+On a phone call the same two seconds is dead air, and a caller reads dead air as the line dropping. **A tool call inside a voice turn draws on the turn's latency budget — the caller's silence budget — and that budget is under a second** — it competes with the LLM's own time-to-first-token, which is already the dominant hop (`agent-voice.md §2`). A 2s availability lookup is not a slow tool in this setting; it is a failed turn.
+
+So a fifth question, for duplex designs only:
+
+5. **Fast enough?** Does this tool return inside the turn's silence budget — and if it cannot, what does the caller hear while it runs?
+
+The second half is the real requirement, because plenty of necessary tools are honestly slow. The mitigation is to **fill the silence**: speak first, then call. "Let me check that for you" is not filler — it converts an unexplained gap into an expected wait, and it buys most of a second at no cost to the turn. Emit the acknowledgement to TTS *before* dispatching the call, not after it returns.
+
+Where a tool is slow enough that even that fails, the design decision moves up a layer: prefetch it before the turn needs it, cache it across the session, or tell the caller you will follow up rather than holding them on a silent line.
+
 ---
 
 ## 2. Promote-from-bash heuristic

@@ -12,7 +12,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from galactus.ml6.src.galactus.models import LayoutTemplate
+from galactus.models import LayoutTemplate
 
 TEMPLATE_DIR_NAME = "templates"
 
@@ -55,7 +55,9 @@ def load_template(
         ValueError: If the file exists but violates the template schema, or if
             its `template_id` field disagrees with the requested id.
     """
-    directory = Path(template_dir) if template_dir is not None else default_template_dir()
+    directory = (
+        Path(template_dir) if template_dir is not None else default_template_dir()
+    )
     template = load_template_file(directory / f"{template_id}.json")
     if template.template_id != template_id:
         raise ValueError(
@@ -77,5 +79,7 @@ def load_template_cached(template_id: str) -> LayoutTemplate:
 
 def available_templates(template_dir: str | Path | None = None) -> list[str]:
     """List loadable template ids in the directory."""
-    directory = Path(template_dir) if template_dir is not None else default_template_dir()
+    directory = (
+        Path(template_dir) if template_dir is not None else default_template_dir()
+    )
     return sorted(p.stem for p in directory.glob("*.json"))

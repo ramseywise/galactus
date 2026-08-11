@@ -17,7 +17,6 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-
 from galactus.api import app, get_llm, get_settings, get_store
 from galactus.config import Settings
 from galactus.layout.validator import validate
@@ -63,7 +62,9 @@ def store() -> Store:
 @pytest.fixture
 def settings() -> Settings:
     return Settings(
-        anthropic_api_key="sk-ant-test", model="claude-sonnet-5", max_repairs=3,
+        anthropic_api_key="sk-ant-test",
+        model="claude-sonnet-5",
+        max_repairs=3,
         log_level="INFO",
     )
 
@@ -93,7 +94,9 @@ def _upload(client: TestClient, company_id: str, pdf: Path, role: str) -> str:
     return response.json()["pdf_id"]
 
 
-def _walk(client: TestClient, prompt: str = "Announce the partnership.") -> dict[str, Any]:
+def _walk(
+    client: TestClient, prompt: str = "Announce the partnership."
+) -> dict[str, Any]:
     """Upload both PDFs, request collateral, and poll once."""
     _upload(client, "meridian", SENDER_PDF, "sender")
     _upload(client, "calder", RECEIVER_PDF, "receiver")

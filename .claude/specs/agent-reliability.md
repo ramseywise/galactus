@@ -121,6 +121,24 @@ Tools that are **not** idempotent and do not accept idempotency keys must not be
 
 **The key can address an environment, not just a record.** A sandbox created as `analysis-${researchId}` is fetched with get-or-create, so *"retried steps reattach to the existing sandbox"* rather than paying setup again — the idempotency-key pattern above applied to a resource rather than to a write. *(Source: `loop/loop-engineering.md`)*
 
+### Supersede — when a turn cannot be retried
+
+Everything above holds wherever a turn can be replayed, which is every request/response design. The key `run_id + step_id + tool_name` presumes exactly that: the same step, run again, addressed by the same name.
+
+Streaming breaks the presumption at the output. **Audio already played cannot be unplayed.** When a caller interrupts mid-sentence, or the endpointer cuts an utterance short, the half-delivered turn is not a failed attempt waiting on a retry — the caller *heard* part of it, and that hearing is now a fact about the conversation. Retrying would replay speech they have already listened to. The turn must instead be **superseded**: marked truncated at the point delivery actually stopped, and replaced by a new turn whose context includes what was heard.
+
+The criterion is one question: **did any effect escape before the failure?**
+
+| | Retry | Supersede |
+|---|---|---|
+| Effect escaped? | No — nothing observable happened | Yes — audio played, and the caller heard it |
+| Addressed by | Same idempotency key | New turn, referencing the truncated one |
+| Prior attempt | Discarded as if it never ran | Retained; it is conversational context |
+
+Note the boundary is *effect escape*, not *streaming*. A tool call inside a voice turn that fails before writing is an ordinary retry, keyed as above — the fact that it lives in a streaming session changes nothing. Only the audio leg supersedes.
+
+**The rest of this section transfers unchanged.** Backoff, jitter, circuit breakers, and the non-idempotent-tools rule at `:120` all apply identically in a streaming design; supersede is an addition to the taxonomy, not a replacement for it. What supersede requires beyond them is state: how much was generated, how much was actually heard, and where the interruption landed. See `agent-voice.md §4`.
+
 ---
 
 ## 4. Resumability
