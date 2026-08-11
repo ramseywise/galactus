@@ -1,0 +1,88 @@
+{
+ "n_rows": 800,
+ "n_features": 41,
+ "sampling": "class_weight",
+ "class_balance": {
+  "0": 0.9825,
+  "1": 0.0175
+ },
+ "split": {
+  "kind": "stratified",
+  "n_splits": 5
+ },
+ "skipped": {
+  "catboost": "only one of the parameters random_seed, random_state should be initialized."
+ },
+ "beats_baseline": false,
+ "models": [
+  {
+   "name": "logistic",
+   "is_baseline": true,
+   "pr_auc": 0.020027338458950522,
+   "roc_auc": 0.4910941475826972,
+   "prevalence": 0.0175,
+   "brier": 0.017247333345718364,
+   "fit_seconds": 2.8,
+   "calibration": {
+    "method": "sigmoid",
+    "brier_before": 0.06725142610408376,
+    "brier_after": 0.017247333345718364,
+    "ece_before": 0.08188656869991359,
+    "ece_after": 0.0013491382619847739
+   },
+   "threshold": null
+  },
+  {
+   "name": "random_forest",
+   "is_baseline": false,
+   "pr_auc": 0.01894273430661564,
+   "roc_auc": 0.5398491457651764,
+   "prevalence": 0.0175,
+   "brier": 0.017212204374099916,
+   "fit_seconds": 3.0,
+   "calibration": {
+    "method": "sigmoid",
+    "brier_before": 0.020028781249999995,
+    "brier_after": 0.017212204374099916,
+    "ece_before": 0.021893749999999997,
+    "ece_after": 0.0014816467921010962
+   },
+   "threshold": null
+  },
+  {
+   "name": "lightgbm",
+   "is_baseline": false,
+   "pr_auc": 0.017482159958876912,
+   "roc_auc": 0.4355688840421665,
+   "prevalence": 0.0175,
+   "brier": 0.01724839270727303,
+   "fit_seconds": 4.3,
+   "calibration": {
+    "method": "sigmoid",
+    "brier_before": 0.017594677369503743,
+    "brier_after": 0.01724839270727303,
+    "ece_before": 0.017067542366365217,
+    "ece_after": 0.0014960208465038573
+   },
+   "threshold": null
+  }
+ ],
+ "report": "pocs/ml/fraud/docs/report.html",
+ "headline_metric": "average_precision",
+ "prevalence_floor": 0.0175,
+ "refusal": {
+  "operating_point_reported": false,
+  "reason": "the thinnest test fold holds only 2 positive case(s), below the 10-positive floor (14 positives across the frame, 1.75% prevalence). A threshold chosen and scored over that few events is arithmetic, not evidence \u2014 no operating point is reported.",
+  "min_positives_in_fold": 2,
+  "n_positives": 14
+ },
+ "fairness_notes": [
+  "`age` is used raw as a numeric feature (18-74, median 46, 36 missing), reproducing the reference implementation. Age is a protected characteristic; this run records its use rather than endorsing it. Not derived, not binned, not dropped."
+ ],
+ "verdict": {
+  "baseline": "logistic",
+  "best": "logistic",
+  "baseline_pr_auc": 0.020027338458950522,
+  "best_pr_auc": 0.020027338458950522
+ }
+}
