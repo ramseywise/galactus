@@ -22,7 +22,7 @@
    "roc_auc": 0.4910941475826972,
    "prevalence": 0.0175,
    "brier": 0.017247333345718364,
-   "fit_seconds": 2.8,
+   "fit_seconds": 3.0,
    "calibration": {
     "method": "sigmoid",
     "brier_before": 0.06725142610408376,
@@ -39,7 +39,7 @@
    "roc_auc": 0.5398491457651764,
    "prevalence": 0.0175,
    "brier": 0.017212204374099916,
-   "fit_seconds": 3.0,
+   "fit_seconds": 3.3,
    "calibration": {
     "method": "sigmoid",
     "brier_before": 0.020028781249999995,
@@ -56,7 +56,7 @@
    "roc_auc": 0.4355688840421665,
    "prevalence": 0.0175,
    "brier": 0.01724839270727303,
-   "fit_seconds": 4.3,
+   "fit_seconds": 4.5,
    "calibration": {
     "method": "sigmoid",
     "brier_before": 0.017594677369503743,

@@ -59,7 +59,6 @@ if _ml_root:
 try:
     import pandas as pd
     from ml.evaluation.splitting import make_splitter
-    from ml.reporting.html import write_report
     from ml.workflows.classification import run_classification
 except ImportError as exc:  # pragma: no cover - environment guard
     raise SystemExit(
@@ -71,6 +70,7 @@ except ImportError as exc:  # pragma: no cover - environment guard
         "pandas, scikit-learn, catboost and lightgbm installed."
     ) from exc
 
+from report import write_fraud_report  # noqa: E402
 from sufficiency import MIN_POSITIVES_PER_FOLD, assess_sufficiency  # noqa: E402
 
 logger = logging.getLogger("ml_fraud.run")
@@ -279,8 +279,8 @@ def main() -> int:
     # transformer outside its pipeline, every CV score above is inflated.
     result.assert_no_transform_outside_pipeline()
 
-    out = write_report(result, args.report, title="ml/fraud proving run — lebanese-blonde sample")
-    summary = summarise(result, verdict, out=out)
+    summary = summarise(result, verdict, out=args.report)
+    write_fraud_report(result, summary, args.report, title="ml/fraud proving run — lebanese-blonde sample")
 
     if args.summary_json:
         args.summary_json.write_text(json.dumps(summary, indent=1, default=str), encoding="utf-8")
