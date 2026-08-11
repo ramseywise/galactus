@@ -15,7 +15,7 @@
   {"query": "which unstated assumptions is this estimate resting on?", "should_trigger": false, "note": "assumption-audit's remit — named guesses, not uncertainty handling"},
   {"query": "/akira scan the files I changed and rank the defects", "should_trigger": false, "note": "akira scan — concrete code defects in a diff, not design-level uncertainty"},
   {"query": "this function returns None on error, fix it to raise instead", "should_trigger": false, "note": "a specific code fix; fog is report-only and never edits"},
-  {"query": "/workflow-review my-feature — does it match the plan? merge verdict please", "should_trigger": false, "note": "plan fidelity + merge verdict; fog never decides ship/no-ship and never advances Status:"},
+  {"query": "/proto-review my-feature — does it match the plan? merge verdict please", "should_trigger": false, "note": "plan fidelity + merge verdict; fog never decides ship/no-ship and never advances Status:"},
   {"query": "run /sanyi audit and flag cross-layer violations", "should_trigger": false, "note": "contract enforcement, different tool"},
   {"query": "what's our p99 latency on the search endpoint right now?", "should_trigger": false, "note": "asking for an observed metric — a monitoring/data question, not an interrogation of a design"},
   {"query": "write the retry logic for the SendGrid client with exponential backoff", "should_trigger": false, "note": "implementation work; fog is read-only analysis"},

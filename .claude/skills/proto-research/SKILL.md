@@ -1,5 +1,5 @@
 ---
-name: workflow-research
+name: proto-research
 description: "Phase 1. Review, iterate, and deepen research artifacts. Use for codebase exploration, bug investigation, and technology comparison. Writes the ## Research section of .claude/docs/plans/YYYY-MM-DD-<slug>.md. Target-repo aware: pass repo:<name> to run against another workspace repo. Pass 'fan-out' for parallel multi-agent breadth-first investigation. Aliases: /research, /reserach."
 disable-model-invocation: true
 allowed-tools: Read Bash Grep Glob WebSearch Write
@@ -96,7 +96,7 @@ Do not plan. Do not implement.
 before switching. The `## Research` section is now the record — the sources you read to
 produce it are not needed downstream.
 
-**Next step**: `/workflow-plan <name>` when research is reviewed and approved.
+**Next step**: `/proto-plan <name>` when research is reviewed and approved.
 
 If this research defines a new initiative (blank-page problem framing, new product or feature area), consider `/design-sprint` for structured HMW/workstream problem framing, or `/design-initiative` for milestone + task backlog breakdown of a named initiative.
 
@@ -152,14 +152,14 @@ When research is reviewed and approved:
 ```
 ──────────────────────────────────────
 ✅ Research complete.
-👉 Next: /workflow-plan <slug>
+👉 Next: /proto-plan <slug>
 🧠 Model: opus
 
 Spawn prompt:
 ┌─────────────────────────────────────
 │ cd <repo-path>
 │ Read <plan-doc-path>
-│ /workflow-plan <slug>
+│ /proto-plan <slug>
 └─────────────────────────────────────
 ──────────────────────────────────────
 ```

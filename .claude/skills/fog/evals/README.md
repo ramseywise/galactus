@@ -12,7 +12,7 @@ sits between three neighbours it must not steal work from —
 | `/war-game` | attacks a plan's **execution** (premortem, adversary, competing pressure) |
 | `/assumption-audit` | finds the **load-bearing guesses**, not the uncertainty-handling surface |
 | `/akira scan` | concrete **code defects in a diff**, not design-level not-knowing |
-| `/workflow-review` | plan fidelity + **merge verdict**; fog never decides ship/no-ship |
+| `/proto-review` | plan fidelity + **merge verdict**; fog never decides ship/no-ship |
 
 Plus the two shapes that look analytical but aren't: asking for an **observed metric**
 ("what's our p99 right now") and asking for a **summary** of a spec. fog interrogates a

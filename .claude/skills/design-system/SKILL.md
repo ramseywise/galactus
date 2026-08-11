@@ -1,6 +1,6 @@
 ---
 name: design-system
-description: "Translate a product requirement into an agent system spec, then stress it before any code exists. Grounds the requirement (consumer, correctness, cost of wrong, and scale), walks the five layers — prompt, context, harness, loop, graph — forcing an explicit answer or named deferral at each, simulates the design against adversarial scenarios, and closes with success metrics. Output is a spec that feeds /workflow-research. Triggers: 'design an agent for X', 'spec out X before we build', 'system design for X', 'dry run this design', 'what should this system look like', '/design-system'."
+description: "Translate a product requirement into an agent system spec, then stress it before any code exists. Grounds the requirement (consumer, correctness, cost of wrong, and scale), walks the five layers — prompt, context, harness, loop, graph — forcing an explicit answer or named deferral at each, simulates the design against adversarial scenarios, and closes with success metrics. Output is a spec that feeds /proto-research. Triggers: 'design an agent for X', 'spec out X before we build', 'system design for X', 'dry run this design', 'what should this system look like', '/design-system'."
 job: design
 disable-model-invocation: true
 allowed-tools: Read Grep Glob Write
@@ -383,5 +383,5 @@ Only what genuinely needs a human decision. "None" is a valid answer — do not
 manufacture questions to fill the section.
 ```
 
-Hand off with: `/workflow-research` to investigate the open questions, or
-`/workflow-plan` directly if there are none.
+Hand off with: `/proto-research` to investigate the open questions, or
+`/proto-plan` directly if there are none.

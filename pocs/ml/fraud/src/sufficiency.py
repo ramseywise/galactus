@@ -85,7 +85,10 @@ def assess_sufficiency(
     n_positives = int(np.sum(y_arr == 1))
     prevalence = float(n_positives / n_rows) if n_rows else 0.0
 
-    fold_counts = [int(np.sum(y_arr[test_idx] == 1)) for _, test_idx in split_plan.split(np.zeros((n_rows, 1)), y_arr)]
+    fold_counts = [
+        int(np.sum(y_arr[test_idx] == 1))
+        for _, test_idx in split_plan.split(np.zeros((n_rows, 1)), y_arr)
+    ]
     min_positives_in_fold = min(fold_counts) if fold_counts else 0
 
     sufficient = min_positives_in_fold >= min_per_fold

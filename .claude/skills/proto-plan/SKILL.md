@@ -1,5 +1,5 @@
 ---
-name: workflow-plan
+name: proto-plan
 description: "Phase 2. Review, iterate, and refine implementation plans. Reads the ## Research section of the active doc in .claude/docs/plans/ and appends the ## Plan section to it. Target-repo aware: pass repo:<name> to run against another workspace repo."
 disable-model-invocation: true
 allowed-tools: Read Grep Glob Bash Write
@@ -120,7 +120,7 @@ If execute-ready: call `/compact "phase: plan → execute"` before implementing.
 doc is the bus — everything execute needs is in it, so the context that produced it is
 disposable.
 
-**Next step**: `/workflow-refine` — the readiness gate. It applies the PM / designer / EM
+**Next step**: `/proto-refine` — the readiness gate. It applies the PM / designer / EM
 lenses and the Definition of Ready, and is the only skill that can advance `Status:` to
 `READY`. This review is self-assessment; refine is not, which is why it is a separate
 session rather than another section here.
@@ -140,13 +140,13 @@ When the plan is execute-ready (review verdict passes):
 ```
 ──────────────────────────────────────
 Plan complete.
-Next: /workflow-refine <slug>
+Next: /proto-refine <slug>
 
 Spawn prompt (refine — fresh session):
 ┌─────────────────────────────────────
 │ cd <repo-path>
 │ Read <plan-doc-path>
-│ /workflow-refine <slug>
+│ /proto-refine <slug>
 └─────────────────────────────────────
 ──────────────────────────────────────
 ```
