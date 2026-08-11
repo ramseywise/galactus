@@ -205,7 +205,7 @@ because it is ambitious but because nothing can ever evaluate to done.
 
 ### The worked example
 
-The ml6 case study is a loop with all five present:
+The ai-marketing-comms case study is a loop with all five present:
 
 ```
 draft ──▶ validate ──┐
@@ -229,7 +229,7 @@ protocol event marks the end of a turn — it is inferred from the stream, which
 end a judgement rather than a signal, and the five components above do not describe the
 shape. `.claude/skills/design-system/SKILL.md` §4b names the variant;
 `.claude/specs/agent-voice.md` is the depth. The test is whether you can point at the
-event that ends a turn. Nothing in this repo is duplex — ml6 is request/response — so the
+event that ends a turn. Nothing in this repo is duplex — ai-marketing-comms is request/response — so the
 variant is documented here, not demonstrated.
 
 ### Four capability levels
@@ -392,7 +392,7 @@ Other findings the consolidation surfaced, all now fixed:
 
 ### What is deliberately not here
 
-- **`ml6/` is preserved as delivered.** Its imports do not resolve against the current
+- **`ai-marketing-comms/` is preserved as delivered.** Its imports do not resolve against the current
   layout. Fixing it was out of scope; it is here to be read.
 - **No level-4 loop.** It needs an eval set that does not exist yet.
 - **No CI.** The hooks run locally; nothing enforces them on a server.

@@ -1,9 +1,9 @@
-# enam — data profile and leakage findings
+# ml-lending — data profile and leakage findings
 
 Status: PROFILED — no modelling decisions taken beyond the baseline config below.
 Date: 2026-08-11
 Plan: [`2026-08-10-ml-capability-parity.md`](../../.claude/docs/plans/2026-08-10-ml-capability-parity.md) Phase D, Step 14
-Framing: [`enam/README.md`](../README.md)
+Framing: [`ml-lending/README.md`](../README.md)
 
 ---
 
@@ -12,25 +12,25 @@ Framing: [`enam/README.md`](../README.md)
 This is the output of running `/ml-transform` profiling and leakage analysis against a
 real frame, before any modelling. It records what the data says.
 
-**It is not about ENAM's client.** The frame profiled here is a public US peer-lending
+**It is not about the client.** The frame profiled here is a public US peer-lending
 dataset standing in for collections data that has not arrived. Every number below is a
 property of *that* dataset. Nothing here promotes an **Assumed** label in
-[`enam/README.md`](../README.md) to **Given** — a Lending Club extract cannot confirm
+[`ml-lending/README.md`](../README.md) to **Given** — a Lending Club extract cannot confirm
 anything about a client's business, and the six domain unknowns are untouched by it.
 
 The proxy exercises the *toolkit*. It does not answer the *domain*.
 
 ### Label convention
 
-[`enam/README.md`](../README.md) labels domain statements **Given** (client-stated) or
+[`ml-lending/README.md`](../README.md) labels domain statements **Given** (client-stated) or
 **Assumed** (our inference). This document needs a third, because the proxy introduces
 facts that are neither:
 
 | Label | Meaning |
 |---|---|
 | **Given** | Stated by the client. **Nothing in this document carries this label.** |
-| **Assumed** | Our inference about the ENAM domain, pending confirmation. |
-| **Observed** | Measured in the proxy frame. True of Lending Club, says nothing about ENAM. |
+| **Assumed** | Our inference about the client domain, pending confirmation. |
+| **Observed** | Measured in the proxy frame. True of Lending Club, says nothing about the client. |
 | **Planted** | Introduced by us to exercise a code path. Fabricated, and marked as such. |
 
 ---
@@ -38,7 +38,7 @@ facts that are neither:
 ## The frame
 
 **Observed.** Source: [`codesignal/lending-club-loan-accepted`](https://huggingface.co/datasets/codesignal/lending-club-loan-accepted)
-on HuggingFace, CC0-1.0. Local path `enam/data/lending_club_2015Q4.csv` — **gitignored,
+on HuggingFace, CC0-1.0. Local path `ml-lending/data/lending_club_2015Q4.csv` — **gitignored,
 never committed**.
 
 | Property | Value |
@@ -94,10 +94,10 @@ Two consequences, both stated rather than assumed:
   also a mild survivorship filter — the excluded set is not a random sample of the
   portfolio. Recorded here so it is visible rather than buried in a `dropna`.
 - **This is an origination-time default label, not a collections-propensity label.** The
-  ENAM target as framed ([`README.md`](../README.md)) is *"at collection intake, will this
+  client target as framed ([`README.md`](../README.md)) is *"at collection intake, will this
   account pay?"* — a population where everyone has already defaulted. The proxy's
   population is all borrowers. **The shapes are analogous, not the same**, and no
-  threshold or feature finding here transfers to ENAM without re-derivation.
+  threshold or feature finding here transfers to the client without re-derivation.
 
 ### Balance
 
@@ -105,7 +105,7 @@ Minority share **20.56%** sits just above the skill's 20% line, so the recommend
 `class_weight` rather than SMOTE — the cheapest option, no synthetic rows, no fold-order
 hazard. It is close enough to the boundary to be worth re-checking on real data.
 
-**Assumed, unchanged:** ENAM's own balance is unknown and expected to be worse. A
+**Assumed, unchanged:** the client's own balance is unknown and expected to be worse. A
 collections population is a defaulted population; the minority class there may be the
 *payers*, inverting the polarity of this finding.
 
@@ -308,7 +308,7 @@ Against the six unknowns in [`README.md`](../README.md#open-questions--resolve-b
 
 | # | Unknown | Status |
 |---|---|---|
-| 1 | Label definition and horizon | **Not settled for ENAM.** The proxy has its own label (charge-off vs fully-paid, loan-lifetime horizon, no 30/60/90 choice available). ENAM's horizon remains open. |
+| 1 | Label definition and horizon | **Not settled for the client.** The proxy has its own label (charge-off vs fully-paid, loan-lifetime horizon, no 30/60/90 choice available). The client's horizon remains open. |
 | 2 | The decision the score feeds | **Not settled — client question.** No dataset can answer it. |
 | 3 | Cost asymmetry | **Not settled — client question.** Step 15 *stipulates* a cost matrix to make `choose_threshold` runnable; stipulated, not discovered. |
 | 4 | Propensity vs uplift | **Not settled, and the proxy cannot settle it.** Lending Club has no collection-action log, so the "we chased them, they paid" confound is absent by construction. This is the unknown the proxy is *least* able to speak to. |
@@ -327,9 +327,9 @@ Each names what would close it, so silence reads as deliberate.
 
 | # | Item | Trigger to resolve |
 |---|---|---|
-| 1 | **Temporal leakage unexercised.** Two months of `issue_d` (Nov 2015: 2,302 rows; Dec 2015: 37,468) gives `TimeSeriesSplit` nothing meaningful to split on. No cohort effects, no regime change, no seasonality. | Real ENAM data with cohort dates, **or** the full 2.26M-row LC extract (needs a Kaggle account). |
-| 2 | **Group leakage effectively unexercised.** 1.03% of rows in multi-row groups, max group size 3. The code path runs; the invariant is not stressed. | Real ENAM data with genuine debtor IDs across accounts. |
-| 3 | **Uplift vs propensity untestable on the proxy.** No treatment log exists in Lending Club. | ENAM data containing collection-action history — the moment it arrives, this becomes the highest-priority question. |
+| 1 | **Temporal leakage unexercised.** Two months of `issue_d` (Nov 2015: 2,302 rows; Dec 2015: 37,468) gives `TimeSeriesSplit` nothing meaningful to split on. No cohort effects, no regime change, no seasonality. | Real client data with cohort dates, **or** the full 2.26M-row LC extract (needs a Kaggle account). |
+| 2 | **Group leakage effectively unexercised.** 1.03% of rows in multi-row groups, max group size 3. The code path runs; the invariant is not stressed. | Real client data with genuine debtor IDs across accounts. |
+| 3 | **Uplift vs propensity untestable on the proxy.** No treatment log exists in Lending Club. | Client data containing collection-action history — the moment it arrives, this becomes the highest-priority question. |
 | 4 | **Fairness position not taken.** `addr_state` and `zip_code` are retained as features and are textbook protected-characteristic proxies. [`README.md`](../README.md) requires *"an explicit position, not silence"* — this document records the exposure but does not resolve it. | Operator decision, before any model informs a real decision. Not deferrable to deployment. |
 | 5 | **Cost matrix is stipulated.** Step 15's threshold uses invented costs. Every threshold number downstream inherits that. | Client cost inputs (unknown #3). |
 | 6 | **`funded_amnt_inv` exclusion is a judgement call.** Origination-time, but investor-fill correlated. | Re-include and measure if the honest baseline underperforms; the delta is the answer. |
@@ -364,7 +364,7 @@ that guard for a structure the data does not have. Recorded as open item 1 inste
 
 ## Step 15 result
 
-Run: [`enam/ml/run.py`](../ml/run.py). 39,770 rows, **88 features**, 5-fold
+Run: [`ml-lending/ml/run.py`](../ml/run.py). 39,770 rows, **88 features**, 5-fold
 `StratifiedGroupKFold`, `class_weight`, isotonic calibration. No models skipped.
 
 | Model | PR-AUC | ROC-AUC | Brier before → after |

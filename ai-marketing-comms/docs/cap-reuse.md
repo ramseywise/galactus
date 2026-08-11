@@ -2,7 +2,7 @@
 
 Date: 2026-08-08
 Source: `/Users/wiseer/.claude/skills/new-agent/references/`
-Scope: Step 2 of `job-system/.claude/docs/plans/2026-08-08-ml6-genai-prototyping-loop.md`
+Scope: Step 2 of `job-system/.claude/docs/plans/2026-08-08-genai-prototyping-loop.md`
 
 These specs inform the **solution** (guardrails, vision ingest, observability), not the
 prototyping workflow. Four of the 18 `cap-*.md` files have a plausible claim on a

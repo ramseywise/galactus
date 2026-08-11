@@ -282,7 +282,7 @@ The one ungrounded case is `no-facts-at-all`: a brief with no source material
 at all, which exhausts the repair budget and lands in fallback. It is in the
 suite because that is the case a demo would quietly omit.
 
-**These numbers come from scripted fixtures, not from ML6's real PDFs.** The
+**These numbers come from scripted fixtures, not from the client's real PDFs.** The
 scripted provider replays fixed responses, so the pass rate measures the
 *harness*, not a live model. Treat them as a working instrument, not a
 benchmark.
@@ -366,7 +366,7 @@ because they are hedges.
    kind is one new enum arm and one check function — but the constraint values
    in the template would all be wrong, and the repair hints would need to speak
    in rendered width rather than words.
-2. **Fixtures are synthesized, not ML6's real PDFs.** The ingest gate at 200
+2. **Fixtures are synthesized, not the client's real PDFs.** The ingest gate at 200
    characters per page is tuned against invented documents. Real collateral
    would move that number. The same caveat applies harder to tables: the
    fixtures' grids are ruled and regular, which is the case `find_tables`

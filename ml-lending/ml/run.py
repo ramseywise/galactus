@@ -1,7 +1,7 @@
-"""ENAM proving run — logistic baseline → registry candidates → calibration → threshold.
+"""ml-lending proving run — logistic baseline → registry candidates → calibration → threshold.
 
 Plan: `.claude/docs/plans/2026-08-10-ml-capability-parity.md` Phase D, Step 15.
-Profile and leakage evidence: `enam/docs/DESIGN.md`.
+Profile and leakage evidence: `ml-lending/docs/DESIGN.md`.
 
 This script is the *harness*, not the modelling. Every decision it makes was taken in
 Step 14 and is recorded in DESIGN.md; the constants below are that document expressed as
@@ -11,14 +11,14 @@ default is an undocumented decision, and the point of the profiling step was to 
 WHAT THIS RUN IS
     A test of the Phase A–C toolkit against a real frame with organic leakage. The data
     is a public US peer-lending extract standing in for collections data that has not
-    arrived. **No number this produces is a statement about ENAM's client.** See the
+    arrived. **No number this produces is a statement about the client.** See the
     "What this document is, and what it is not" section of DESIGN.md.
 
 DATA HANDLING
-    `enam/data/` is gitignored and never read into anything that gets committed. This
+    `ml-lending/data/` is gitignored and never read into anything that gets committed. This
     script prints aggregates only — metrics, counts, column names. It never prints a row,
     a row index, or an identifier value. The generated HTML report is written to
-    `enam/docs/report.html`, which is gitignored for the same reason: it embeds
+    `ml-lending/docs/report.html`, which is gitignored for the same reason: it embeds
     distributional detail derived from real records.
 
 RUNNING IT
@@ -26,7 +26,7 @@ RUNNING IT
     deliberately declares no ML dependencies — it is not a distributable package. So this
     script is run against an external interpreter that has `ml` importable:
 
-        ML_PACKAGE_ROOT=/path/containing/ml python enam/ml/run.py
+        ML_PACKAGE_ROOT=/path/containing/ml python ml-lending/ml/run.py
 
     `ML_PACKAGE_ROOT` is prepended to `sys.path`. Without it the import fails with a
     message saying so, rather than a bare ImportError.
@@ -42,8 +42,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DATA = REPO_ROOT / "enam" / "data" / "lending_club_2015Q4.csv"
-DEFAULT_REPORT = REPO_ROOT / "enam" / "docs" / "report.html"
+DEFAULT_DATA = REPO_ROOT / "ml-lending" / "data" / "lending_club_2015Q4.csv"
+DEFAULT_REPORT = REPO_ROOT / "ml-lending" / "docs" / "report.html"
 
 # --- toolkit import ---------------------------------------------------------------
 # Done before the `ml.*` imports so the failure is a sentence, not a stack trace.
@@ -67,7 +67,7 @@ except ImportError as exc:  # pragma: no cover - environment guard
     ) from exc
 
 
-logger = logging.getLogger("enam.run")
+logger = logging.getLogger("ml_lending.run")
 
 SEED = 42
 TARGET = "charged_off"
@@ -154,7 +154,7 @@ LABEL_SOURCE_COLUMNS = ["loan_status"]
 GROUP_SOURCE_COLUMNS = ["emp_title", "zip_code"]
 
 # --- cost matrix ------------------------------------------------------------------
-# STIPULATED, NOT DISCOVERED. Unknown #3 in enam/README.md is unanswered, and no public
+# STIPULATED, NOT DISCOVERED. Unknown #3 in ml-lending/README.md is unanswered, and no public
 # dataset can answer it. These numbers exist so `choose_threshold` has something to
 # minimise and the code path is exercised end to end.
 #
@@ -177,8 +177,8 @@ def build_frame(csv_path: Path) -> pd.DataFrame:
     if not csv_path.exists():
         raise SystemExit(
             f"no data at {csv_path}.\n"
-            "enam/data/ is gitignored and holds real records; it is not part of the "
-            "repository. See enam/docs/DESIGN.md for the source and licence."
+            "ml-lending/data/ is gitignored and holds real records; it is not part of the "
+            "repository. See ml-lending/docs/DESIGN.md for the source and licence."
         )
 
     df = pd.read_csv(csv_path, low_memory=False)
@@ -422,7 +422,7 @@ def main() -> int:
     # transformer outside its pipeline, every CV score above is inflated.
     result.assert_no_transform_outside_pipeline()
 
-    out = write_report(result, args.report, title="ENAM proving run — Lending Club proxy")
+    out = write_report(result, args.report, title="ml-lending proving run — Lending Club proxy")
     summary = summarise(result, out=out)
 
     if args.summary_json:
