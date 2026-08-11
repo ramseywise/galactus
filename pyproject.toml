@@ -32,6 +32,19 @@ dev = [
 [tool.uv]
 package = false
 
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# .claude/ ships vendored skills and specs (see CLAUDE.md "Vendoring exception") —
+# rendered payload whose canon lives upstream, not code this project lints.
+extend-exclude = [".claude"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "BLE"]
+# E501: ruff-format owns line length; RUF001-003: typographic unicode in prose;
+# N803/N806: ML naming conventions (X, y, X_train)
+ignore = ["E501", "RUF001", "RUF002", "RUF003", "N803", "N806"]
+
 [tool.pytest.ini_options]
 testpaths = ["ml6/tests", "review/tests"]
 asyncio_mode = "auto"

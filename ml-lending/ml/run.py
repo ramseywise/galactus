@@ -282,9 +282,7 @@ def build_split_plan(df: pd.DataFrame, n_splits: int) -> SplitPlan:
     is the toolkit's own assertion, used as intended: a silently-degraded grouped split
     is invisible in the metrics, which is precisely the failure this run exists to catch.
     """
-    base = make_splitter(
-        n_splits=n_splits, group_col=GROUP_COL, stratify=True, random_state=SEED
-    )
+    base = make_splitter(n_splits=n_splits, group_col=GROUP_COL, stratify=True, random_state=SEED)
     groups = df[GROUP_COL].to_numpy()
     y = df[TARGET].to_numpy()
     features = df.drop(columns=[GROUP_COL, TARGET])
