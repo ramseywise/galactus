@@ -32,9 +32,7 @@ HIT = {
 }
 
 
-def finding(
-    reporter: Reporter, prefix: str, impact: MergeImpact, n: int = 1
-) -> ReviewFinding:
+def finding(reporter: Reporter, prefix: str, impact: MergeImpact, n: int = 1) -> ReviewFinding:
     return ReviewFinding(
         id=f"{prefix}-{n:03d}",
         reporter=reporter,
@@ -49,9 +47,7 @@ def finding(
 
 
 def completed(reporter: Reporter, count: int) -> ReporterDispatchEntry:
-    return ReporterDispatchEntry(
-        reporter=reporter, status="completed", finding_count=count
-    )
+    return ReporterDispatchEntry(reporter=reporter, status="completed", finding_count=count)
 
 
 NIT = MergeImpact.NIT
@@ -75,9 +71,7 @@ def test_rung0_scoped_poison_one_empty_with_hit():
     reporters = list(Reporter)
     dispatch = [completed(reporters[0], 0)] + [completed(r, 1) for r in reporters[1:7]]
     findings = [finding(Reporter.CORRECTNESS, "CR", NIT, i) for i in range(1, 7)]
-    assert (
-        compute_verdict(findings, dispatch, [HIT]) == MergeDecision.INSUFFICIENT_CONTEXT
-    )
+    assert compute_verdict(findings, dispatch, [HIT]) == MergeDecision.INSUFFICIENT_CONTEXT
 
 
 def test_rung0_clean_diff_all_empty_no_hit_approves():
@@ -128,10 +122,7 @@ def test_rung1_two_validation_failures():
 
 def test_one_validation_failure_does_not_trip_rung1():
     dispatch = [completed(Reporter.CORRECTNESS, 1)]
-    assert (
-        compute_verdict([], dispatch, [], validation_failures=1)
-        == MergeDecision.APPROVE
-    )
+    assert compute_verdict([], dispatch, [], validation_failures=1) == MergeDecision.APPROVE
 
 
 def test_rung2_blocker():
@@ -168,9 +159,7 @@ def test_rung0_beats_rung2():
     be trusted to be complete."""
     dispatch = [completed(Reporter.CORRECTNESS, 1), completed(Reporter.SAFETY, 0)]
     findings = [finding(Reporter.CORRECTNESS, "CR", MergeImpact.BLOCKER)]
-    assert (
-        compute_verdict(findings, dispatch, [HIT]) == MergeDecision.INSUFFICIENT_CONTEXT
-    )
+    assert compute_verdict(findings, dispatch, [HIT]) == MergeDecision.INSUFFICIENT_CONTEXT
 
 
 @pytest.mark.parametrize("seed", [0, 1, 2, 3, 4])
@@ -183,6 +172,4 @@ def test_determinism_under_shuffle(seed: int):
     ]
     shuffled = list(findings)
     random.Random(seed).shuffle(shuffled)
-    assert compute_verdict(shuffled, dispatch, []) == compute_verdict(
-        findings, dispatch, []
-    )
+    assert compute_verdict(shuffled, dispatch, []) == compute_verdict(findings, dispatch, [])

@@ -1,6 +1,6 @@
 # galactus
 
-Contract-bounded LLM generation. `ml6/` holds the reference implementation: a FastAPI
+Contract-bounded LLM generation. `ai-marketing-comms/` holds the reference implementation: a FastAPI
 service that generates length-constrained marketing copy grounded in uploaded PDFs.
 
 **Thesis:** counting characters is a job for code; the model's job is content.
@@ -8,12 +8,12 @@ service that generates length-constrained marketing copy grounded in uploaded PD
 ## Stack
 
 Python 3.12, `uv` (never `pip` — a hook blocks it), FastAPI, Pydantic v2, Anthropic SDK,
-structlog. Tests live at `ml6/tests/`, evals at `ml6/evals/`.
+structlog. Tests live at `ai-marketing-comms/tests/`, evals at `ai-marketing-comms/evals/`.
 
 ```bash
 uv sync                              # install
-uv run pytest ml6/tests -q           # tests
-uv run python ml6/evals/run.py --dry-run   # evals, no API spend
+uv run pytest ai-marketing-comms/tests -q           # tests
+uv run python ai-marketing-comms/evals/run.py --dry-run   # evals, no API spend
 ```
 
 ## Specs
@@ -56,7 +56,7 @@ Design → build → review, with the plan doc as the bus between phases:
 - **`uv add`, never `pip install`.** Enforced by `pip_guard.sh`.
 - **Never commit on `main`.** Work happens on `{PREFIX}-{NUM}-{slug}`, `bug/{slug}`, or
   `spike/{slug}`.
-- **Leave `ml6/` alone** unless the task is explicitly about it. It is the case study,
+- **Leave `ai-marketing-comms/` alone** unless the task is explicitly about it. It is the case study,
   not scratch space.
 - **A rule you rely on belongs in a hook, not here.** This file is a table of contents.
   If an agent can ignore a line here with no consequence, that line is documentation —

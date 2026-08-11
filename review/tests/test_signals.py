@@ -14,7 +14,7 @@ from review.signals import active_dimensions, detect_injection, detect_signals
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
-AGENT_FILE = "ml6/src/galactus/llm/anthropic_adapter.py"
+AGENT_FILE = "ai-marketing-comms/src/galactus/llm/anthropic_adapter.py"
 LEAKY_FIXTURE = "review/tests/fixtures/leaky_pipeline.py"
 CLEAN_FIXTURE = "review/tests/fixtures/clean_pipeline.py"
 
@@ -106,7 +106,7 @@ def test_agent_code_alone_does_not_activate_leakage():
 def test_ml_path_without_ml_content_does_not_activate():
     """A path match alone is not enough. `ml/` holds READMEs and configs; a
     non-Python file under a matching directory has no fit path to review."""
-    signals = detect_signals(["ml6/README.md", "models/schema.sql"], repo_root=".")
+    signals = detect_signals(["ai-marketing-comms/README.md", "models/schema.sql"], repo_root=".")
     assert signals["is_ml_code"] is False
 
 

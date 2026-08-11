@@ -6,7 +6,7 @@
   "location": {
     "files": [
       {
-        "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+        "path": "ai-marketing-comms/src/galactus/llm/anthropic_adapter.py",
         "start_line": 62,
         "end_line": 62
       }
@@ -23,7 +23,7 @@
     "source_native": "notice",
     "merge_impact": "nit"
   },
-  "basis": ["read ml6/src/galactus/llm/anthropic_adapter.py"],
+  "basis": ["read ai-marketing-comms/src/galactus/llm/anthropic_adapter.py"],
   "comment_type": "nit",
   "quoted_span": "import anthropic",
   "pre_existing": true

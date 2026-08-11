@@ -7,6 +7,7 @@ negative (output that genuinely violates the invariant must fail).
 
 Run: python3 scripts/test_grade.py
 """
+
 import importlib.util
 import sys
 import tempfile
@@ -155,7 +156,7 @@ N1_FULL_VIOLATION = N1_FULL_SCHEMA.replace(
     "    §2.4 correctly types uncertainty as `Ok(text) | Unavailable(reason)`. The two\n"
     "    ranking steps upstream of it do not, so the one place the pattern is applied is\n"
     "    the place it was least needed.",
-    "    §2.4 returns \"summary unavailable\" as prose, so a failed call is\n"
+    '    §2.4 returns "summary unavailable" as prose, so a failed call is\n'
     "    indistinguishable from a genuinely missing abstract.",
 )
 check(
@@ -245,22 +246,42 @@ with tempfile.TemporaryDirectory() as td:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_bytes(src.read_bytes())
     (ws / "output.md").write_text("report")
-    check("pristine workspace + output.md passes", planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0], True)
+    check(
+        "pristine workspace + output.md passes",
+        planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0],
+        True,
+    )
 
     (ws / "notes.txt").write_text("stray")
-    check("stray created file FAILS", planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0], False)
+    check(
+        "stray created file FAILS",
+        planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0],
+        False,
+    )
     (ws / "notes.txt").unlink()
 
     target = ws / "SPEC.md"
     original = target.read_bytes()
     target.write_bytes(original + b"\nedited by the run\n")
-    check("modified fixture FAILS", planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0], False)
+    check(
+        "modified fixture FAILS",
+        planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0],
+        False,
+    )
     target.write_bytes(original)
 
     target.unlink()
-    check("deleted fixture FAILS", planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0], False)
+    check(
+        "deleted fixture FAILS",
+        planted(BLOCK_SCALAR, workspace=str(ws), allow={"output.md"})["S5"][0],
+        False,
+    )
 
-check("missing workspace dir FAILS", planted(BLOCK_SCALAR, workspace="/nonexistent/xyz")["S5"][0], False)
+check(
+    "missing workspace dir FAILS",
+    planted(BLOCK_SCALAR, workspace="/nonexistent/xyz")["S5"][0],
+    False,
+)
 
 print()
 if FAILURES:

@@ -6,7 +6,7 @@
   "location": {
     "files": [
       {
-        "path": "ml6/src/galactus/llm/anthropic_adapter.py",
+        "path": "ai-marketing-comms/src/galactus/llm/anthropic_adapter.py",
         "start_line": 62,
         "end_line": 62
       }

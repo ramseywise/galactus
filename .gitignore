@@ -31,8 +31,11 @@ build/
 
 # Case-study data — personal financial information about identifiable people.
 # Never commit. Synthetic fixtures only in tests and docs.
-enam/data/
-!enam/data/.gitkeep
+ml-lending/data/
+!ml-lending/data/.gitkeep
+# Generated reports embed distributional detail derived from those records — class
+# balances, reliability bins, threshold sweeps. Derived from real data is still real data.
+ml-lending/docs/report.html
 *.csv
 *.parquet
 *.xlsx

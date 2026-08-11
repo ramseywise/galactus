@@ -1,6 +1,6 @@
 """One accept, one reject per mechanism, and the reject reasons are tagged.
 
-Fixtures are anchored on `ml6/src/galactus/llm/anthropic_adapter.py:62`, which
+Fixtures are anchored on `ai-marketing-comms/src/galactus/llm/anthropic_adapter.py:62`, which
 really does read `import anthropic` — the `quoted_span` check is only meaningful
 against real source.
 """
@@ -23,9 +23,7 @@ def load(name: str) -> dict:
 
 
 def test_valid_finding_accepted():
-    ok, reason, message = validate_finding(
-        load("finding_valid"), repo_root=str(REPO_ROOT)
-    )
+    ok, reason, message = validate_finding(load("finding_valid"), repo_root=str(REPO_ROOT))
     assert ok, message
     assert reason == ""
 

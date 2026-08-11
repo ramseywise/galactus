@@ -1,0 +1,39 @@
+# .claude/ ships vendored skills and specs (see CLAUDE.md "Vendoring exception") —
+# rendered payload whose canon is ~/.claude/, not code this project lints.
+exclude: ^\.claude/
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ["--maxkb=10000"]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-ast
+      - id: detect-private-key
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.0
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+        name: detect secrets (gitleaks)
+
+  - repo: local
+    hooks:
+      - id: no-dotenv-staged
+        name: .env not staged
+        language: fail
+        entry: ".env file must not be committed — use .env.example for templates"
+        files: ^\.env$
