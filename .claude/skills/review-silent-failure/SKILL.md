@@ -68,6 +68,24 @@ the answer is "nobody," that is a finding. That question is the whole dimension.
   becomes permanent mode.
 - Cleanup code in `finally` that throws and masks the original error.
 
+## Duplex / streaming (only when the design has no turn boundary)
+
+Skip for request/response code. Where it applies, this is the dimension's sharpest
+case: nothing throws. The pipeline succeeds and is wrong. See
+[.claude/specs/agent-voice.md](../../specs/agent-voice.md).
+
+- **ASR confidence** — a mis-heard critical slot returned at high confidence. A
+  recognizer reports confidence in its acoustic match, not in being right: a drug name,
+  dosage, or account number can come back wrong at 0.9. Flag any critical slot taken
+  straight from a transcript with no readback or deterministic confirmation, and any
+  threshold treated as a correctness guarantee.
+- **barge-in** — an interruption that drops an unconfirmed value. When the user
+  interrupts, the in-flight turn is cancelled; if a value was captured but not yet
+  confirmed, cancellation can discard it silently while the dialogue proceeds as though
+  it was captured. Flag cancellation paths that leave slot state ambiguous.
+- Partial ASR hypotheses treated as final — acting on a transcript that can still
+  revise means acting on something the recognizer has not committed to.
+
 ## What NOT to flag
 
 - Intentional suppression with a comment explaining why (best-effort cleanup,

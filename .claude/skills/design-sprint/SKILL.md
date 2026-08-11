@@ -31,6 +31,13 @@ Run a full design sprint using IDEO / Stanford d.school HMW methodology for: `$A
 5. **Initiative definition** — 5-7 named initiatives. Each: name, one-sentence goal, components, roles, cross-initiative dependencies. First initiative has zero external deps.
 6. **Dependency mapping** — HTML artifact per initiative: cards with title, description, needs, enables, role badge. Color-coded by role.
 
+If any HMW implies a realtime/duplex interaction — someone speaking to the system and
+interrupting it — the clustering in Phase 4 gains a WHERE-voice workstream that owns
+turn-taking, barge-in, and the latency budget. It is not part of WHERE-AI: the audio
+loop and the reasoning graph have different owners and different failure modes, and
+merging them produces an initiative nobody can scope. See `agent-voice.md`, and
+`design-system` §4b for the layer model.
+
 ## Quality constraints
 
 - Be specific to the use case — no generic outputs that could apply to anything

@@ -52,6 +52,20 @@ relevant ref before reporting against it:
 - Can external content influence a sensitive sink? Prompt injection via retrieved
   or external content is the named threat class here.
 
+## Duplex / streaming (only when the design has no turn boundary)
+
+Skip this section entirely for request/response code. It applies when audio or another
+stream flows both directions at once — see
+[.claude/specs/agent-voice.md](../../specs/agent-voice.md).
+
+- **session lifetime** — who owns cleanup when a call drops mid-turn? A dropped
+  connection is the normal case, not the exception. Look for state that outlives the
+  socket with nothing responsible for reaping it, and for reconnect that resumes into a
+  session the server already tore down.
+- **latency budget** — does an in-turn tool call exceed its hop budget? Every call
+  inside a turn spends the caller's silence. Flag a synchronous call with no timeout, no
+  budget, or no spoken acknowledgement dispatched before it.
+
 ## Memory Write-Back
 
 - What is persisted? Is it fact, inference, or model output?

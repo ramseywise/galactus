@@ -1,6 +1,6 @@
 # How this repo is built
 
-A working Claude Code setup: 14 skills, 4 subagents, 9 hooks, and 12 specs, wired into a
+A working Claude Code setup: 33 skills, 4 subagents, 9 hooks, and 14 specs, wired into a
 design → research → plan → execute → review pipeline.
 
 This document explains the five things underneath it — **prompt, context, harness, loop,
@@ -221,6 +221,16 @@ fail to terminate and cannot terminate invalid.** The model's cooperation is an
 optimisation, not a dependency.
 
 That is the thesis in one diagram: counting characters is a job for code.
+
+### The streaming variant
+
+Everything above assumes a turn that ends. When audio flows both directions at once, no
+protocol event marks the end of a turn — it is inferred from the stream, which makes turn
+end a judgement rather than a signal, and the five components above do not describe the
+shape. `.claude/skills/design-system/SKILL.md` §4b names the variant;
+`.claude/specs/agent-voice.md` is the depth. The test is whether you can point at the
+event that ends a turn. Nothing in this repo is duplex — ml6 is request/response — so the
+variant is documented here, not demonstrated.
 
 ### Four capability levels
 

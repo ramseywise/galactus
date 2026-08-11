@@ -22,7 +22,7 @@ not of the framing.
 
 ## Usage
 
-```
+```bash
 /ml-transform <path-to-frame> [--target <column>] [--output path/to/column-plan.md]
 ```
 

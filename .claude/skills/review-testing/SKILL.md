@@ -37,6 +37,24 @@ anything would catch it.
 A test that cannot fail is worse than a missing test: it reports coverage it does
 not provide. Assertions that only check "no exception" are the common shape.
 
+### Duplex / streaming (only when the design has no turn boundary)
+
+Skip for request/response code. See
+[.claude/specs/agent-voice.md](../../specs/agent-voice.md) and
+[.claude/specs/agent-eval.md](../../specs/agent-eval.md).
+
+- **deterministic replay** — asserting end-to-end replay that does not exist. Audio
+  timing, endpointing, and interruption points do not reproduce; a test that pins an
+  exact transcript or turn sequence through the assembled pipeline is asserting
+  determinism the system does not have, and it will flake or be pinned into
+  meaninglessness. Components replay deterministically; the pipeline is graded
+  statistically.
+- **task success** — reporting WER in place of task completion. Task success is the
+  metric; WER is a component number. Flag a suite whose headline is word error rate,
+  or one that grades transcription while never asserting the task completed.
+- Per-turn pass rates presented as end-to-end reliability: 90% per turn survives ten
+  turns about a third of the time.
+
 ## Constraints
 
 These five bind every finding you return.

@@ -23,7 +23,7 @@ parts of that config are guesses.
 
 ## Usage
 
-```
+```bash
 /ml-select [--profile path/to/profile.md] [--output path/to/ml-config.md]
 ```
 
