@@ -33,6 +33,9 @@ build/
 # Never commit. Synthetic fixtures only in tests and docs.
 enam/data/
 !enam/data/.gitkeep
+# Generated reports embed distributional detail derived from those records — class
+# balances, reliability bins, threshold sweeps. Derived from real data is still real data.
+enam/docs/report.html
 *.csv
 *.parquet
 *.xlsx

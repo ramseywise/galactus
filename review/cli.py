@@ -87,23 +87,16 @@ def _parse_verdict_payload(
 
     for field in ("findings", "dispatch", "injection_hits"):
         if not isinstance(payload.get(field, []), list):
-            raise TypeError(
-                f"{field!r} must be a list, got {type(payload[field]).__name__}"
-            )
+            raise TypeError(f"{field!r} must be a list, got {type(payload[field]).__name__}")
 
     # `bool` is an `int` subclass, so it would otherwise slip through as 0/1.
     validation_failures = payload.get("validation_failures", 0)
-    if isinstance(validation_failures, bool) or not isinstance(
-        validation_failures, int
-    ):
+    if isinstance(validation_failures, bool) or not isinstance(validation_failures, int):
         raise TypeError(
-            "'validation_failures' must be an integer, got "
-            f"{type(validation_failures).__name__}"
+            f"'validation_failures' must be an integer, got {type(validation_failures).__name__}"
         )
     if validation_failures < 0:
-        raise ValueError(
-            f"'validation_failures' must be >= 0, got {validation_failures}"
-        )
+        raise ValueError(f"'validation_failures' must be >= 0, got {validation_failures}")
 
     findings_raw = payload.get("findings", [])
     dispatch_raw = payload.get("dispatch", [])
@@ -140,9 +133,7 @@ def _cmd_verdict(args: argparse.Namespace) -> int:
         return _verdict_error("not_json", f"stdin is not valid JSON: {e}")
 
     try:
-        findings, dispatch, injection_hits, validation_failures = (
-            _parse_verdict_payload(payload)
-        )
+        findings, dispatch, injection_hits, validation_failures = _parse_verdict_payload(payload)
     except (TypeError, ValueError) as e:
         return _verdict_error("schema", str(e))
 
@@ -154,14 +145,10 @@ def _cmd_verdict(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="review.cli", description=__doc__)
-    parser.add_argument(
-        "--repo-root", default=".", help="Root that file paths are relative to."
-    )
+    parser.add_argument("--repo-root", default=".", help="Root that file paths are relative to.")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_validate = sub.add_parser(
-        "validate-finding", help="Validate one finding read from stdin."
-    )
+    p_validate = sub.add_parser("validate-finding", help="Validate one finding read from stdin.")
     p_validate.add_argument(
         "--assigned-reporter",
         default=None,

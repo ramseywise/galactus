@@ -35,9 +35,7 @@ def compute_verdict(
     # diffs and wave through scoped poison that silences two dimensions while
     # six others return nits. One silenced dimension plus an injection hit is
     # the signal; either alone is not.
-    if injection_hits and any(
-        e.status == "completed" and e.finding_count == 0 for e in dispatch
-    ):
+    if injection_hits and any(e.status == "completed" and e.finding_count == 0 for e in dispatch):
         return MergeDecision.INSUFFICIENT_CONTEXT
 
     # Rung 1 — the review did not actually run.

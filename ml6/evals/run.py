@@ -205,9 +205,7 @@ class ScriptedEvalLLM:
         self.bad_color = bad_color
         self.calls = 0
 
-    async def complete_structured(
-        self, prompt: str, schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         self.calls += 1
 
         # A repair prompt is the second call onward; the first is generation.
@@ -226,9 +224,7 @@ class ScriptedEvalLLM:
             # A hex literal where the contract requires a named theme color.
             return "#ff2d55" if breaching and self.bad_color else "accent"
 
-        over = breaching and (
-            self.stress_fields is None or field.name in self.stress_fields
-        )
+        over = breaching and (self.stress_fields is None or field.name in self.stress_fields)
 
         # Aim just inside the word ceiling, or past it when overshooting.
         ceiling = field.max_words or 20
@@ -249,9 +245,7 @@ class ScriptedEvalLLM:
 
 STRESS_PROFILES: dict[str, dict[str, Any]] = {
     "overlong-headline-pressure": {"stress_fields": frozenset({"headline"})},
-    "verbose-column-pressure": {
-        "stress_fields": frozenset({"column_left", "column_right"})
-    },
+    "verbose-column-pressure": {"stress_fields": frozenset({"column_left", "column_right"})},
     "color-reference-pressure": {"stress_fields": frozenset(), "bad_color": True},
     "quote-and-cta-pressure": {"stress_fields": frozenset({"pull_quote", "cta"})},
     "no-facts-at-all": {"stubborn": True},
@@ -302,9 +296,7 @@ class CaseResult:
     error: str | None = None
 
 
-async def run_case(
-    case: EvalCase, llm: LLM | None = None, *, model: str = "dry-run"
-) -> CaseResult:
+async def run_case(case: EvalCase, llm: LLM | None = None, *, model: str = "dry-run") -> CaseResult:
     """Run one case end to end and score it."""
     template = load_template_cached(case.template_id)
     provider = llm if llm is not None else _scripted_llm(case, template)
@@ -317,9 +309,7 @@ async def run_case(
     )
 
     try:
-        draft, used_fallback = await generate_collateral(
-            state, template, provider, model=model
-        )
+        draft, used_fallback = await generate_collateral(state, template, provider, model=model)
     except Exception as exc:  # noqa: BLE001 - one dead case must not end the run
         return CaseResult(
             case_id=case.case_id,
@@ -372,9 +362,7 @@ def is_grounded(draft: dict[str, str], facts: list[Fact]) -> bool:
         return False
 
     fact_tokens = _distinctive_tokens(" ".join(f.text for f in facts))
-    draft_tokens = _distinctive_tokens(
-        " ".join(v for v in draft.values() if isinstance(v, str))
-    )
+    draft_tokens = _distinctive_tokens(" ".join(v for v in draft.values() if isinstance(v, str)))
 
     return len(fact_tokens & draft_tokens) >= MIN_GROUNDING_OVERLAP
 
@@ -439,16 +427,10 @@ def summarize_table(rows: list[dict[str, Any]]) -> str:
         return "_no rows_"
 
     headers = list(rows[0])
-    widths = {
-        h: max(len(h), *(len(str(row.get(h, ""))) for row in rows)) for h in headers
-    }
+    widths = {h: max(len(h), *(len(str(row.get(h, ""))) for row in rows)) for h in headers}
 
     def line(values: list[str]) -> str:
-        return (
-            "| "
-            + " | ".join(v.ljust(widths[h]) for h, v in zip(headers, values))
-            + " |"
-        )
+        return "| " + " | ".join(v.ljust(widths[h]) for h, v in zip(headers, values)) + " |"
 
     out = [
         line(headers),
@@ -511,9 +493,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Run against the scripted adapter. No network, no key, no spend.",
     )
     parser.add_argument("--json", action="store_true", help="Emit metrics as JSON.")
-    parser.add_argument(
-        "--cases", type=Path, default=CASES_PATH, help="Path to the case file."
-    )
+    parser.add_argument("--cases", type=Path, default=CASES_PATH, help="Path to the case file.")
     args = parser.parse_args(argv)
 
     cases = load_cases(args.cases)

@@ -75,9 +75,7 @@ class LayoutTemplate(BaseModel):
 
     @field_validator("fields")
     @classmethod
-    def _fields_unique_and_nonempty(
-        cls, v: list[FieldConstraint]
-    ) -> list[FieldConstraint]:
+    def _fields_unique_and_nonempty(cls, v: list[FieldConstraint]) -> list[FieldConstraint]:
         if not v:
             raise ValueError("template must declare at least one field")
         names = [f.name for f in v]

@@ -147,9 +147,7 @@ async def request_collateral(
     try:
         load_template_cached(request.template_id)
     except (TemplateNotFoundError, ValueError) as exc:
-        raise HTTPException(
-            404, detail=f"unknown template: {request.template_id}"
-        ) from exc
+        raise HTTPException(404, detail=f"unknown template: {request.template_id}") from exc
 
     if not store.get_pdfs(request.sender_company_id, role="sender"):
         raise HTTPException(
@@ -165,9 +163,7 @@ async def request_collateral(
 
 
 @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
-def get_job(
-    job_id: str, store: Annotated[Store, Depends(get_store)]
-) -> JobStatusResponse:
+def get_job(job_id: str, store: Annotated[Store, Depends(get_store)]) -> JobStatusResponse:
     """Poll a job. 404 for an unknown id; 200 with a status for a known one."""
     job = store.get_job(job_id)
     if job is None:

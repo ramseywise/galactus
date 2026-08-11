@@ -161,10 +161,7 @@ def build_repair_prompt(
             "editing task, not a rewriting task — and never invent content to "
             "reach a minimum."
         ),
-        (
-            "- Do not break a limit that is currently satisfied while fixing one "
-            "that is not."
-        ),
+        ("- Do not break a limit that is currently satisfied while fixing one that is not."),
         "- Return only the JSON object.",
     ]
 

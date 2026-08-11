@@ -79,9 +79,7 @@ def test_case_file_covers_the_paths_the_metrics_need():
 
     assert any(c.difficulty == "hard" for c in cases)
     assert any(not c.sender_facts and not c.receiver_facts for c in cases)
-    assert any(
-        f.origin == "vision" for c in cases for f in c.sender_facts + c.receiver_facts
-    )
+    assert any(f.origin == "vision" for c in cases for f in c.sender_facts + c.receiver_facts)
 
 
 def test_duplicate_case_ids_are_rejected(tmp_path):
@@ -263,9 +261,7 @@ async def test_a_clean_case_passes_on_the_first_call(template):
 
 
 async def test_an_overshooting_case_repairs_once_and_converges(template):
-    case = EvalCase(
-        case_id="over", prompt="Be expansive.", template_id="two_column_brief"
-    )
+    case = EvalCase(case_id="over", prompt="Be expansive.", template_id="two_column_brief")
     llm = ScriptedEvalLLM(template, overshoot=True, stubborn=False)
 
     result = await run_case(case, llm)
@@ -278,9 +274,7 @@ async def test_an_overshooting_case_repairs_once_and_converges(template):
 
 
 async def test_a_stubborn_case_exhausts_the_budget_and_falls_back(template):
-    case = EvalCase(
-        case_id="stuck", prompt="Never comply.", template_id="two_column_brief"
-    )
+    case = EvalCase(case_id="stuck", prompt="Never comply.", template_id="two_column_brief")
     llm = ScriptedEvalLLM(template, overshoot=True, stubborn=True)
 
     result = await run_case(case, llm)
@@ -312,13 +306,10 @@ async def test_a_dead_provider_scores_as_an_error_rather_than_ending_the_run(tem
 
 async def test_run_all_preserves_case_order(template):
     cases = [
-        EvalCase(case_id=f"c{i}", prompt="x", template_id="two_column_brief")
-        for i in range(3)
+        EvalCase(case_id=f"c{i}", prompt="x", template_id="two_column_brief") for i in range(3)
     ]
 
-    results = await run_all(
-        cases, ScriptedEvalLLM(template, overshoot=False, stubborn=False)
-    )
+    results = await run_all(cases, ScriptedEvalLLM(template, overshoot=False, stubborn=False))
 
     assert [r.case_id for r in results] == ["c0", "c1", "c2"]
 

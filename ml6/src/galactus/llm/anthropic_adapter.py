@@ -61,14 +61,10 @@ class AnthropicAdapter:
         if self._client is None:
             import anthropic
 
-            self._client = anthropic.AsyncAnthropic(
-                api_key=self._settings.require_api_key()
-            )
+            self._client = anthropic.AsyncAnthropic(api_key=self._settings.require_api_key())
         return self._client
 
-    async def complete_structured(
-        self, prompt: str, schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         """Return a JSON object conforming to `schema`. See `port.LLM`."""
         import anthropic
 
@@ -85,8 +81,7 @@ class AnthropicAdapter:
         # message text, which is not part of the SDK's contract.
         except anthropic.NotFoundError as exc:
             raise LLMError(
-                f"model {self._settings.model!r} not found or not available "
-                f"to this account"
+                f"model {self._settings.model!r} not found or not available to this account"
             ) from exc
         except anthropic.RateLimitError as exc:
             raise LLMError("rate limited by the Anthropic API") from exc
@@ -113,9 +108,7 @@ def _extract_json(response: Any) -> dict[str, Any]:
         raise LLMError(f"response hit the {MAX_TOKENS}-token ceiling and is incomplete")
 
     blocks = getattr(response, "content", None) or []
-    text = "".join(
-        block.text for block in blocks if getattr(block, "type", None) == "text"
-    )
+    text = "".join(block.text for block in blocks if getattr(block, "type", None) == "text")
     if not text.strip():
         raise LLMError("response contained no text content")
 

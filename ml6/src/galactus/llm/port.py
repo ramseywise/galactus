@@ -40,9 +40,7 @@ class LLM(Protocol):
     inheritance, no registration.
     """
 
-    async def complete_structured(
-        self, prompt: str, schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         """Return a JSON object conforming to `schema`.
 
         Args:

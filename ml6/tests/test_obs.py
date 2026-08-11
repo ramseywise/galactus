@@ -39,9 +39,7 @@ class ScriptedLLM:
         self.responses = responses
         self.calls = 0
 
-    async def complete_structured(
-        self, prompt: str, schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         self.calls += 1
         return dict(self.responses[min(self.calls - 1, len(self.responses) - 1)])
 
@@ -80,9 +78,7 @@ def rendered_logs():
         lg.setLevel(logging.INFO)
 
     def read() -> list[dict[str, Any]]:
-        return [
-            json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()
-        ]
+        return [json.loads(line) for line in buffer.getvalue().splitlines() if line.strip()]
 
     try:
         yield read
@@ -179,9 +175,7 @@ async def test_a_clean_run_emits_exactly_one_generate_span(clean_draft, template
     state = PipelineState(job_id="job-clean")
 
     with capture_logs() as logs:
-        await generate_collateral(
-            state, template, ScriptedLLM([clean_draft]), model="m"
-        )
+        await generate_collateral(state, template, ScriptedLLM([clean_draft]), model="m")
 
     spans = [entry for entry in logs if entry["event"] == "agent_span"]
     assert [s["operation"] for s in spans] == [OP_GENERATE]
@@ -202,9 +196,7 @@ async def test_each_repair_attempt_gets_its_own_span(clean_draft, template):
     assert [s["attempt"] for s in spans] == [0, 1, 2]
 
 
-async def test_repair_spans_carry_the_violation_count_they_were_answering(
-    clean_draft, template
-):
+async def test_repair_spans_carry_the_violation_count_they_were_answering(clean_draft, template):
     """The count is what makes 'is the loop converging?' answerable from logs."""
     state = PipelineState(job_id="job-count")
     llm = ScriptedLLM([_too_long(clean_draft), clean_draft])
@@ -217,17 +209,13 @@ async def test_repair_spans_carry_the_violation_count_they_were_answering(
     assert repairs[0]["violation_count"] >= 1
 
 
-async def test_an_exhausted_budget_emits_a_span_for_every_attempt(
-    clean_draft, template
-):
+async def test_an_exhausted_budget_emits_a_span_for_every_attempt(clean_draft, template):
     """Four calls, four spans — the fallback itself is not a model call."""
     state = PipelineState(job_id="job-exhausted")
     llm = ScriptedLLM([_too_long(clean_draft)])
 
     with capture_logs() as logs:
-        _, used_fallback = await generate_collateral(
-            state, template, llm, max_repairs=3, model="m"
-        )
+        _, used_fallback = await generate_collateral(state, template, llm, max_repairs=3, model="m")
 
     spans = [entry for entry in logs if entry["event"] == "agent_span"]
 
@@ -244,9 +232,7 @@ async def test_spans_name_the_model_they_were_told_about(clean_draft, template):
             state, template, ScriptedLLM([clean_draft]), model="claude-sonnet-5"
         )
 
-    assert all(
-        e["model"] == "claude-sonnet-5" for e in logs if e["event"] == "agent_span"
-    )
+    assert all(e["model"] == "claude-sonnet-5" for e in logs if e["event"] == "agent_span")
 
 
 # ---------------------------------------------------------------------------

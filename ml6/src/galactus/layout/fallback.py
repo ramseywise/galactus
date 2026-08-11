@@ -73,9 +73,7 @@ def fallback_report(
     """
     repaired = fallback(draft, template)
     changed = sorted(
-        name
-        for name in set(repaired) | set(draft)
-        if draft.get(name) != repaired.get(name)
+        name for name in set(repaired) | set(draft) if draft.get(name) != repaired.get(name)
     )
     return repaired, changed
 

@@ -40,9 +40,7 @@ _MERGE_IMPACT: dict[str, MergeImpact] = {
 
 # Dimensions whose findings rest on a written convention rather than on the code
 # alone, and so may be required to cite the spec (check 5).
-_SPEC_BOUND_REPORTERS = frozenset(
-    {Reporter.RUNTIME, Reporter.SAFEGUARDS, Reporter.CONTRACTS}
-)
+_SPEC_BOUND_REPORTERS = frozenset({Reporter.RUNTIME, Reporter.SAFEGUARDS, Reporter.CONTRACTS})
 
 # F4 trigger, stated narrowly and deterministically: a spec *path* mention.
 _SPEC_PATH_PATTERN = re.compile(r"\.claude/specs/agent-[\w-]+\.md", re.IGNORECASE)

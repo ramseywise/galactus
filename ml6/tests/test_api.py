@@ -41,9 +41,7 @@ class ScriptedLLM:
         self.error = error
         self.calls = 0
 
-    async def complete_structured(
-        self, prompt: str, schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         self.calls += 1
         if self.error:
             raise LLMError("provider unavailable")
@@ -94,9 +92,7 @@ def _upload(client: TestClient, company_id: str, pdf: Path, role: str) -> str:
     return response.json()["pdf_id"]
 
 
-def _walk(
-    client: TestClient, prompt: str = "Announce the partnership."
-) -> dict[str, Any]:
+def _walk(client: TestClient, prompt: str = "Announce the partnership.") -> dict[str, Any]:
     """Upload both PDFs, request collateral, and poll once."""
     _upload(client, "meridian", SENDER_PDF, "sender")
     _upload(client, "calder", RECEIVER_PDF, "receiver")

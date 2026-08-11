@@ -50,9 +50,7 @@ def validate(draft: dict[str, str], template: LayoutTemplate) -> list[Violation]
                 Violation(
                     field=field.name,
                     constraint="required",
-                    repair_hint=(
-                        f"Field '{field.name}' is missing and must be provided."
-                    ),
+                    repair_hint=(f"Field '{field.name}' is missing and must be provided."),
                 )
             )
             continue
@@ -89,9 +87,7 @@ def _check_text(name: str, value: str, field: FieldConstraint) -> list[Violation
                 constraint="max_words",
                 actual=words,
                 limit=field.max_words,
-                repair_hint=(
-                    f"Shorten '{name}' from {words} to at most {field.max_words} words."
-                ),
+                repair_hint=(f"Shorten '{name}' from {words} to at most {field.max_words} words."),
             )
         )
 
@@ -118,8 +114,7 @@ def _check_text(name: str, value: str, field: FieldConstraint) -> list[Violation
                 actual=len(value),
                 limit=field.max_chars,
                 repair_hint=(
-                    f"Shorten '{name}' from {len(value)} to at most "
-                    f"{field.max_chars} characters."
+                    f"Shorten '{name}' from {len(value)} to at most {field.max_chars} characters."
                 ),
             )
         )
@@ -145,9 +140,7 @@ def _check_image_placeholder(name: str, value: str) -> list[Violation]:
     ]
 
 
-def _check_color_ref(
-    name: str, value: str, template: LayoutTemplate
-) -> list[Violation]:
+def _check_color_ref(name: str, value: str, template: LayoutTemplate) -> list[Violation]:
     if value in template.theme_colors:
         return []
 
@@ -171,9 +164,7 @@ def _check_color_ref(
     ]
 
 
-def _check_unknown_fields(
-    draft: dict[str, str], template: LayoutTemplate
-) -> list[Violation]:
+def _check_unknown_fields(draft: dict[str, str], template: LayoutTemplate) -> list[Violation]:
     unknown = sorted(set(draft) - template.field_names)
     return [
         Violation(

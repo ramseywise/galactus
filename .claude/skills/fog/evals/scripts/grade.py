@@ -160,7 +160,10 @@ def grade_planted(text, blocks, workspace=None, allow=()):
     mig = re.compile(r"topics_freetext|§\s*3\b|migration|backfill", re.I)
     irrev = re.compile(r"irreversib|reversib|unstaged|cannot be undone|no way back", re.I)
     cid, block = find_claim(blocks, mig, irrev)
-    res["R3"] = (cid is not None, f"matched claim {cid}" if cid else "no claim ties the migration to irreversibility")
+    res["R3"] = (
+        cid is not None,
+        f"matched claim {cid}" if cid else "no claim ties the migration to irreversibility",
+    )
 
     if block:
         m = IMPACT.search(block)
@@ -179,7 +182,10 @@ def grade_planted(text, blocks, workspace=None, allow=()):
         re.I,
     )
     hits = flags_control(blocks, n1, n1_bad)
-    res["P1"] = (not hits, "clean" if not hits else f"flags the typed abstention: {', '.join(hits)}")
+    res["P1"] = (
+        not hits,
+        "clean" if not hits else f"flags the typed abstention: {', '.join(hits)}",
+    )
 
     # N3: the 900-char cap (§2.5) is already deterministic. Fails only if a claim
     # asserts it is probabilistic / should be made deterministic. Citing it as the
@@ -192,14 +198,19 @@ def grade_planted(text, blocks, workspace=None, allow=()):
         re.I,
     )
     hits = flags_control(blocks, n3, n3_bad)
-    res["P3"] = (not hits, "clean" if not hits else f"flags the deterministic cap: {', '.join(hits)}")
+    res["P3"] = (
+        not hits,
+        "clean" if not hits else f"flags the deterministic cap: {', '.join(hits)}",
+    )
 
     # --- P4: every claim's basis is grounded ---
     ungrounded = [c for c, b in blocks.items() if not GROUNDED.search(basis_text(b))]
     res["P4"] = (
         bool(blocks) and not ungrounded,
-        "all grounded" if blocks and not ungrounded
-        else "no claim blocks parsed" if not blocks
+        "all grounded"
+        if blocks and not ungrounded
+        else "no claim blocks parsed"
+        if not blocks
         else f"ungrounded basis: {', '.join(ungrounded)}",
     )
 
@@ -211,13 +222,25 @@ def grade_planted(text, blocks, workspace=None, allow=()):
     )
 
     # --- structural ---
-    res["S2"] = (bool(FA_ID.search(text)), "FA ids present" if FA_ID.search(text) else "no FA-NNN ids — advisor findings renumbered or dispatch missing")
+    res["S2"] = (
+        bool(FA_ID.search(text)),
+        "FA ids present"
+        if FA_ID.search(text)
+        else "no FA-NNN ids — advisor findings renumbered or dispatch missing",
+    )
 
     fog_line = re.compile(r"the fog\b", re.I).search(text)
     fix_first = re.compile(r"fix first|one to fix", re.I).search(text)
     blind = re.compile(r"could not see|couldn't see|blind spot", re.I).search(text)
-    missing = [n for n, v in [("the-fog", fog_line), ("fix-first", fix_first), ("blind-spots", blind)] if not v]
-    res["S3"] = (not missing, "all three present" if not missing else f"missing: {', '.join(missing)}")
+    missing = [
+        n
+        for n, v in [("the-fog", fog_line), ("fix-first", fix_first), ("blind-spots", blind)]
+        if not v
+    ]
+    res["S3"] = (
+        not missing,
+        "all three present" if not missing else f"missing: {', '.join(missing)}",
+    )
 
     res["S5"] = grade_report_only(workspace, "finds-planted-defects", allow)
 
@@ -227,9 +250,15 @@ def grade_planted(text, blocks, workspace=None, allow=()):
 def grade_empty(text, blocks, workspace=None, allow=()):
     res = {}
     err = re.compile(r"empty|unreadable|nothing to (read|interrogate)|no content", re.I)
-    res["E1"] = (bool(err.search(text)), "error stated" if err.search(text) else "no empty/unreadable error")
+    res["E1"] = (
+        bool(err.search(text)),
+        "error stated" if err.search(text) else "no empty/unreadable error",
+    )
     ids = ANY_CLAIM_ID.findall(text)
-    res["E2"] = (not ids, "no claims" if not ids else f"claims emitted: {sorted(set(i.upper() for i in ids))}")
+    res["E2"] = (
+        not ids,
+        "no claims" if not ids else f"claims emitted: {sorted(set(i.upper() for i in ids))}",
+    )
     # Negated forms ("this is an error, NOT a clean pass") are correct output, not a
     # violation — strip them before matching, or the check false-positives on the very
     # phrasing a good run uses to disclaim the verdict. Two shapes defeated the naive
@@ -245,19 +274,34 @@ def grade_empty(text, blocks, workspace=None, allow=()):
         r"(?:an?\s+)?(?:clean pass|all-clear)[^.]*?\bwould\b[^.]*\.",
         re.I,
     )
-    negated = re.compile(r"\b(?:not|never|isn't|is not|rather than|instead of)\s+(?:an?\s+)?(?:clean pass|all-clear|empty review)", re.I)
+    negated = re.compile(
+        r"\b(?:not|never|isn't|is not|rather than|instead of)\s+(?:an?\s+)?(?:clean pass|all-clear|empty review)",
+        re.I,
+    )
     scrubbed = negated.sub(" ", counterfactual.sub(" ", flat))
-    clean = re.compile(r"no (collapse sites|findings|issues) found|clean pass|looks good|nothing of concern", re.I)
+    clean = re.compile(
+        r"no (collapse sites|findings|issues) found|clean pass|looks good|nothing of concern", re.I
+    )
     hit = clean.search(scrubbed)
-    res["E3"] = (not hit, "no clean-pass language" if not hit else f"clean-pass phrasing: {hit.group(0)!r}")
-    res["E4"] = (not FA_ID.search(text), "no advisor dispatch" if not FA_ID.search(text) else "FA ids present — advisor was dispatched over an empty target")
+    res["E3"] = (
+        not hit,
+        "no clean-pass language" if not hit else f"clean-pass phrasing: {hit.group(0)!r}",
+    )
+    res["E4"] = (
+        not FA_ID.search(text),
+        "no advisor dispatch"
+        if not FA_ID.search(text)
+        else "FA ids present — advisor was dispatched over an empty target",
+    )
     res["E7"] = grade_report_only(workspace, "empty-target-is-error", allow)
     return res
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--case", required=True, choices=["finds-planted-defects", "empty-target-is-error"])
+    ap.add_argument(
+        "--case", required=True, choices=["finds-planted-defects", "empty-target-is-error"]
+    )
     ap.add_argument("--output", required=True, help="file holding the /fog run output")
     ap.add_argument(
         "--workspace",
@@ -283,7 +327,15 @@ def main():
     results = grader(text, blocks, workspace=args.workspace, allow=allow)
 
     if args.json:
-        print(json.dumps({k: {"passed": v[0], "evidence": v[1], "text": by_id[k]["text"]} for k, v in results.items()}, indent=2))
+        print(
+            json.dumps(
+                {
+                    k: {"passed": v[0], "evidence": v[1], "text": by_id[k]["text"]}
+                    for k, v in results.items()
+                },
+                indent=2,
+            )
+        )
         return 0
 
     print(f"case: {args.case}   claim blocks parsed: {len(blocks)}\n")

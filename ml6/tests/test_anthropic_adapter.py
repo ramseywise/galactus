@@ -80,9 +80,7 @@ async def test_sends_the_schema_in_output_config(settings, clean_draft):
     await adapter.complete_structured("prompt", schema)
 
     call = client.messages.calls[0]
-    assert call["output_config"] == {
-        "format": {"type": "json_schema", "schema": schema}
-    }
+    assert call["output_config"] == {"format": {"type": "json_schema", "schema": schema}}
     assert call["model"] == "claude-sonnet-5"
     assert call["max_tokens"] == MAX_TOKENS
     assert call["messages"] == [{"role": "user", "content": "prompt"}]

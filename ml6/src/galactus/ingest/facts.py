@@ -94,9 +94,7 @@ async def ingest_pdf(
     with pymupdf.open(pdf_path) as doc:
         pages, table_facts = _read_pages(doc)
 
-    return await _ingest(
-        pdf_path, pages, llm, table_facts=table_facts, force_vision=force_vision
-    )
+    return await _ingest(pdf_path, pages, llm, table_facts=table_facts, force_vision=force_vision)
 
 
 async def ingest_pdf_bytes(
@@ -112,9 +110,7 @@ async def ingest_pdf_bytes(
     with pymupdf.open(stream=data, filetype="pdf") as doc:
         pages, table_facts = _read_pages(doc)
 
-    return await _ingest(
-        data, pages, llm, table_facts=table_facts, force_vision=force_vision
-    )
+    return await _ingest(data, pages, llm, table_facts=table_facts, force_vision=force_vision)
 
 
 def verify_facts(facts: list[Fact], pages: list[str]) -> list[Fact]:
@@ -156,11 +152,7 @@ def pages_needing_vision(pages: list[str], *, force: bool = False) -> list[int]:
     """1-indexed pages whose text layer is too sparse to trust."""
     if force:
         return list(range(1, len(pages) + 1))
-    return [
-        n
-        for n, text in enumerate(pages, start=1)
-        if len(text.strip()) < MIN_PAGE_TEXT_CHARS
-    ]
+    return [n for n, text in enumerate(pages, start=1) if len(text.strip()) < MIN_PAGE_TEXT_CHARS]
 
 
 async def extract_vision_facts(
@@ -240,9 +232,7 @@ def _read_pages(doc: object) -> tuple[list[str], list[Fact]]:
     return pages, table_facts
 
 
-def _ingest_pages_without_tables(
-    pages: list[str], table_facts: list[Fact]
-) -> list[str]:
+def _ingest_pages_without_tables(pages: list[str], table_facts: list[Fact]) -> list[str]:
     """Blank out pages whose tables were recovered structurally.
 
     The sentence splitter turns a grid into one run-on fact holding every value

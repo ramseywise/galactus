@@ -98,9 +98,7 @@ class AgentSpan:
         if self.cache_read_tokens:
             attrs["gen_ai.usage.cache_read_input_tokens"] = self.cache_read_tokens
         if self.cache_creation_tokens:
-            attrs["gen_ai.usage.cache_creation_input_tokens"] = (
-                self.cache_creation_tokens
-            )
+            attrs["gen_ai.usage.cache_creation_input_tokens"] = self.cache_creation_tokens
         if self.error:
             attrs["error.message"] = self.error
         return attrs

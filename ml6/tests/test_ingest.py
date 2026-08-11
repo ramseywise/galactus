@@ -47,15 +47,11 @@ class FakeVisionLLM:
     """Returns a scripted list of claims for every vision call."""
 
     def __init__(self, claims: list[str] | None = None, error: bool = False) -> None:
-        self.claims = (
-            claims if claims is not None else ["A table row states 96.2 percent."]
-        )
+        self.claims = claims if claims is not None else ["A table row states 96.2 percent."]
         self.error = error
         self.calls = 0
 
-    async def complete_structured(
-        self, prompt: str, schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         self.calls += 1
         if self.error:
             raise LLMError("provider down")
@@ -157,9 +153,7 @@ def test_a_fact_whose_span_does_not_match_is_dropped():
 
 def test_a_fact_with_an_unresolvable_span_is_dropped():
     pages = ["The company shipped four hundred units last year."]
-    orphan = Fact(
-        text="Anything at all here", source_span="p7:0-10", page=7, origin="text"
-    )
+    orphan = Fact(text="Anything at all here", source_span="p7:0-10", page=7, origin="text")
 
     assert verify_facts([orphan], pages) == []
 

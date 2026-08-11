@@ -42,9 +42,7 @@ def test_each_constraint_kind_is_violated(
     violations = validate(clean_draft, template)
 
     matching = [
-        v
-        for v in violations
-        if v.field == field_name and v.constraint == expected_constraint
+        v for v in violations if v.field == field_name and v.constraint == expected_constraint
     ]
     assert len(matching) == 1, f"expected one {expected_constraint} on {field_name}"
     assert matching[0].repair_hint
@@ -59,9 +57,7 @@ def test_missing_field_is_required_violation(clean_draft, template):
 def test_unknown_field_is_reported(clean_draft, template):
     clean_draft["footer_note"] = "not in the template"
     violations = validate(clean_draft, template)
-    assert [(v.field, v.constraint) for v in violations] == [
-        ("footer_note", "unknown_field")
-    ]
+    assert [(v.field, v.constraint) for v in violations] == [("footer_note", "unknown_field")]
 
 
 # ---------------------------------------------------------------------------
@@ -71,9 +67,7 @@ def test_unknown_field_is_reported(clean_draft, template):
 
 def test_max_words_violation_reports_actual_and_limit(clean_draft, template):
     clean_draft["headline"] = " ".join(["word"] * 15)
-    violation = next(
-        v for v in validate(clean_draft, template) if v.field == "headline"
-    )
+    violation = next(v for v in validate(clean_draft, template) if v.field == "headline")
     assert violation.actual == 15
     assert violation.limit == 9
     assert "15" in violation.repair_hint and "9" in violation.repair_hint
@@ -81,17 +75,13 @@ def test_max_words_violation_reports_actual_and_limit(clean_draft, template):
 
 def test_min_words_hint_explains_the_whitespace_reason(clean_draft, template):
     clean_draft["column_right"] = "too short"
-    violation = next(
-        v for v in validate(clean_draft, template) if v.constraint == "min_words"
-    )
+    violation = next(v for v in validate(clean_draft, template) if v.constraint == "min_words")
     assert "whitespace" in violation.repair_hint
 
 
 def test_color_ref_hint_lists_valid_choices(clean_draft, template):
     clean_draft["accent_color"] = "chartreuse"
-    violation = next(
-        v for v in validate(clean_draft, template) if v.constraint == "color_ref"
-    )
+    violation = next(v for v in validate(clean_draft, template) if v.constraint == "color_ref")
     assert "primary" in violation.limit
     assert "accent" in violation.repair_hint
 
@@ -99,9 +89,7 @@ def test_color_ref_hint_lists_valid_choices(clean_draft, template):
 def test_image_placeholder_hint_names_the_expected_token(clean_draft, template):
     clean_draft["sender_logo"] = "the company logo, top left"
     violation = next(
-        v
-        for v in validate(clean_draft, template)
-        if v.constraint == "image_placeholder"
+        v for v in validate(clean_draft, template) if v.constraint == "image_placeholder"
     )
     assert "{{sender_logo}}" in violation.repair_hint
 
@@ -152,12 +140,8 @@ def test_word_limits_are_inclusive(clean_draft, template, word_count):
     assert [v for v in validate(clean_draft, template) if v.field == "headline"] == []
 
 
-@pytest.mark.parametrize(
-    ("word_count", "constraint"), [(2, "min_words"), (10, "max_words")]
-)
-def test_one_past_each_word_bound_violates(
-    clean_draft, template, word_count, constraint
-):
+@pytest.mark.parametrize(("word_count", "constraint"), [(2, "min_words"), (10, "max_words")])
+def test_one_past_each_word_bound_violates(clean_draft, template, word_count, constraint):
     clean_draft["headline"] = " ".join(["w"] * word_count)
     violations = [v for v in validate(clean_draft, template) if v.field == "headline"]
     assert [v.constraint for v in violations] == [constraint]
@@ -175,17 +159,13 @@ def test_max_chars_is_inclusive():
 
 def test_empty_string_is_present_but_may_break_min_words(template):
     """Empty is not the same as missing: it is a min_words problem, not required."""
-    violations = [
-        v for v in validate({"column_left": ""}, template) if v.field == "column_left"
-    ]
+    violations = [v for v in validate({"column_left": ""}, template) if v.field == "column_left"]
     assert [v.constraint for v in violations] == ["min_words"]
 
 
 def test_whitespace_only_text_counts_as_zero_words(template):
     violations = [
-        v
-        for v in validate({"column_left": "   \n\t  "}, template)
-        if v.field == "column_left"
+        v for v in validate({"column_left": "   \n\t  "}, template) if v.field == "column_left"
     ]
     assert [v.constraint for v in violations] == ["min_words"]
     assert violations[0].actual == 0
@@ -235,9 +215,7 @@ def test_malformed_placeholder_tokens_rejected(value):
 def test_every_theme_color_key_is_an_accepted_color_ref(clean_draft, template):
     for key in template.theme_colors:
         clean_draft["accent_color"] = key
-        assert [
-            v for v in validate(clean_draft, template) if v.field == "accent_color"
-        ] == []
+        assert [v for v in validate(clean_draft, template) if v.field == "accent_color"] == []
 
 
 # ---------------------------------------------------------------------------

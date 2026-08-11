@@ -127,9 +127,7 @@ def test_row_span_contains_cells_rejects_a_missing_value() -> None:
     source = "Chicago-Dallas 184,000 96.2%"
 
     assert row_span_contains_cells(source, "Corridor Chicago-Dallas: Volume 184,000.")
-    assert not row_span_contains_cells(
-        source, "Corridor Chicago-Dallas: Volume 999,999."
-    )
+    assert not row_span_contains_cells(source, "Corridor Chicago-Dallas: Volume 999,999.")
 
 
 def test_table_origin_does_not_bypass_span_resolution() -> None:
@@ -169,8 +167,6 @@ def test_table_page_text_is_not_also_emitted_as_a_run_on_fact() -> None:
     from galactus.ingest.facts import ingest_pdf
 
     facts = asyncio.run(ingest_pdf(FIXTURES / "sender.pdf"))
-    page_two_text_facts = [
-        fact for fact in facts if fact.page == 2 and fact.origin == "text"
-    ]
+    page_two_text_facts = [fact for fact in facts if fact.page == 2 and fact.origin == "text"]
 
     assert page_two_text_facts == []

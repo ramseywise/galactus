@@ -39,9 +39,7 @@ class FakeLLM:
     def call_count(self) -> int:
         return len(self.prompts)
 
-    async def complete_structured(
-        self, prompt: str, schema: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
         self.prompts.append(prompt)
         self.schemas.append(schema)
         index = min(len(self.prompts) - 1, len(self.responses) - 1)
@@ -92,9 +90,7 @@ async def test_exhausts_budget_then_falls_back(state, template, clean_draft):
     bad = _too_long(clean_draft)
     llm = FakeLLM([bad])
 
-    draft, used_fallback = await generate_collateral(
-        state, template, llm, max_repairs=3
-    )
+    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=3)
 
     # One initial call plus three repairs.
     assert llm.call_count == 4
@@ -109,9 +105,7 @@ async def test_exhausts_budget_then_falls_back(state, template, clean_draft):
 async def test_fallback_draft_is_valid_even_from_garbage(state, template):
     llm = FakeLLM([{"headline": "x", "bogus_field": "y"}])
 
-    draft, used_fallback = await generate_collateral(
-        state, template, llm, max_repairs=1
-    )
+    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=1)
 
     assert used_fallback is True
     assert validate(draft, template) == []
@@ -120,9 +114,7 @@ async def test_fallback_draft_is_valid_even_from_garbage(state, template):
 async def test_zero_repair_budget_falls_back_immediately(state, template, clean_draft):
     llm = FakeLLM([_too_long(clean_draft)])
 
-    draft, used_fallback = await generate_collateral(
-        state, template, llm, max_repairs=0
-    )
+    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=0)
 
     assert llm.call_count == 1
     assert used_fallback is True
@@ -161,9 +153,7 @@ async def test_late_success_still_reports_no_fallback(state, template, clean_dra
     bad = _too_long(clean_draft)
     llm = FakeLLM([bad, bad, bad, clean_draft])
 
-    draft, used_fallback = await generate_collateral(
-        state, template, llm, max_repairs=3
-    )
+    draft, used_fallback = await generate_collateral(state, template, llm, max_repairs=3)
 
     assert llm.call_count == 4
     assert used_fallback is False
@@ -266,12 +256,8 @@ def test_prompt_omits_the_facts_section_when_there_are_none(state, template):
 def test_prompt_separates_sender_and_receiver_facts(template):
     state = PipelineState(
         job_id="job-3",
-        sender_facts=[
-            Fact(text="Sender claim", source_span="p1:0-12", page=1, origin="text")
-        ],
-        receiver_facts=[
-            Fact(text="Receiver claim", source_span="p1:0-14", page=1, origin="text")
-        ],
+        sender_facts=[Fact(text="Sender claim", source_span="p1:0-12", page=1, origin="text")],
+        receiver_facts=[Fact(text="Receiver claim", source_span="p1:0-14", page=1, origin="text")],
     )
 
     prompt = build_prompt(state, template)

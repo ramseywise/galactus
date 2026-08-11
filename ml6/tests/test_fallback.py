@@ -70,9 +70,7 @@ def _bad_drafts(clean: dict[str, str]) -> dict[str, dict[str, str]]:
 
 
 @pytest.mark.parametrize("case_name", list(_bad_drafts({}).keys()))
-def test_fallback_output_always_satisfies_the_contract(
-    clean_draft, template, case_name
-):
+def test_fallback_output_always_satisfies_the_contract(clean_draft, template, case_name):
     bad = _bad_drafts(clean_draft)[case_name]
     repaired = fallback(bad, template)
     assert validate(repaired, template) == [], (
@@ -145,9 +143,7 @@ def test_truncation_prefers_a_sentence_boundary(clean_draft, template):
     assert result == "This sentence fits inside the limit."
 
 
-def test_sentence_boundary_skipped_when_it_would_discard_most_content(
-    clean_draft, template
-):
+def test_sentence_boundary_skipped_when_it_would_discard_most_content(clean_draft, template):
     """A period after two words must not shrink a 95-word column to two words."""
     clean_draft["column_left"] = "Yes. " + " ".join(["substantive"] * 300)
     result = fallback(clean_draft, template)["column_left"]
@@ -203,10 +199,7 @@ def test_padding_uses_neutral_filler_not_invented_content(clean_draft, template)
 def test_missing_text_field_is_synthesized_valid(clean_draft, template):
     del clean_draft["column_right"]
     result = fallback(clean_draft, template)
-    assert (
-        count_words(result["column_right"])
-        >= template.field_by_name("column_right").min_words
-    )
+    assert count_words(result["column_right"]) >= template.field_by_name("column_right").min_words
 
 
 # ---------------------------------------------------------------------------
@@ -217,9 +210,7 @@ def test_missing_text_field_is_synthesized_valid(clean_draft, template):
 @pytest.mark.parametrize(
     "bad_value", ["https://example.com/x.png", "logo.png", "the logo", "", "{{Bad}}"]
 )
-def test_bad_image_placeholder_becomes_the_field_token(
-    clean_draft, template, bad_value
-):
+def test_bad_image_placeholder_becomes_the_field_token(clean_draft, template, bad_value):
     clean_draft["hero_image"] = bad_value
     assert fallback(clean_draft, template)["hero_image"] == "{{hero_image}}"
 

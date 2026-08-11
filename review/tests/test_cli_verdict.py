@@ -57,9 +57,7 @@ def run_verdict(monkeypatch, capsys, stdin_text: str) -> tuple[int, dict]:
 # --- The reported bug --------------------------------------------------------
 
 
-def test_wrong_typed_validation_failures_is_structured_not_traceback(
-    monkeypatch, capsys
-):
+def test_wrong_typed_validation_failures_is_structured_not_traceback(monkeypatch, capsys):
     """The reproduce case: `validation_failures` as a list, not an int.
 
     It reached `validation_failures >= 2` inside the ladder and raised

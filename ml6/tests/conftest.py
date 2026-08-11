@@ -24,8 +24,7 @@ def clean_draft() -> dict[str, str]:
     return {
         "headline": "Two Firms One Shared Supply Chain",
         "subheadline": (
-            "How coordinated logistics cut delivery times across both networks "
-            "in under a year"
+            "How coordinated logistics cut delivery times across both networks in under a year"
         ),
         "column_left": _SIXTY_FIVE_WORDS,
         "column_right": _SIXTY_FIVE_WORDS,

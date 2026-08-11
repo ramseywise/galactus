@@ -113,9 +113,7 @@ class Store:
             )
         return pdf_id
 
-    def get_pdfs(
-        self, company_id: str, role: str | None = None
-    ) -> list[dict[str, Any]]:
+    def get_pdfs(self, company_id: str, role: str | None = None) -> list[dict[str, Any]]:
         """Return every stored PDF for a company, optionally filtered by role."""
         sql = "SELECT * FROM pdfs WHERE company_id = ?"
         params: list[Any] = [company_id]
@@ -135,8 +133,7 @@ class Store:
         job_id = str(uuid.uuid4())
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO jobs (job_id, company_id, status, payload) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO jobs (job_id, company_id, status, payload) VALUES (?, ?, ?, ?)",
                 (job_id, company_id, "queued", json.dumps(payload)),
             )
         return job_id
@@ -144,9 +141,7 @@ class Store:
     def update_job(self, job_id: str, status: JobStatus, **fields: Any) -> None:
         """Set a job's status, merging `fields` into its payload."""
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT payload FROM jobs WHERE job_id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT payload FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
             if row is None:
                 raise KeyError(f"no such job: {job_id}")
 
@@ -161,9 +156,7 @@ class Store:
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         """Return a job document, or None if the id is unknown."""
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM jobs WHERE job_id = ?", (job_id,)
-            ).fetchone()
+            row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
 
         if row is None:
             return None
