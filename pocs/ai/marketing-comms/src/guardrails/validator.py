@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from galactus.models import FieldConstraint, LayoutTemplate, Violation
+from models import FieldConstraint, LayoutTemplate, Violation
 
 PLACEHOLDER_RE = re.compile(r"^\{\{[a-z0-9_]+\}\}$")
 """Image placeholder tokens look like `{{hero_image}}` — never a URL or a path."""

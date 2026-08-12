@@ -12,7 +12,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from galactus.models import LayoutTemplate
+from models import LayoutTemplate
 
 TEMPLATE_DIR_NAME = "templates"
 

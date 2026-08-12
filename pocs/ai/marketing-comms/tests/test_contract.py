@@ -5,14 +5,14 @@ from __future__ import annotations
 import json
 
 import pytest
-from galactus.layout.contract import (
+from layout.contract import (
     TemplateNotFoundError,
     available_templates,
     default_template_dir,
     load_template,
     load_template_file,
 )
-from galactus.models import (
+from models import (
     Fact,
     FieldConstraint,
     LayoutTemplate,

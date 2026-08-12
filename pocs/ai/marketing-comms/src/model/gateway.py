@@ -34,7 +34,7 @@ from __future__ import annotations
 import json
 from typing import Any, Protocol, runtime_checkable
 
-from galactus.config import Settings
+from config import Settings
 
 
 class LLMError(RuntimeError):
