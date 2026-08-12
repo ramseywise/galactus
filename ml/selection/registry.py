@@ -110,11 +110,22 @@ def _catboost_clf(**kw: Any) -> Any:
     params: dict[str, Any] = {
         "iterations": 200,
         "depth": 6,
-        "random_seed": RANDOM_STATE,
         "verbose": False,
         "allow_writing_files": False,
     }
     params.update(kw)
+
+    # CatBoost accepts `random_seed` OR `random_state`, never both — passing the pair
+    # raises "only one of the parameters random_seed, random_state should be
+    # initialized". Every workflow here calls `get_models(..., random_state=seed)`,
+    # which forwards `random_state` into this factory, so a hardcoded `random_seed`
+    # default made catboost fail on *every* call through the workflow: caught, logged
+    # as "failed and was skipped", and silently absent from the comparison table.
+    # Normalise instead of defaulting, so the seed arrives whichever name is used.
+    if "random_state" in params and "random_seed" in params:
+        params.pop("random_seed")
+    params.setdefault("random_state", RANDOM_STATE)
+
     return CatBoostClassifier(**params)
 
 
