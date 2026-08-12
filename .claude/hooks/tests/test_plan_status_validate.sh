@@ -77,7 +77,7 @@ declare -a BAD=(
   "space form|Status: IN PROGRESS\n|not a canonical state"
   "lowercase hyphen|Status: in-progress\n|not a canonical state"
   "bogus value|Status: BOGUS\n|not a canonical state"
-  "suffix|Status: EXECUTED — pending /workflow-review\nReview: pending\n|carries a suffix"
+  "suffix|Status: EXECUTED — pending /proto-review\nReview: pending\n|carries a suffix"
   "EXECUTED without Review|Status: EXECUTED\n|requires a 'Review:' line"
   "SUPERSEDED without pointer|Status: SUPERSEDED\n|requires a 'Superseded-by:' line"
 )

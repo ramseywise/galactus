@@ -1,6 +1,6 @@
 ---
 name: review-shared
-description: "Shared contracts for every review reporter — the canonical finding schema, the evidence model, the context brief, and the merge-decision ladder. Preloaded by the review and wander agents and used by /workflow-review rather than invoked directly. Load it when writing a new dimension or when two dimensions disagree about a finding's severity."
+description: "Shared contracts for every review reporter — the canonical finding schema, the evidence model, the context brief, and the merge-decision ladder. Preloaded by the review and wander agents and used by /proto-review rather than invoked directly. Load it when writing a new dimension or when two dimensions disagree about a finding's severity."
 ---
 
 # review-shared

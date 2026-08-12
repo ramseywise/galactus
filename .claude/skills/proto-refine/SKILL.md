@@ -1,6 +1,6 @@
 ---
-name: workflow-refine
-description: "Readiness gate between plan and execute. Applies PM / designer / EM lenses to one planned work item, checks it against the Definition of Ready, dispatches an isolated failure pass when the plan is risky, and either advances Status: PLANNED → REFINED → READY or says exactly what is missing. Triggers: 'is this ready', 'refine the plan', 'DoR check', 'ready to execute', 'gate this', '/workflow-refine'."
+name: proto-refine
+description: "Readiness gate between plan and execute. Applies PM / designer / EM lenses to one planned work item, checks it against the Definition of Ready, dispatches an isolated failure pass when the plan is risky, and either advances Status: PLANNED → REFINED → READY or says exactly what is missing. Triggers: 'is this ready', 'refine the plan', 'DoR check', 'ready to execute', 'gate this', '/proto-refine'."
 disable-model-invocation: true
 allowed-tools: Read Grep Glob Bash Edit Agent
 ---
@@ -26,8 +26,8 @@ modified plan doc and say which one you picked.
 | Condition | Response |
 |---|---|
 | No plan doc found | Error. Stop. Do not gate an imaginary plan. |
-| `Status:` is `RESEARCH` or `RESEARCHED` | Stop — there is no plan to gate yet. Point at `/workflow-plan`. |
-| `Status:` is `IN_PROGRESS` or later | Stop — the gate is behind you. Point at `/workflow-review`. |
+| `Status:` is `RESEARCH` or `RESEARCHED` | Stop — there is no plan to gate yet. Point at `/proto-plan`. |
+| `Status:` is `IN_PROGRESS` or later | Stop — the gate is behind you. Point at `/proto-review`. |
 | Doc exists but has no `## Plan` section | Error, not a failed gate. The input is malformed. |
 
 An unreadable or empty target is an **error, not a failed gate**. A gate that reports
@@ -156,13 +156,13 @@ Then the exit block:
 ```
 ──────────────────────────────────────
 Refinement complete. Verdict: <verdict>
-Next: /workflow-execute <slug>   (READY only)
+Next: /proto-execute <slug>   (READY only)
 
 Spawn prompt (execute — fresh session):
 ┌─────────────────────────────────────
 │ cd <repo-path>
 │ Read <plan-doc-path>
-│ /workflow-execute <slug>
+│ /proto-execute <slug>
 └─────────────────────────────────────
 ──────────────────────────────────────
 ```

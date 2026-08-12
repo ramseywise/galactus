@@ -28,8 +28,8 @@ Prototype or explore $ARGUMENTS. Apply all rules below strictly.
 
 ## Output
 - After prototyping, summarize findings as a comment in ROADMAP.md or as an ADR if the finding influences architecture
-- If the prototype is adopted, promote it with `/workflow-plan` — write the plan against
-  the working spike, then `/workflow-execute`. Do not rewrite from scratch; the spike is
+- If the prototype is adopted, promote it with `/proto-plan` — write the plan against
+  the working spike, then `/proto-execute`. Do not rewrite from scratch; the spike is
   the specification.
 - Never merge prototype code directly into production paths
 

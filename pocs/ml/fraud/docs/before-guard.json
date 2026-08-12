@@ -1,0 +1,76 @@
+{
+ "n_rows": 800,
+ "n_features": 41,
+ "sampling": "class_weight",
+ "class_balance": {
+  "0": 0.9825,
+  "1": 0.0175
+ },
+ "split": {
+  "kind": "stratified",
+  "n_splits": 5
+ },
+ "skipped": {
+  "catboost": "only one of the parameters random_seed, random_state should be initialized."
+ },
+ "beats_baseline": false,
+ "models": [
+  {
+   "name": "logistic",
+   "is_baseline": true,
+   "pr_auc": 0.020027338458950522,
+   "roc_auc": 0.4910941475826972,
+   "prevalence": 0.0175,
+   "brier": 0.017247333345718364,
+   "fit_seconds": 3.2,
+   "calibration": {
+    "method": "sigmoid"
+   },
+   "threshold": {
+    "value": 0.0562,
+    "precision": 0.0,
+    "recall": 0.0,
+    "n_flagged": 1,
+    "true_positives": 0
+   }
+  },
+  {
+   "name": "random_forest",
+   "is_baseline": false,
+   "pr_auc": 0.01894273430661564,
+   "roc_auc": 0.5398491457651764,
+   "prevalence": 0.0175,
+   "brier": 0.017212204374099916,
+   "fit_seconds": 2.9,
+   "calibration": {
+    "method": "sigmoid"
+   },
+   "threshold": {
+    "value": 0.0619,
+    "precision": 0.0,
+    "recall": 0.0,
+    "n_flagged": 1,
+    "true_positives": 0
+   }
+  },
+  {
+   "name": "lightgbm",
+   "is_baseline": false,
+   "pr_auc": 0.017482159958876912,
+   "roc_auc": 0.4355688840421665,
+   "prevalence": 0.0175,
+   "brier": 0.01724839270727303,
+   "fit_seconds": 4.3,
+   "calibration": {
+    "method": "sigmoid"
+   },
+   "threshold": {
+    "value": 0.0735,
+    "precision": 0.0,
+    "recall": 0.0,
+    "n_flagged": 1,
+    "true_positives": 0
+   }
+  }
+ ]
+}

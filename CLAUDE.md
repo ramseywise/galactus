@@ -41,11 +41,11 @@ Design → build → review, with the plan doc as the bus between phases:
 | Phase | Skill | Writes |
 |---|---|---|
 | Design | `/design-system` | A spec: the five layers answered or explicitly deferred |
-| Research | `/workflow-research` | `## Research` in `.claude/docs/plans/YYYY-MM-DD-<slug>.md` |
-| Plan | `/workflow-plan` | `## Plan` in the same doc |
-| Refine | `/workflow-refine` | A readiness verdict; the only writer of `REFINED` / `READY` |
-| Execute | `/workflow-execute` | Code; flips `Status:` |
-| Review | `/workflow-review` | Verdict against `## Plan` |
+| Research | `/proto-research` | `## Research` in `.claude/docs/plans/YYYY-MM-DD-<slug>.md` |
+| Plan | `/proto-plan` | `## Plan` in the same doc |
+| Refine | `/proto-refine` | A readiness verdict; the only writer of `REFINED` / `READY` |
+| Execute | `/proto-execute` | Code; flips `Status:` |
+| Review | `/proto-review` | Verdict against `## Plan` |
 
 `Status:` is a state machine, not a label — a hook rejects values outside
 `RESEARCH → RESEARCHED → PLANNED → REFINED → READY → IN_PROGRESS → EXECUTED → COMPLETE`

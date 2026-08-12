@@ -36,6 +36,11 @@ ml-lending/data/
 # Generated reports embed distributional detail derived from those records — class
 # balances, reliability bins, threshold sweeps. Derived from real data is still real data.
 ml-lending/docs/report.html
+# Phase 2 poc frame: a copy of lebanese-blonde's sample. Real records; never committed.
+pocs/ml/fraud/data/
+# Generated report embeds distributional detail derived from those records — same
+# rationale as the ml-lending report.html line above.
+pocs/ml/fraud/docs/report.html
 *.csv
 *.parquet
 *.xlsx
