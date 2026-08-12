@@ -7,14 +7,14 @@ every fixture — the fallback provably always satisfies the contract.
 from __future__ import annotations
 
 import pytest
-from galactus.guardrails.fallback import (
+from guardrails.fallback import (
     FILLER_WORD,
     fallback,
     fallback_report,
     was_degraded,
 )
-from galactus.guardrails.validator import count_words, validate
-from galactus.models import FieldConstraint, LayoutTemplate
+from guardrails.validator import count_words, validate
+from models import FieldConstraint, LayoutTemplate
 
 _LONG = " ".join(["overlong"] * 200)
 

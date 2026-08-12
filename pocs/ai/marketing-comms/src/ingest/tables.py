@@ -38,7 +38,7 @@ loosened for everyone.
 
 from __future__ import annotations
 
-from galactus.models import Fact
+from models import Fact
 
 MIN_TABLE_ROWS = 2
 """A header plus at least one data row. Below this there is no grid to rescue."""

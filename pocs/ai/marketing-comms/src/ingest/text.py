@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from galactus.models import Fact
+from models import Fact
 
 MIN_FACT_WORDS = 4
 """Below this a sentence is a heading, a label, or a page number.

@@ -28,8 +28,8 @@ from __future__ import annotations
 
 import re
 
-from galactus.guardrails.validator import count_words, validate
-from galactus.models import FieldConstraint, LayoutTemplate
+from guardrails.validator import count_words, validate
+from models import FieldConstraint, LayoutTemplate
 
 FILLER_WORD = "and"
 """Neutral padding for under-length fields. Semantically empty by design — the
@@ -214,7 +214,7 @@ def _synthesize(field: FieldConstraint, template: LayoutTemplate) -> str:
 
 
 def _fit_placeholder(value: str, field: FieldConstraint) -> str:
-    from galactus.guardrails.validator import PLACEHOLDER_RE
+    from guardrails.validator import PLACEHOLDER_RE
 
     if PLACEHOLDER_RE.match(value):
         return value

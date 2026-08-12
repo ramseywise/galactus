@@ -24,11 +24,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from galactus.guardrails.fallback import fallback
-from galactus.guardrails.validator import validate
-from galactus.model.gateway import LLM
-from galactus.models import Fact, LayoutTemplate, PipelineState, Violation
-from galactus.observability import OP_GENERATE, OP_REPAIR, span
+from guardrails.fallback import fallback
+from guardrails.validator import validate
+from model.gateway import LLM
+from models import Fact, LayoutTemplate, PipelineState, Violation
+from observability import OP_GENERATE, OP_REPAIR, span
 
 DEFAULT_MAX_REPAIRS = 3
 """Repair attempts before falling back.

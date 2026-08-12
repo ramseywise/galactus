@@ -18,9 +18,9 @@ from typing import Any
 
 import pytest
 import structlog
-from galactus.generate import generate_collateral
-from galactus.models import PipelineState
-from galactus.observability import (
+from generate import generate_collateral
+from models import PipelineState
+from observability import (
     OP_GENERATE,
     OP_REPAIR,
     AgentSpan,
