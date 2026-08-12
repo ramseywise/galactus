@@ -1,0 +1,65 @@
+# ML
+
+A classical ML/stats toolkit — distinct from `evals/`, which grades
+*agent* output quality against a golden set. `ml/` is for building and
+comparing *predictive* models: a different job, a different audience (data
+scientists doing discovery-to-delivery work, not agent evaluation).
+
+## Layout
+
+```
+ml/
+├── regression/           Logistic regression + RFE feature selection,
+│                         coefficient-significance tables and plots
+├── timeseries/            ARIMA/SARIMA forecasting with explicit assumption
+│                         checking (stationarity, autocorrelation, normality),
+│                         plus the preprocessing primitives it needs
+├── stats_testing/          A/B test statistics: power analysis, proportion
+│                         CIs, Mann-Whitney U, bootstrap Cliff's delta
+├── feature_engineering/  Lag/rolling/EWM/calendar/Fourier feature builders,
+│                         plus mutual-information/correlation/permutation
+│                         importance
+├── model_comparison/     Baseline model comparison (logistic regression vs.
+│                         random forest vs. LightGBM) on identical CV folds
+└── clustering/            Soft clustering via Gaussian Mixture Models
+```
+
+Each module is self-contained — import only what you need
+(`from ml.model_comparison.compare import compare_classifiers`). None of
+these modules import from each other or from `backend/src/agents/`.
+
+## Discovery-to-delivery workflow
+
+A typical path through these modules, in the order most projects actually use
+them:
+
+1. **Discovery** — `feature_engineering.correlation_importance` /
+   `mutual_information_importance` to see which raw signals actually relate to
+   your target, before investing in feature engineering.
+2. **Baseline** — `model_comparison.compare_classifiers` to get a real
+   accuracy/ROC-AUC/fit-time table across a linear baseline, a bagged-tree
+   model, and a boosting model — cheap, fast, tells you how much headroom
+   exists before you tune anything.
+3. **Explain** — `regression.fit_rfe_logit` + `coefficient_table` /
+   `plot_feature_importance` when you need an interpretable model (regulatory,
+   stakeholder-facing, or just to sanity-check what the boosting model found).
+4. **Validate** — `feature_engineering.permutation_importance` on your actual
+   fitted model to confirm the features that matter in practice match what
+   discovery suggested.
+5. **Forecast** (if your target is time-indexed) — `timeseries.ARIMAForecaster`,
+   after `timeseries.preprocessing.check_stationarity` confirms the series is
+   fit to model.
+6. **Ship, then measure** — `stats_testing.ab_test` once your model is live and
+   you're comparing it against a control group (power analysis first, to know
+   how long the test needs to run; Mann-Whitney + Cliff's delta after, since
+   most real metrics — response times, ratings — aren't normally distributed).
+
+None of these steps are mandatory or strictly ordered — pull in whichever
+module matches the question you're actually asking.
+
+## Example data
+
+These modules are tested against real (if synthetic) data: `sklearn`'s bundled
+`breast_cancer` dataset for classification examples, `sklearn.datasets.make_blobs`
+for clustering, and numpy-generated trending/seasonal series for time-series —
+see `tests/unit/ml/` for worked examples of every module.
