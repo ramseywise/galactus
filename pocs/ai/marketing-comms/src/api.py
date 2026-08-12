@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
+from config import Settings
 from fastapi import (
     BackgroundTasks,
     Depends,
@@ -27,17 +28,14 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
+from generate import generate_collateral
+from ingest.facts import ingest_pdf_bytes
+from layout.contract import TemplateNotFoundError, load_template_cached
+from model.gateway import LLM, AnthropicAdapter, LLMError
+from models import PipelineState
+from observability import bind_job, clear_job, configure_structlog
 from pydantic import BaseModel
-
-from galactus.config import Settings
-from galactus.generate import generate_collateral
-from galactus.ingest.facts import ingest_pdf_bytes
-from galactus.layout.contract import TemplateNotFoundError, load_template_cached
-from galactus.llm.anthropic_adapter import AnthropicAdapter
-from galactus.llm.port import LLM, LLMError
-from galactus.models import PipelineState
-from galactus.obs import bind_job, clear_job, configure_structlog
-from galactus.store import Store
+from store import Store
 
 DEFAULT_TEMPLATE_ID = "two_column_brief"
 

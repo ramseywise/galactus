@@ -18,9 +18,9 @@ from typing import Any
 
 import pytest
 import structlog
-from galactus.generate import generate_collateral
-from galactus.models import PipelineState
-from galactus.obs import (
+from generate import generate_collateral
+from models import PipelineState
+from observability import (
     OP_GENERATE,
     OP_REPAIR,
     AgentSpan,
@@ -69,7 +69,7 @@ def rendered_logs():
     # instead of the buffer.
     buffer = io.StringIO()
     handler = logging.StreamHandler(buffer)
-    targets = [logging.getLogger("galactus.obs"), logging.getLogger(__name__)]
+    targets = [logging.getLogger("galactus.observability"), logging.getLogger(__name__)]
     saved = [(lg, lg.handlers, lg.propagate, lg.level) for lg in targets]
 
     for lg in targets:

@@ -1,12 +1,12 @@
 # ml-lending — tabular ML case study
 
-The second case study in this repo. Where [`ai-marketing-comms/`](../ai-marketing-comms) is **generation under a
-contract** (an LLM writes, deterministic code decides whether it fits), `ml-lending/` is
+The second case study in this repo. Where [`pocs/ai/marketing-comms/`](../../ai/marketing-comms) is **generation under a
+contract** (an LLM writes, deterministic code decides whether it fits), `pocs/ml/lending/` is
 **prediction under uncertainty**: a supervised classification problem on messy tabular
 data, where the model outputs a probability and deterministic code decides what to do
 with it.
 
-The two share a thesis. In `ai-marketing-comms/` the model's cooperation is an optimisation, not a
+The two share a thesis. In `pocs/ai/marketing-comms/` the model's cooperation is an optimisation, not a
 dependency — the validator is the binding constraint. Here the equivalent binding
 constraint is **calibration and the decision rule**: a ranked score is not a decision,
 and the threshold that turns one into the other is arithmetic over costs, not a modelling
@@ -130,7 +130,7 @@ left open and not designed against.
 ## Layout
 
 ```
-ml-lending/
+pocs/ml/lending/
 ├── README.md    This document — problem framing and standing assumptions
 ├── docs/        DESIGN.md and analysis notes (written as the work proceeds)
 └── data/        Gitignored. Real debtor data never enters this repo.

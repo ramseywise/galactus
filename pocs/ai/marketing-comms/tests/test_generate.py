@@ -11,14 +11,14 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from galactus.generate import (
+from generate import (
     build_prompt,
     build_repair_prompt,
     generate_collateral,
     schema_for,
 )
-from galactus.layout.validator import is_valid, validate
-from galactus.models import Fact, PipelineState
+from guardrails.validator import is_valid, validate
+from models import Fact, PipelineState
 
 
 class FakeLLM:

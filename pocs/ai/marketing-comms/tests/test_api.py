@@ -16,12 +16,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from api import app, get_llm, get_settings, get_store
+from config import Settings
 from fastapi.testclient import TestClient
-from galactus.api import app, get_llm, get_settings, get_store
-from galactus.config import Settings
-from galactus.layout.validator import validate
-from galactus.llm.port import LLMError
-from galactus.store import Store
+from guardrails.validator import validate
+from model.gateway import LLMError
+from store import Store
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 SENDER_PDF = FIXTURE_DIR / "sender.pdf"

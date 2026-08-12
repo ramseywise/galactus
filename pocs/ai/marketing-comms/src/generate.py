@@ -15,7 +15,7 @@ carried three ways, and only the third is binding:
 
   - in the schema, as documentation for a reader of the request;
   - in the prompt prose, where the model can actually act on them;
-  - in `layout.validator`, which is what decides.
+  - in `guardrails.validator`, which is what decides.
 
 That is why the repair loop exists rather than a single well-specified call.
 """
@@ -24,11 +24,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from galactus.layout.fallback import fallback
-from galactus.layout.validator import validate
-from galactus.llm.port import LLM
-from galactus.models import Fact, LayoutTemplate, PipelineState, Violation
-from galactus.obs import OP_GENERATE, OP_REPAIR, span
+from guardrails.fallback import fallback
+from guardrails.validator import validate
+from model.gateway import LLM
+from models import Fact, LayoutTemplate, PipelineState, Violation
+from observability import OP_GENERATE, OP_REPAIR, span
 
 DEFAULT_MAX_REPAIRS = 3
 """Repair attempts before falling back.

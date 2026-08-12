@@ -12,9 +12,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
-from galactus.config import ConfigError, Settings
-from galactus.llm.anthropic_adapter import MAX_TOKENS, AnthropicAdapter
-from galactus.llm.port import LLM, LLMError
+from config import ConfigError, Settings
+from model.gateway import LLM, MAX_TOKENS, AnthropicAdapter, LLMError
 
 
 @dataclass

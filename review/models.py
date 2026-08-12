@@ -11,19 +11,19 @@ follow it; `review/tests/test_prefix_map.py` fails loudly when they drift.
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-class EvidenceState(str, Enum):
+class EvidenceState(StrEnum):
     VERIFIED = "verified"
     SUPPORTED = "supported"
     HYPOTHESIS = "hypothesis"
     QUESTION = "question"
 
 
-class MergeImpact(str, Enum):
+class MergeImpact(StrEnum):
     BLOCKER = "blocker"
     IMPORTANT = "important"
     QUESTION = "question"
@@ -31,28 +31,28 @@ class MergeImpact(str, Enum):
     NIT = "nit"
 
 
-class NativeSeverity(str, Enum):
+class NativeSeverity(StrEnum):
     BLOCKER = "blocker"
     WARNING = "warning"
     INFO = "info"
     NOTICE = "notice"
 
 
-class CommentType(str, Enum):
+class CommentType(StrEnum):
     REQUEST_CHANGE = "request_change"
     QUESTION = "question"
     SUGGESTION = "suggestion"
     NIT = "nit"
 
 
-class MergeDecision(str, Enum):
+class MergeDecision(StrEnum):
     APPROVE = "approve"
     COMMENT = "comment"
     REQUEST_CHANGES = "request_changes"
     INSUFFICIENT_CONTEXT = "insufficient_context"
 
 
-class Category(str, Enum):
+class Category(StrEnum):
     CORRECTNESS = "correctness"
     # RELIABILITY and OPERATIONS still have no emitting dimension — Parallax's
     # `reliability-operations` was deliberately dropped from the original
@@ -70,7 +70,7 @@ class Category(str, Enum):
     COMMUNICATION = "communication"
 
 
-class Reporter(str, Enum):
+class Reporter(StrEnum):
     """The ten review dimensions.
 
     Guacamayo's legacy members (`akira_scan`, `sanyi`, `structure`,
