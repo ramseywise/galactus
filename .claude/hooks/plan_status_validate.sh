@@ -27,6 +27,8 @@ STATES = {
     "IN_PROGRESS", "EXECUTED", "COMPLETE", "SUPERSEDED",
 }
 
+REVIEWS = {"pending", "passed", "failed", "blocked"}
+
 path = sys.argv[1]
 with open(path, encoding="utf-8") as fh:
     raw_lines = fh.readlines()
@@ -38,16 +40,15 @@ def unfenced(src):
     Front matter is never inside a fence. A doc that *documents* the state
     machine — a design doc showing `Status: COMPLETE` in a snippet — would
     otherwise be read as declaring it, because every scan below is
-    first-match-wins over raw lines. `Track:` never exposed this only because
-    no plan doc happened to discuss `Track:` in a fence at column zero.
+    first-match-wins over raw lines. This was observed: a `Status: RESEARCH`
+    design doc was misread as EXECUTED from the corpus examples in its body.
 
     Fences are matched by *marker and width*, not by a bare toggle. A boolean
     flipped on any ``` desyncs on the standard idiom for documenting fences —
     a 4-backtick block wrapping a 3-backtick one toggles four times and leaks
-    the inner content as front matter. A doc explaining this very function is
-    the most likely place that happens. Only a fence of the same marker and
-    at least the opening width closes the block (CommonMark), and tilde
-    fences count, so `~~~` cannot smuggle a `Status:` line past the filter.
+    the inner content as front matter. Only a fence of the same marker and at
+    least the opening width closes the block (CommonMark), and tilde fences
+    count, so `~~~` cannot smuggle a `Status:` line past the filter.
     """
     out = []
     opener = None
@@ -82,9 +83,41 @@ for line in lines:
         value = m.group(1).strip()
         break
 
+
+def has_field(name):
+    return any(re.match(rf"^[ \t]*(?:\*\*)?{name}(?:\*\*)?:", ln) for ln in lines)
+
+
+def field_value(name):
+    pat = re.compile(rf"^[ \t]*(?:\*\*)?{name}(?:\*\*)?:[ \t]*(.*)$")
+    for ln in lines:
+        m = pat.match(ln)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
 issues = []
-token = ""  # stays empty when the doc has no Status: line; the EXECUTED /
-# SUPERSEDED checks below then simply do not fire.
+token = ""  # stays empty when the doc has no Status: line; the state-specific
+# checks below then simply do not fire.
+
+# `Review:` — validate the value whenever the line is present; never require it.
+# Absence means no review outcome is being claimed, which is honest; blocking on
+# absence would make every doc predating this rule instantly unwritable.
+#
+# The four values are the outcomes /workflow-review can reach, and they are
+# distinct on purpose: `pending` means *no review concluded*, so a concluded
+# review never writes it. Collapsing "rejected" and "could not decide" into
+# `pending` is the defect this enum exists to remove.
+review_value = field_value("Review")
+if review_value is not None:
+    r = review_value.split()[0] if review_value.split() else ""
+    if r not in REVIEWS:
+        issues.append(
+            f"  Review: '{r}' is not a valid outcome; expected one of: {', '.join(sorted(REVIEWS))}"
+        )
+    elif review_value[len(r):].strip():
+        issues.append("  Review: must be exactly one token (pending | passed | failed | blocked)")
 
 # `Track:` — same tolerant form as Status, and the same one-token rule.
 #
@@ -108,14 +141,9 @@ if track_value is not None:
     elif track_value[len(t):].strip():
         issues.append("  Track: must be exactly one token (ml | agent)")
 
-# A doc with no Status: line is still checked for Track: above, then accepted.
-if value is None:
-    if not issues:
-        sys.exit(0)
-else:
+if value is not None:
     token = value.split()[0] if value.split() else ""
     suffix = value[len(token):].strip()
-
 
     if token not in STATES:
         issues.append(f"  '{token}' is not a canonical state; expected one of: {', '.join(sorted(STATES))}")
@@ -125,28 +153,14 @@ else:
             "Move detail to Released:/Outstanding:/Review:/Evidence:/Superseded-by:/Completed:"
         )
 
-
-def has_field(name):
-    return any(re.match(rf"^[ \t]*(?:\*\*)?{name}(?:\*\*)?:", ln) for ln in lines)
-
-
-def field_value(name):
-    pat = re.compile(rf"^[ \t]*(?:\*\*)?{name}(?:\*\*)?:[ \t]*(.*)$")
-    for ln in lines:
-        m = pat.match(ln)
-        if m:
-            return m.group(1).strip()
-    return None
-
-
 if token == "EXECUTED" and not has_field("Review"):
-    issues.append("  EXECUTED requires a 'Review:' line (pending | passed)")
+    issues.append("  EXECUTED requires a 'Review:' line (pending | passed | failed | blocked)")
 
 # COMPLETE is the one state that asserts an outcome rather than a position, so
 # its companions are checked by value. Requiring only presence would let a doc
 # land at COMPLETE carrying `Review: pending` — the state reads as "reviewed and
 # accepted" while the hook guaranteed something strictly weaker, and the stuck-
-# at-pending docs this build exists to unstick are exactly that shape. Writing
+# at-pending docs this rule exists to unstick are exactly that shape. Writing
 # Status: and Review: is two Edits, so the intermediate file state is reachable.
 if token == "COMPLETE":
     review = field_value("Review")
@@ -159,6 +173,7 @@ if token == "COMPLETE":
         )
     if not has_field("Completed"):
         issues.append("  COMPLETE requires a 'Completed:' date")
+
 if token == "SUPERSEDED" and not has_field("Superseded-by"):
     issues.append("  SUPERSEDED requires a 'Superseded-by:' line naming the replacing doc")
 
@@ -242,23 +257,23 @@ if issues:
         print(issue, file=sys.stderr)
     print(
         "  Write is blocked until Status: carries exactly one canonical state "
-        "and Track:, if present, is exactly one of: ml | agent.",
+        "and Review:, if present, is exactly one of: pending | passed | failed | blocked.",
         file=sys.stderr,
     )
     sys.exit(10)
 
-# The transition record (step 4). The hook is the only component that sees every
-# accepted edge, and until now it discarded that: the log said a write passed,
+# The transition record (galactus step 4). The hook is the only component that sees
+# every accepted edge, and until now it discarded that: the log said a write passed,
 # never *which transition* passed. D10 — the loop-back count — was therefore
 # unmeasurable even after `From:` gave every edge a name.
 #
-# Emitted on stdout for the shell to append. Only edges are recorded: a write
-# that declares no `From:` is not a transition (most writes to a plan doc are
-# prose edits), and recording those would bury the traversals in noise.
+# Emitted on stdout for the shell to append. Only edges are recorded: a write that
+# declares no `From:` is not a transition (most writes to a plan doc are prose
+# edits), and recording those would bury the traversals in noise.
 #
 # Nothing is recorded on the reject path — a blocked write never landed, so the
-# transition did not happen. Counting attempts as traversals would inflate
-# exactly the number this exists to measure.
+# transition did not happen. Counting attempts as traversals would inflate exactly
+# the number this exists to measure.
 if from_value is not None and token:
     prior = from_value.split()[0] if from_value.split() else ""
     print(f"{prior}\t{token}\t{track_value or ''}\t{epistemic_value or ''}")
@@ -279,6 +294,13 @@ if [ "$status" -eq 10 ]; then
   exit 2
 fi
 log_event "plan_status_validate" 0 "pass: $path"
+
+# Mark the recorder alive before recording any edge. Unconditional on this path:
+# reaching here means a plan doc validated, which is proof a recorder ran whether
+# or not the write moved a state. A marker emitted only alongside a transition
+# would be absent in precisely the case it exists to disambiguate — see
+# `log_recorder_session` in lib.sh (galactus#20 fix direction 2).
+log_recorder_session "plan_status_validate"
 
 # Record the traversal, not just the pass. `log_transition` is a no-op when the
 # write declared no `From:` — see the emit site in the Python block above.

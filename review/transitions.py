@@ -21,11 +21,15 @@ traversed, and at what rate." That is an aggregate over docs, and computing it
 by eye is how `Review: pending` went unnoticed on 6 of 6 docs. The point of
 step 4 is that the count exists without anyone choosing to look.
 
-**A zero here is a real answer.** The ledger began at zero on 2026-08-14 with
-the mechanism proven by test rather than by fixture data, so "no loop-backs
-observed" now means what it says. Before that it was ambiguous between "rare"
-and "nothing records it" — which is the ambiguity §7 names as the one thing HITL
-cannot paper over.
+**A zero here is a real answer — when `recorder.attested` is true.** The ledger
+began at zero on 2026-08-14 with the mechanism proven by test rather than by
+fixture data. But galactus#20 showed the writer could be absent for a whole
+session while the file sat there looking merely quiet: two copies of the hook at
+different vintages both registered, and the one that ran had no ledger. So the
+ledger now also records *that a recorder was alive*, once per session, and
+`recorder` reports it. Read that key before reading any zero — "rare" versus
+"nothing records it" is the ambiguity §7 names as the one thing HITL cannot
+paper over, and `exists: True` alone never resolved it.
 """
 
 from __future__ import annotations
@@ -62,15 +66,21 @@ _UNAVAILABLE: dict[str, str] = {
 }
 
 
-def _parse(lines: list[str]) -> tuple[list[dict], list[str]]:
-    """Split the ledger into valid records and malformed lines.
+def _parse(lines: list[str]) -> tuple[list[dict], list[dict], list[str]]:
+    """Split the ledger into edges, session markers, and malformed lines.
 
     Malformed lines are returned, never dropped silently. A ledger that is
     partly unparseable and reports a clean count is asserting a measurement it
     did not make — the same two-way-semantics failure `Outcome` exists to
     prevent one level down.
+
+    `kind` discriminates the two record types, and only markers carry it.
+    Every edge written before galactus#20 fix direction 2 has no `kind` at all,
+    so absence means edge — the existing ledger reads correctly with no
+    migration, and an edge is never silently reclassified as a marker.
     """
     records: list[dict] = []
+    markers: list[dict] = []
     malformed: list[str] = []
     for line in lines:
         line = line.strip()
@@ -81,11 +91,80 @@ def _parse(lines: list[str]) -> tuple[list[dict], list[str]]:
         except json.JSONDecodeError:
             malformed.append(line[:120])
             continue
-        if not isinstance(obj, dict) or "from" not in obj or "to" not in obj:
+        if not isinstance(obj, dict):
+            malformed.append(line[:120])
+            continue
+        if obj.get("kind") == "session":
+            # A marker with no session id cannot be counted — sessions are
+            # deduplicated by that id, and an anonymous marker would inflate the
+            # count of distinct sessions on every write. The writer declines to
+            # emit one; a hand-edited ledger might still contain one.
+            if obj.get("session"):
+                markers.append(obj)
+            else:
+                malformed.append(line[:120])
+            continue
+        if "from" not in obj or "to" not in obj:
             malformed.append(line[:120])
             continue
         records.append(obj)
-    return records, malformed
+    return records, markers, malformed
+
+
+def _recorder_status(markers: list[dict], transitions: int) -> dict[str, object]:
+    """Say whether the instrument was alive, not just what it recorded.
+
+    This is galactus#20 fix direction 2 at the read side. `log_transition` alone
+    makes a zero mean two incompatible things: no state moved, or nothing was
+    watching. The §2a three-way distinction — yes / no / never asked — applied
+    to the recorder itself.
+
+    The three `attested` values map to exactly that:
+
+    - `True`  — a marker exists. Every session that wrote here announced itself,
+                so a zero in this window is a measurement.
+    - `False` — no marker, but edges are present. The ledger was written by a
+                recorder predating markers (or by hand); the count is a **lower
+                bound**, since a silent session leaves no trace to subtract.
+    - `None`  — no marker and no edges. The file exists and says nothing at all,
+                which is the case that must never be read as "no loop-backs."
+
+    Deliberately not folded into a boolean. A two-valued answer here would
+    reintroduce the collapse one level up: "not attested" and "attested empty"
+    would render identically, which is the ambiguity the marker exists to end.
+    """
+    sessions = sorted({m["session"] for m in markers})
+    if sessions:
+        return {
+            "attested": True,
+            "sessions_recorded": len(sessions),
+            "first_seen": min(m.get("ts", "") for m in markers) or None,
+            "last_seen": max(m.get("ts", "") for m in markers) or None,
+            "recorders": sorted({m.get("recorder", "") for m in markers if m.get("recorder")}),
+            "reason": (
+                f"{len(sessions)} session(s) recorded a marker; counts in this "
+                "ledger are measurements, not lower bounds"
+            ),
+        }
+    if transitions:
+        return {
+            "attested": False,
+            "sessions_recorded": 0,
+            "reason": (
+                "edges present but no session marker — written by a recorder "
+                "predating markers, or by hand. Treat every count as a LOWER "
+                "BOUND: a session that recorded nothing is indistinguishable "
+                "from one that never ran (galactus#20)"
+            ),
+        }
+    return {
+        "attested": None,
+        "sessions_recorded": 0,
+        "reason": (
+            "ledger is empty and no recorder ever announced itself — this is NOT "
+            "evidence of zero loop-backs, it is absence of evidence either way"
+        ),
+    }
 
 
 def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
@@ -95,6 +174,11 @@ def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
     never run" and "the mechanism ran and observed nothing" are different facts
     about the pipeline, and collapsing them is what made D10 unmeasurable in the
     first place.
+
+    `exists: True` is necessary but not sufficient for a count to be a
+    measurement — the file's presence says a recorder ran *once*, not that one
+    ran during the window being read. `recorder.attested` carries that second
+    fact; read it before trusting any zero here.
     """
     ledger = Path(path)
     if not ledger.is_file():
@@ -105,7 +189,9 @@ def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
             "unavailable": _UNAVAILABLE,
         }
 
-    records, malformed = _parse(ledger.read_text(encoding="utf-8", errors="replace").splitlines())
+    records, markers, malformed = _parse(
+        ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    )
 
     edges = Counter((r["from"], r["to"]) for r in records)
     docs = sorted({r.get("doc", "") for r in records if r.get("doc")})
@@ -128,6 +214,7 @@ def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
     return {
         "exists": True,
         "path": str(path),
+        "recorder": _recorder_status(markers, len(records)),
         "transitions": len(records),
         "runs_started": len(docs),
         "runs_completed": len(completed),
