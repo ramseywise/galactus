@@ -393,6 +393,11 @@ If plan doc exists, append the review section to the plan doc and set `Status: E
 on approval, plus `Review: pending` on the next line (`Review: passed` once the verdict is
 a pass). `Status:` carries exactly one enum member — no suffix.
 
+Write `From: IN_PROGRESS` alongside it — this pass closes the `IN_PROGRESS → EXECUTED`
+edge, the second half of the execute→review handoff. If the doc is not at `IN_PROGRESS`,
+name the state it is actually at rather than the one expected; a rejected edge is the
+gate reporting that `/proto-execute` never recorded the work starting.
+
 `EXECUTED` is where this pass stops. Advancing to `COMPLETE` happens on a later
 re-invocation, via the resolution path in Stage 0.
 
@@ -409,7 +414,8 @@ If authorized:
 
 For plan-doc mode (no PR): append `## Review` section to plan doc, and set `Status:` to a
 canonical enum member — `EXECUTED` + `Review: passed` when the verdict is `approve`,
-`EXECUTED` + `Review: pending` otherwise. Never write a free-text status.
+`EXECUTED` + `Review: pending` otherwise, with `From: IN_PROGRESS` alongside (Stage 7).
+Never write a free-text status.
 
 A doc left at `EXECUTED` + `Review: pending` is *waiting*, not finished — re-invoking this
 skill on it takes the Stage 0 resolution path to `COMPLETE`.

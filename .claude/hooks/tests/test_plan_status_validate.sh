@@ -216,6 +216,21 @@ write_doc "e-legal.md" "Status: EXECUTED\nReview: pending\nFrom: IN_PROGRESS\n"
 run "$PLANS/e-legal.md"
 assert_exit0 "legal edge IN_PROGRESS → EXECUTED"
 
+# The edge /proto-execute declares at step 2. Together with the case above it,
+# these two cover the execute→review handoff that previously went unrecorded:
+# READY → IN_PROGRESS → EXECUTED. Both halves must hold for the D10 loop-back
+# count to be measurable, since a missing From: leaves no traversal to count.
+write_doc "e-start.md" "Status: IN_PROGRESS\nFrom: READY\n"
+run "$PLANS/e-start.md"
+assert_exit0 "legal edge READY → IN_PROGRESS"
+
+# The waved-through path: /proto-execute run on a doc that never cleared refine.
+# The skill is told to name the state it actually found, so this is the shape a
+# truthful writer produces there — and the gate rejecting it is the point.
+write_doc "e-skipgate.md" "Status: IN_PROGRESS\nFrom: PLANNED\n"
+run "$PLANS/e-skipgate.md"
+assert_blocked "illegal edge PLANNED → IN_PROGRESS (refine gate skipped)"
+
 write_doc "e-illegal.md" "Status: EXECUTED\nReview: pending\nFrom: READY\n"
 run "$PLANS/e-illegal.md"
 assert_blocked "illegal edge READY → EXECUTED"

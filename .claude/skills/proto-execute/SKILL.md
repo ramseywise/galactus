@@ -26,7 +26,15 @@ the session's — so that repo's own sessions and /wake find them (pointers, not
 ## Before starting
 
 1. Find the active doc: `grep -lE '^Status:[[:space:]]*IN_PROGRESS' .claude/docs/plans/*.md`; if none, take the most recent `Status: READY` file. If the newest candidate is `PLANNED` or `REFINED` it has not cleared the gate — say so, point at `/proto-refine`, and execute it only if the user says to anyway
-2. Read the active doc fully; set its `Status:` line to `IN_PROGRESS` before starting (one token, no suffix — extra detail goes in `Outstanding:` on the next line)
+2. Read the active doc fully; set its `Status:` line to `IN_PROGRESS` before starting (one
+   token, no suffix — extra detail goes in `Outstanding:` on the next line). Write `From:`
+   alongside it, naming the state you are advancing *from* — `From: READY` on the normal
+   path. Take the value from the doc's own `Status:` line **before** you overwrite it; do
+   not assume `READY`. If the operator waved the skill through from `PLANNED` or `REFINED`
+   (step 1), that unadvanced state is what `From:` must name, and the hook will reject the
+   edge — which is the gate working, not a reason to write a `From:` that did not happen.
+   A doc already at `IN_PROGRESS` is a resumption, not a transition: leave `Status:` and
+   `From:` as they are.
 3. `git status` + `uv run pytest --tb=no -q` — if baseline tests fail, stop and report
 
 ## Worktree agent dispatch
