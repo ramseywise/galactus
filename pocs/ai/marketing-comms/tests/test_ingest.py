@@ -13,7 +13,8 @@ from typing import Any
 
 import pymupdf
 import pytest
-from ingest.facts import (
+
+from galactus.ingest.facts import (
     MIN_PAGE_TEXT_CHARS,
     VISION_CONFIDENCE,
     extract_vision_facts,

@@ -12,8 +12,9 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from ingest.facts import verify_facts
-from ingest.tables import (
+
+from galactus.ingest.facts import verify_facts
+from galactus.ingest.tables import (
     MAX_CELL_CHARS,
     facts_from_table,
     row_span_contains_cells,

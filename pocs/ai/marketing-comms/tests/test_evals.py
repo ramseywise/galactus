@@ -33,7 +33,8 @@ from evals.run import (
     run_case,
     summarize_table,
 )
-from models import Fact
+
+from galactus.models import Fact
 
 
 def _result(

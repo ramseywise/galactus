@@ -7,7 +7,8 @@ every fixture — the fallback provably always satisfies the contract.
 from __future__ import annotations
 
 import pytest
-from guardrails.fallback import (
+
+from galactus.guardrails.fallback import (
     FILLER_WORD,
     fallback,
     fallback_report,

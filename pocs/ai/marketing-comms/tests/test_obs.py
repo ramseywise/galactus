@@ -18,9 +18,11 @@ from typing import Any
 
 import pytest
 import structlog
-from generate import generate_collateral
-from models import PipelineState
-from observability import (
+from structlog.testing import capture_logs
+
+from galactus.generate import generate_collateral
+from galactus.models import PipelineState
+from galactus.observability import (
     OP_GENERATE,
     OP_REPAIR,
     AgentSpan,
@@ -29,7 +31,6 @@ from observability import (
     configure_structlog,
     span,
 )
-from structlog.testing import capture_logs
 
 
 class ScriptedLLM:

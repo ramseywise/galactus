@@ -11,7 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from generate import (
+
+from galactus.generate import (
     build_prompt,
     build_repair_prompt,
     generate_collateral,
