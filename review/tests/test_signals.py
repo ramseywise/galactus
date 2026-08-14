@@ -20,7 +20,7 @@ from review.signals import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
-AGENT_FILE = "pocs/ai/marketing-comms/src/galactus/model/gateway.py"
+AGENT_FILE = "pocs/ai/marketing-comms/src/model/gateway.py"
 LEAKY_FIXTURE = "review/tests/fixtures/leaky_pipeline.py"
 CLEAN_FIXTURE = "review/tests/fixtures/clean_pipeline.py"
 
@@ -54,7 +54,7 @@ def test_no_sanyi_md_skips_contracts_with_a_reason():
     assert result["skipped"]["contracts"]
 
 
-def test_six_always_on_dimensions_always_active():
+def test_seven_always_on_dimensions_always_active():
     result = active_dimensions({"is_agent_code": False, "has_sanyi_contracts": False})
     for dim in (
         "intent",
@@ -63,6 +63,7 @@ def test_six_always_on_dimensions_always_active():
         "testing",
         "safety",
         "architecture",
+        "performance",
     ):
         assert dim in result["active"]
 
@@ -118,7 +119,7 @@ def test_ml_path_without_ml_content_does_not_activate():
     assert signals["is_ml_code"] is False
 
 
-def test_all_ten_dimensions_accounted_for():
+def test_all_eleven_dimensions_accounted_for():
     """Active plus skipped must cover the whole menu — a dimension that is
     neither dispatched nor explicitly skipped is a silent omission.
 
@@ -211,6 +212,9 @@ LEGACY_DOC_LABELS: dict[str, str | None] = {
     "2026-08-11-gal-4-phase4-dry-run-modes.md": None,
     # Making an unrun reporter distinguishable from a clean one — tooling.
     "2026-08-11-review-leakage-unknown-verdict.md": None,
+    # The four context-engineering surfaces — skills, agents, hooks, specs —
+    # and the agent loop that consumes them. Declares `Track: agent` itself.
+    "2026-08-14-context-engineering-space.md": "agent",
 }
 
 _SYNTHETIC_FIXTURES = [
@@ -230,7 +234,7 @@ def _all_track_fixtures() -> list[str]:
 
 
 def test_legacy_corpus_matches_hand_labels():
-    """The router agrees with a human read of all 8 pre-existing plan docs."""
+    """The router agrees with a human read of all 9 pre-existing plan docs."""
     for name, expected in LEGACY_DOC_LABELS.items():
         path = PLANS_DIR / name
         assert path.exists(), f"corpus doc vanished: {name}"

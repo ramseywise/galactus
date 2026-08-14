@@ -1,7 +1,7 @@
-"""The cross-artifact test: skills and core must agree on the ten prefixes.
+"""The cross-artifact test: skills and core must agree on the eleven prefixes.
 
 Green since Step 7 of the prototyping-review-subsystem plan created the original
-nine `review-*` skills; `review-leakage` made it ten.
+nine `review-*` skills; `review-leakage` made it ten, `review-performance` eleven.
 
 `models.py` is authoritative and the skills follow it, never the reverse. This
 test is what makes registration code rather than directory convention: adding a

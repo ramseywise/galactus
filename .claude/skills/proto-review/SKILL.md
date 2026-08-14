@@ -102,11 +102,11 @@ echo '["path/one.py", "path/two.ts"]' | uv run python -m review.cli detect-signa
 
 It returns `{signals, active, skipped, injection_hits}` — the active dimension list, a
 `skipped` map of `dimension → reason`, and any injection hits found in the changed files.
-**Keep `injection_hits`**: Stage 6 needs it, and it is not recomputed there. Six
+**Keep `injection_hits`**: Stage 6 needs it, and it is not recomputed there. Seven
 dimensions are always on (`intent`, `correctness`, `silent_failure`, `testing`, `safety`,
-`architecture`); `runtime` and `safeguards` activate on agent-system signal, `contracts`
-on a `SANYI.md` at the repo root, and `leakage` on an ML-code signal. **Carry the skipped
-map forward verbatim** — Stage 7 §11 must account for all ten dimensions, and a skip
+`architecture`, `performance`); `runtime` and `safeguards` activate on agent-system signal,
+`contracts` on a `SANYI.md` at the repo root, and `leakage` on an ML-code signal. **Carry the
+skipped map forward verbatim** — Stage 7 §11 must account for all eleven dimensions, and a skip
 without its reason is indistinguishable from an omission.
 
 **Then dispatch `review` once per active dimension — every dispatch in a single message,
@@ -125,7 +125,7 @@ proves which skill loaded, and a dispatch carrying two has no unambiguous prefix
 | Diff | from Stage 1; the reporter never re-derives it |
 | Repo context | review profile + repo-context facts from Stage 1 |
 
-The ten dimensions, their skills, and what activates each:
+The eleven dimensions, their skills, and what activates each:
 
 | Dimension | Skill to load | Active when |
 |---|---|---|
@@ -135,6 +135,7 @@ The ten dimensions, their skills, and what activates each:
 | testing | `review-testing` | always |
 | safety | `review-safety` | always |
 | architecture | `review-architecture` | always |
+| performance | `review-performance` | always |
 | runtime | `review-runtime` | agent-system signal |
 | safeguards | `review-safeguards` | agent-system signal |
 | contracts | `review-contracts` | `SANYI.md` at repo root |
@@ -282,7 +283,7 @@ Each `dispatch` entry uses the field names in `ReporterDispatchEntry`
 }
 ```
 
-All ten dimensions get a row every run, including the skipped ones — a ten-row table is
+All eleven dimensions get a row every run, including the skipped ones — an eleven-row table is
 what Stage 7 reports, and rung 1 reads `status` across every row. `validation_failures` is
 a **count**, not a list; passing a list crashes the CLI rather than being rejected cleanly.
 
@@ -348,16 +349,17 @@ Produce the unified report:
 | testing | ... | N findings |
 | safety | ... | N findings |
 | architecture | ... | N findings |
+| performance | ... | N findings |
 | runtime | ... | N findings |
 | safeguards | ... | N findings |
 | contracts | ... | N findings |
 | plan-fidelity | ran / skipped | N findings |
 | lint/tests | ran / skipped | pass/fail |
 
-**All ten dimensions get a row, every run — no exceptions.** A dimension that did not
+**All eleven dimensions get a row, every run — no exceptions.** A dimension that did not
 run is `skipped` with the reason `detect-signals` gave, or `failed` with what went wrong.
 Silently omitting a row is the failure this table exists to prevent: a review that covered
-six dimensions and a review that covered ten look identical if only the ones that ran are
+seven dimensions and a review that covered eleven look identical if only the ones that ran are
 listed. Note here if the bounded corrective round ran and what triggered it.
 
 ## 12. Merge Verdict

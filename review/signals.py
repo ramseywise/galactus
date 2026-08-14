@@ -2,14 +2,14 @@
 
 Regex-based, no LLM calls. Two jobs:
 
-- `detect_signals` / `active_dimensions` decide which of the ten dimensions
+- `detect_signals` / `active_dimensions` decide which of the eleven dimensions
   run, and record the skipped ones *with reasons* — a dispatch table that omits
   what did not run cannot be mandatory-complete.
 - `detect_injection` scans reviewed files for injection-shaped content. Its
   output is evidence in the brief *and* rung 0's second conjunct.
 
 Ported from `guacamayo/review/signals.py`, dropping `is_pipeline_code` and its
-two pattern lists — no dimension in the ten-way menu consumes it.
+two pattern lists — no dimension in the eleven-way menu consumes it.
 """
 
 from __future__ import annotations
@@ -180,7 +180,7 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
 ]
 
-# The six dimensions that run on every review, and the conditional four.
+# The seven dimensions that run on every review, and the conditional four.
 _ALWAYS_ON = [
     "intent",
     "correctness",
@@ -188,6 +188,7 @@ _ALWAYS_ON = [
     "testing",
     "safety",
     "architecture",
+    "performance",
 ]
 
 
