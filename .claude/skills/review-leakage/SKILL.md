@@ -77,6 +77,25 @@ whose order is the bug.
   the frame while the split ignores it. `GroupKFold` / `GroupShuffleSplit`
   absent where an entity ID exists is the shape.
 
+- **A group key present in the frame but not passed to the splitter is a finding**,
+  not merely a shape to notice. Report it.
+  - **Evidence state.** `verified` when the diff makes both halves readable —
+    the key's presence in the frame *and* the splitter's argument list omitting
+    `groups=`. `hypothesis` when the splitter is constructed elsewhere and only
+    the key's presence is visible in the diff. Unlike an unrun scan, this is
+    directly observable in code, so it carries no severity cap and may be a
+    `blocker`.
+  - **Weak keys are stated, never suppressed.** Where the key's discriminating
+    power is weak, the finding says so; it does not disappear. The worked case
+    is the lending POC (`ml-lending/docs/DESIGN.md` §"Group structure"): 1.03%
+    of rows in multi-row groups, max group size 3, and the key inferred rather
+    than observed — recorded honestly as *"group leakage is effectively
+    unexercised on this proxy."* That is a finding with a caveat, and the
+    caveat is what makes it useful.
+  - **`quoted_span`.** Anchor to the **splitter construction line** — the
+    `KFold(...)` / `train_test_split(...)` call that omits `groups=`. That is
+    where the omission lives, not the column definition.
+
 ## Ordering: fit before split
 
 - **Any `fit` or `fit_transform` on the full frame before the split line.**
@@ -149,6 +168,51 @@ Per `review-shared/references/context-brief.md`: an empty changed-file list is a
 failure to report as such, **not** a clean review. Returning `[]` for a dispatch
 that received nothing to read is the collapse this dimension is named after — say
 the input was empty and fail loudly rather than reporting no findings.
+
+## An unrun scan is not a clean scan
+
+The same argument one level in. Where empty input means *nobody read the diff*,
+an absent single-feature association scan means *nobody looked for the strongest
+leak class* — and both currently render as `[]`.
+
+**Trigger.** The diff scores a model, and no single-feature association scan —
+feature-vs-label AUC, or an equivalent per-column correlation pass — exists for
+that frame. The absence is itself reportable.
+
+**Output.** One finding: `evidence_state: question`, `merge_impact: question`,
+`category: data`, `LK-` prefix. It reports an unknown; it does not gate the
+merge.
+
+**Vocabulary.** The unknown reuses `evidence_state: question` rather than
+introducing a `verdict` field. The evidence model already defines `question` as
+*"missing context prevents judgment ... phrased as a clarification request"*,
+which is these semantics exactly, and `models.py` already enforces the pairing —
+a `question` finding cannot carry `blocker` or `important`, so "reports an
+unknown, does not gate the merge" is a schema guarantee rather than an
+instruction. No schema change was needed and none was made. Pinned by
+`review/tests/test_leakage_unknown.py`.
+
+**Resolution trigger.** State the concrete thing that closes it, phrased as a
+clarification request per the `question` state's contract in
+`review-shared/references/evidence-model.md`: *run a single-feature AUC scan
+over all columns and report any column scoring above ~0.95.* A finding that
+names no way to resolve it is not a question, it is a complaint.
+
+**`quoted_span`.** Constraint 4 requires a literal source quote, and an absent
+scan has no line of its own. Anchor the finding to the **scoring call or the
+reported-metric line** — the line that makes the missing scan matter.
+
+**The prohibition.** Returning `[]` because no scan was found is the failure,
+not a clean review.
+
+**Why this rule.** The name heuristic under §Target leakage catches post-outcome
+*names*. It cannot catch a post-outcome *column that looks innocent*: in the
+lending POC (see `ml-lending/docs/DESIGN.md` §"The finding the name heuristic
+missed"), `last_fico_range_high` and `last_fico_range_low` score **0.9511
+against the label with no post-outcome name pattern and zero nulls**. No regex
+reaches that; only the scan does. So an unrun scan is precisely the condition
+under which the most dangerous leak class is invisible — and that is exactly
+when this skill currently returns `[]`.
 
 ## Output
 

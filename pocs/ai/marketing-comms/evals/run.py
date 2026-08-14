@@ -34,13 +34,13 @@ from typing import Any, ClassVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from config import Settings
-from generate import generate_collateral
-from guardrails.validator import is_valid
-from layout.contract import load_template_cached
-from model.gateway import LLM
-from models import Fact, LayoutTemplate, PipelineState
-from observability import configure_structlog
+from galactus.config import Settings
+from galactus.generate import generate_collateral
+from galactus.guardrails.validator import is_valid
+from galactus.layout.contract import load_template_cached
+from galactus.model.gateway import LLM
+from galactus.models import Fact, LayoutTemplate, PipelineState
+from galactus.observability import configure_structlog
 
 CASES_PATH = Path(__file__).parent / "cases.jsonl"
 
@@ -510,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
         # different shape than production, and the format would go untested.
         configure_structlog(Settings.load().log_level)
     else:
-        from model.gateway import AnthropicAdapter
+        from galactus.model.gateway import AnthropicAdapter
 
         settings = Settings.load()
         settings.require_api_key()

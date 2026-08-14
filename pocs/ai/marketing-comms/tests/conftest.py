@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pytest
-from layout.contract import load_template
-from models import LayoutTemplate
+
+from galactus.layout.contract import load_template
+from galactus.models import LayoutTemplate
 
 _SIXTY_FIVE_WORDS = " ".join(["alpha"] * 65)
 

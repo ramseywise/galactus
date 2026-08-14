@@ -12,13 +12,14 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from ingest.facts import verify_facts
-from ingest.tables import (
+
+from galactus.ingest.facts import verify_facts
+from galactus.ingest.tables import (
     MAX_CELL_CHARS,
     facts_from_table,
     row_span_contains_cells,
 )
-from models import Fact
+from galactus.models import Fact
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -148,7 +149,7 @@ def test_table_origin_does_not_bypass_span_resolution() -> None:
 @pytest.mark.parametrize("name", ["sender.pdf", "receiver.pdf"])
 def test_fixture_tables_survive_the_full_ingest(name: str) -> None:
     """End-to-end: the shipped fixtures each carry a table that reaches facts."""
-    from ingest.facts import ingest_pdf
+    from galactus.ingest.facts import ingest_pdf
 
     facts = asyncio.run(ingest_pdf(FIXTURES / name))
     table_facts = [fact for fact in facts if fact.origin == "table"]
@@ -164,7 +165,7 @@ def test_table_page_text_is_not_also_emitted_as_a_run_on_fact() -> None:
     containing every cell in the grid with no row structure. It must not
     reappear alongside the structured rows.
     """
-    from ingest.facts import ingest_pdf
+    from galactus.ingest.facts import ingest_pdf
 
     facts = asyncio.run(ingest_pdf(FIXTURES / "sender.pdf"))
     page_two_text_facts = [fact for fact in facts if fact.page == 2 and fact.origin == "text"]

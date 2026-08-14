@@ -13,7 +13,8 @@ from typing import Any
 
 import pymupdf
 import pytest
-from ingest.facts import (
+
+from galactus.ingest.facts import (
     MIN_PAGE_TEXT_CHARS,
     VISION_CONFIDENCE,
     extract_vision_facts,
@@ -22,21 +23,21 @@ from ingest.facts import (
     pages_needing_vision,
     verify_facts,
 )
-from ingest.text import (
+from galactus.ingest.text import (
     MIN_FACT_WORDS,
     extract_text_facts,
     facts_from_pages,
     resolve_span,
 )
-from ingest.vision import (
+from galactus.ingest.vision import (
     MAX_IMAGE_DIMENSION,
     encode_image_base64,
     image_to_message,
     page_images,
     render_page_png,
 )
-from model.gateway import LLMError
-from models import Fact
+from galactus.model.gateway import LLMError
+from galactus.models import Fact
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 SENDER_PDF = FIXTURE_DIR / "sender.pdf"

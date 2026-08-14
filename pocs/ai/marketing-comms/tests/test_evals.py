@@ -33,7 +33,8 @@ from evals.run import (
     run_case,
     summarize_table,
 )
-from models import Fact
+
+from galactus.models import Fact
 
 
 def _result(
@@ -321,7 +322,7 @@ async def test_run_all_preserves_case_order(template):
 
 def test_stress_fields_breach_only_the_named_fields(template):
     """Otherwise every hard case reports the same violations and distinguishes nothing."""
-    from guardrails.validator import validate
+    from galactus.guardrails.validator import validate
 
     llm = ScriptedEvalLLM(
         template,

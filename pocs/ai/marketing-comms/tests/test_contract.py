@@ -5,21 +5,22 @@ from __future__ import annotations
 import json
 
 import pytest
-from layout.contract import (
+from pydantic import ValidationError
+
+from galactus.layout.contract import (
     TemplateNotFoundError,
     available_templates,
     default_template_dir,
     load_template,
     load_template_file,
 )
-from models import (
+from galactus.models import (
     Fact,
     FieldConstraint,
     LayoutTemplate,
     PipelineState,
     Violation,
 )
-from pydantic import ValidationError
 
 # --------------------------------------------------------------------------
 # The shipped template
