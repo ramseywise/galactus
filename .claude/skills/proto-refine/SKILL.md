@@ -105,6 +105,30 @@ assessment grades your assessment; the independence is the entire value of the d
 that is a **dispatch failure** — record it and do not report a verdict as though the pass
 ran.
 
+**Resolve the advisor before you dispatch it.** Run this first, and read the exit code:
+
+```bash
+uv run python -m review.cli resolve-capability fog
+```
+
+Exit 0 means `fog-advisor` is loadable and you may dispatch it. **Exit 1 means the advisor
+did not resolve, and you may not run the pass at all** — not inline, not with the contract
+pasted in, not with a substitute agent. Record the `reason` from the payload verbatim:
+
+```
+Epistemic: UNTESTED
+Epistemic-by: dispatch failed — <reason from resolve-capability>
+```
+
+Inlining the advisor's contract when it does not load is the specific failure this check
+exists to stop (#15). It produces findings, so it feels like the pass ran — but a lens the
+caller executes itself is not an independent lens, and the `Epistemic:` value it licenses
+is not the one it will write. **A substituted dispatch is a failed dispatch.**
+
+Do not paraphrase the reason. "The advisor did not load" tells the next reader nothing
+actionable; `agent definition not found at .claude/agents/fog-advisor.md` tells them what
+to fix.
+
 This dispatch is a **CROSS** call: an adversarial capability aimed at the artifact, with
 context deliberately withheld. Its outcome is what the `Epistemic:` axis records.
 
@@ -144,10 +168,18 @@ Epistemic-findings: <count>
 | Dispatched, nothing unresolved | `NO_CONFLICT` |
 | Dispatched, open findings nobody closed | `CONFLICTED` |
 | Dispatched, a finding severe enough that advancing is a mistake | `BLOCKED` |
-| Skipped (plan not risky) or dispatch failed | `UNTESTED` |
+| Skipped (plan not risky) | `UNTESTED` |
+| **Advisor did not resolve, or dispatch failed** | `UNTESTED` — never `NO_CONFLICT` |
+
+**`NO_CONFLICT` requires that the advisor actually ran.** The last two rows both write
+`UNTESTED` but are different facts, and `Epistemic-by:` must say which: `skipped — <reason>`
+is "nobody checked, deliberately," while `dispatch failed — <reason>` is "the check was
+supposed to run and did not." Collapsing them loses the only signal that the mechanism
+is broken rather than merely unused.
 
 `NO_CONFLICT` is not `correct` — it means the applicable adversarial checks found no
-unresolved contradiction. Never upgrade "nothing was found" into "this is sound."
+unresolved contradiction. Never upgrade "nothing was found" into "this is sound," and
+never upgrade "the check did not run" into "nothing was found."
 
 **You may not write `READY` without a fresh `Epistemic:` from this run.** A value left by
 an earlier run is stale and does not satisfy this — re-dispatch or record the skip. The

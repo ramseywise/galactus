@@ -20,6 +20,12 @@ fail() { echo "FAIL: $1"; (( FAIL++ )) || true; }
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+
+# Redirect the transition ledger into the temp dir. Without this the suite writes
+# its fixture edges into the operator's real `plan-transitions.jsonl` — the
+# ledger whose whole purpose is counting transitions a human actually made. A
+# measurement a test run can increment measures the test run.
+export GALACTUS_TRANSITION_LOG="$TMP/plan-transitions.jsonl"
 PLANS="$TMP/.claude/docs/plans"
 mkdir -p "$PLANS"
 
@@ -339,6 +345,54 @@ assert_exit0 "tilde fence hides its contents like a backtick fence"
 write_doc "f-tilde-super.md" "Status: PLANNED\n~~~\nStatus: SUPERSEDED\n~~~\n"
 run "$PLANS/f-tilde-super.md"
 assert_exit0 "a fenced SUPERSEDED does not trigger the Superseded-by: requirement"
+
+# --- The transition ledger (step 4) -------------------------------------------
+# The hook is the only component that sees every accepted edge, so it is the only
+# place D10 — the loop-back count — can be recorded. Three properties matter, and
+# each one is a way the count could lie:
+#
+#   1. an accepted edge is recorded (or the count undercounts)
+#   2. a *rejected* edge is not (or an attempt inflates the count it exists to measure)
+#   3. a non-transition write is not (or prose edits bury the traversals in noise)
+
+# ledger_count <from> <to> -> number of matching records
+ledger_count() {
+  grep -c "\"from\":\"$1\",\"to\":\"$2\"" "$GALACTUS_TRANSITION_LOG" 2>/dev/null || true
+}
+
+: > "$GALACTUS_TRANSITION_LOG"
+
+write_doc "t-accept.md" "Status: EXECUTED\nFrom: IN_PROGRESS\nReview: pending\n"
+run "$PLANS/t-accept.md"
+[ "$(ledger_count IN_PROGRESS EXECUTED)" -eq 1 ] \
+  && pass "ledger records an accepted edge" \
+  || fail "ledger records an accepted edge (got $(ledger_count IN_PROGRESS EXECUTED))"
+
+# The loop-back itself — the edge D10 counts and the corpus has never shown.
+write_doc "t-loopback.md" "Status: PLANNED\nFrom: EXECUTED\n"
+run "$PLANS/t-loopback.md"
+[ "$(ledger_count EXECUTED PLANNED)" -eq 1 ] \
+  && pass "ledger records the EXECUTED -> PLANNED loop-back (D10)" \
+  || fail "ledger records the EXECUTED -> PLANNED loop-back (D10)"
+
+# A blocked write never landed, so the transition did not happen. Counting the
+# attempt would inflate exactly the number the ledger exists to measure.
+write_doc "t-reject.md" "Status: COMPLETE\nFrom: IN_PROGRESS\nReview: passed\nCompleted: 2026-08-14\n"
+run "$PLANS/t-reject.md"
+assert_blocked "illegal edge is rejected — precondition for the next assertion"
+[ "$(ledger_count IN_PROGRESS COMPLETE)" -eq 0 ] \
+  && pass "ledger does NOT record a rejected edge" \
+  || fail "ledger does NOT record a rejected edge"
+
+# Most writes to a plan doc are prose edits, not transitions. `From:` absent is
+# the signal for "this was not an edge" — recording those buries the traversals.
+before=$(wc -l < "$GALACTUS_TRANSITION_LOG")
+write_doc "t-prose.md" "Status: PLANNED\n\nSome prose, no From: line.\n"
+run "$PLANS/t-prose.md"
+assert_exit0 "a write with no From: is valid — not every write is a transition"
+[ "$(wc -l < "$GALACTUS_TRANSITION_LOG")" -eq "$before" ] \
+  && pass "ledger does NOT record a write that declares no From:" \
+  || fail "ledger does NOT record a write that declares no From:"
 
 echo
 echo "RESULT: $PASS passed, $FAIL failed"

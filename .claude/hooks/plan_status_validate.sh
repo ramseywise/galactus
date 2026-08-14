@@ -11,8 +11,14 @@ echo "$path" | grep -q '/\.claude/docs/plans/.*\.md$' || exit 0
 
 # `|| status=$?` keeps set -e from aborting here: the reject path still has to reach
 # log_event below before the hook exits non-zero, so the block is recorded either way.
-status=0
-python3 - "$path" <<'PY' || status=$?
+# The Python block is written to a temp file rather than piped through a heredoc
+# inside `$(...)`. Command substitution processes backticks as legacy command
+# substitution *before* the quoted heredoc protects them, so the fence regexes
+# below (`{3,}` and friends) were mangled into a syntax error the moment this
+# block started being captured. A file has no such layer.
+_py=$(mktemp -t plan_status_validate) || exit 0
+trap 'rm -f "$_py"' EXIT
+cat > "$_py" <<'PY'
 import re
 import sys
 
@@ -240,7 +246,30 @@ if issues:
         file=sys.stderr,
     )
     sys.exit(10)
+
+# The transition record (step 4). The hook is the only component that sees every
+# accepted edge, and until now it discarded that: the log said a write passed,
+# never *which transition* passed. D10 — the loop-back count — was therefore
+# unmeasurable even after `From:` gave every edge a name.
+#
+# Emitted on stdout for the shell to append. Only edges are recorded: a write
+# that declares no `From:` is not a transition (most writes to a plan doc are
+# prose edits), and recording those would bury the traversals in noise.
+#
+# Nothing is recorded on the reject path — a blocked write never landed, so the
+# transition did not happen. Counting attempts as traversals would inflate
+# exactly the number this exists to measure.
+if from_value is not None and token:
+    prior = from_value.split()[0] if from_value.split() else ""
+    print(f"{prior}\t{token}\t{track_value or ''}\t{epistemic_value or ''}")
 PY
+
+status=0
+# `|| status=$?` on the *substitution*, not inside it: a `$(...)` runs in a
+# subshell, so an assignment made in there is discarded when it exits. An
+# earlier form of this line always reported 0, which would have logged every
+# rejection as a pass.
+transition=$(python3 "$_py" "$path") || status=$?
 
 if [ "$status" -eq 10 ]; then
   # Exit 2 is the PostToolUse blocking code: stderr is fed back so the writer sees the
@@ -250,4 +279,11 @@ if [ "$status" -eq 10 ]; then
   exit 2
 fi
 log_event "plan_status_validate" 0 "pass: $path"
+
+# Record the traversal, not just the pass. `log_transition` is a no-op when the
+# write declared no `From:` — see the emit site in the Python block above.
+if [ -n "$transition" ]; then
+  IFS=$'\t' read -r t_from t_to t_track t_epistemic <<<"$transition"
+  log_transition "$path" "$t_from" "$t_to" "$t_track" "$t_epistemic"
+fi
 exit 0

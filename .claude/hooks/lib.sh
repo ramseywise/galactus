@@ -76,6 +76,44 @@ log_event() {
     >> "$LOG_FILE" || true
 }
 
+# `GALACTUS_TRANSITION_LOG` exists for the test suite, and the reason is the
+# measurement itself: `_HOOK_LOG_DIR` resolves through `git rev-parse` from the
+# *cwd*, not from the doc under validation, so the hook tests — which write real
+# fixture docs through the real hook — appended their synthetic edges to the
+# operator's ledger. Every run added five traversals nobody made. D10 is a count
+# of human decisions, and a count a test suite can increment is not one.
+TRANSITION_LOG_FILE="${GALACTUS_TRANSITION_LOG:-${_HOOK_LOG_DIR}/plan-transitions.jsonl}"
+
+# The BUILD transition ledger — one record per *accepted* state edge.
+#
+# Separate from `hook-log.jsonl` on purpose, and the reason is the whole point of
+# the file: `log_pass` rotates at 1000 lines, so a shared log would silently drop
+# the oldest traversals, and the quantity being measured (D10, the loop-back
+# count) is cumulative over months. A rotating history cannot answer "how many
+# times has EXECUTED → PLANNED been traversed" — it can only answer "recently",
+# which is the question that already has an answer of zero.
+#
+# So this file is deliberately **not rotated**. It grows at roughly one line per
+# state transition — a few dozen per work item, not per write — so unbounded
+# growth here is measured in kilobytes per year.
+#
+# Not git-tracked (`.gitignore:26` covers `.claude/logs/`), which is the same F6
+# durability caveat that applies to the plan docs themselves: this ledger is the
+# only record of the traversals, and it does not survive a fresh clone. That is
+# acceptable while the measurement is local and the operator is one person; it is
+# the thing to fix first if the count ever needs to be shared or audited.
+log_transition() {
+  local path="$1" from="$2" to="$3" track="${4:-}" epistemic="${5:-}"
+  local repo doc
+  repo=$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
+  # Basename only: the ledger is per-repo already, and absolute paths carry the
+  # operator's home directory into a file that may later be shared.
+  doc=$(basename "$path")
+  printf '{"ts":"%s","repo":"%s","doc":"%s","from":"%s","to":"%s","track":"%s","epistemic":"%s"}\n' \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$repo" "$doc" "$from" "$to" "$track" "$epistemic" \
+    >> "$TRANSITION_LOG_FILE" || true
+}
+
 PASS_LOG_FILE="${_HOOK_LOG_DIR}/hook-pass-log.jsonl"
 
 log_pass() {

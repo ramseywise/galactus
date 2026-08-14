@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from pathlib import Path
 
 from review.models import (
     STATE_COMPLETED_PHASE,
@@ -60,6 +61,17 @@ _CAPABILITY_CALL_SITES: dict[Phase, list[Capability]] = {
     Phase.REVIEW: [Capability.WAR_GAME, Capability.ASSUMPTION_AUDIT],
 }
 
+# The agent each capability dispatches, relative to the repo root. A capability
+# whose dispatch is inlined by the caller rather than delegated to a subagent has
+# no entry and cannot be resolution-checked.
+#
+# This table is what makes "the advisor did not load" *detectable*. Without it
+# the only record of which agent a capability names is prose in the skill body,
+# and prose cannot be checked at dispatch time.
+CAPABILITY_AGENT: dict[Capability, str] = {
+    Capability.FOG: ".claude/agents/fog-advisor.md",
+}
+
 
 class Outcome(StrEnum):
     """What happened on a dispatch — the third axis of design §3d-quater.
@@ -79,6 +91,7 @@ class Outcome(StrEnum):
 _STATUS_RE = re.compile(r"^[ \t]*(?:\*\*)?Status(?:\*\*)?:[ \t]*(.*)$")
 _TRACK_RE = re.compile(r"^[ \t]*(?:\*\*)?Track(?:\*\*)?:[ \t]*(.*)$")
 _EPISTEMIC_RE = re.compile(r"^[ \t]*(?:\*\*)?Epistemic(?:\*\*)?:[ \t]*(.*)$")
+_NAME_RE = re.compile(r"^[ \t]*name:[ \t]*(.*)$")
 _RESEARCH_HEADING_RE = re.compile(r"^#{1,6}[ \t]+Research\b", re.IGNORECASE)
 
 
@@ -239,6 +252,102 @@ def active_capabilities(signals: dict[str, object]) -> dict[str, object]:
         )
 
     return {"active": active, "skipped": skipped}
+
+
+def resolve_capability_agent(
+    capability: Capability,
+    repo_root: str = ".",
+) -> dict[str, object]:
+    """Check that a capability's advisor is loadable *before* it is dispatched.
+
+    This is the CROSS-side counterpart to F7 skill-load verification
+    (`validate.py:85`), which catches a review dispatch that returns a foreign
+    reporter prefix. CROSS dispatches had no equivalent, and that gap is what
+    #15 records: `/proto-refine` named `fog-advisor`, the registry did not load
+    it, the pass ran through a substituted dispatch with the contract inlined,
+    and the result was written as `NO_CONFLICT` — "applicable checks ran and
+    surfaced nothing unresolved" — from a check that never ran as specified.
+
+    A substituted dispatch is indistinguishable from a real one *at the point
+    the result is read*, so the check has to happen at the point the result is
+    produced. Returns the resolution rather than raising: the caller must record
+    a failure as `Outcome.FAILED`, which is a result, not an exception.
+
+    Returns `{"resolved": bool, "agent": str | None, "reason": str}`. `reason`
+    is "" when resolved, and otherwise names what was looked for and why it did
+    not load — a bare False sends the caller back to guessing, which is the
+    failure mode this function exists to close.
+    """
+    agent_path = CAPABILITY_AGENT.get(capability)
+    if agent_path is None:
+        return {
+            "resolved": False,
+            "agent": None,
+            "reason": (
+                f"capability {capability.value!r} has no registered agent in "
+                f"CAPABILITY_AGENT; it cannot be dispatched as a subagent"
+            ),
+        }
+
+    path = Path(repo_root) / agent_path
+    if not path.is_file():
+        return {
+            "resolved": False,
+            "agent": agent_path,
+            "reason": f"agent definition not found at {agent_path}",
+        }
+
+    text = path.read_text(encoding="utf-8", errors="replace")
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    if match is None:
+        return {
+            "resolved": False,
+            "agent": agent_path,
+            "reason": f"{agent_path} has no YAML front matter; the registry cannot register it",
+        }
+
+    # `name:` is what the registry registers under and what the dispatch names.
+    # A file that parses but registers under a different name resolves to a
+    # *different agent* than the one the caller asked for — the substitution
+    # this check exists to catch, one layer subtler than a missing file.
+    name = _field(match.group(1).splitlines(), _NAME_RE)
+    expected = Path(agent_path).stem
+    if name is None:
+        return {
+            "resolved": False,
+            "agent": agent_path,
+            "reason": f"{agent_path} front matter declares no `name:`",
+        }
+    if name != expected:
+        return {
+            "resolved": False,
+            "agent": agent_path,
+            "reason": (
+                f"{agent_path} registers as {name!r}, not {expected!r}; "
+                f"a dispatch naming {expected!r} would not resolve to this file"
+            ),
+        }
+
+    return {"resolved": True, "agent": agent_path, "reason": ""}
+
+
+def epistemic_for(outcome: Outcome, findings: int = 0) -> str:
+    """Map a dispatch outcome onto the `Epistemic:` value it licenses.
+
+    The whole point of routing this through a function is that `NO_CONFLICT` is
+    **unreachable** from anything but `COMPLETED`. `/proto-refine`'s table said
+    as much in prose and the gate still wrote `NO_CONFLICT` on a dispatch that
+    did not happen, because prose is the weakest available layer (CLAUDE.md:
+    "a rule you rely on belongs in a hook, not here").
+
+    `FAILED` and `SKIPPED` both yield `UNTESTED` but are *not* collapsed at the
+    call site: the caller records which one in `Epistemic-by:`, because "nobody
+    checked, deliberately" and "the check was supposed to run and did not" are
+    different facts about the artifact.
+    """
+    if outcome is Outcome.COMPLETED:
+        return "NO_CONFLICT" if findings == 0 else "CONFLICTED"
+    return "UNTESTED"
 
 
 def _assert_complete(active: list[str], skipped: dict[str, str]) -> None:
