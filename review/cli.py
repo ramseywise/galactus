@@ -1,7 +1,7 @@
-"""Command-line surface for the review core. Five subcommands, stdlib only.
+"""Command-line surface for the review core. Seven subcommands, stdlib only.
 
 `argparse`, not `click`: `click` is not in galactus's dependency tree, and
-adding a dependency for five subcommands in one small file is not a trade
+adding a dependency for seven subcommands in one small file is not a trade
 worth making. Parity with guacamayo would be `uv add click` — never
 `pip install`, which `pip_guard.sh` blocks.
 
@@ -9,12 +9,19 @@ worth making. Parity with guacamayo would be `uv add click` — never
     detect-signals    < ["path", ...]     active + skipped + injection hits
     detect-track      < {"doc": str, "files": [...]}   track + source + confidence
     derive-phases     < {"doc": str}      live BUILD phases + CROSS capabilities
+    resolve-capability  <name> (argv)     does this capability's advisor load?
+    transition-metrics  (no input)        the D10 loop-back count from the ledger
     verdict           < review.json       the merge decision
 
-`derive-phases` is the only subcommand whose exit code carries a routing
-outcome rather than a payload verdict: exit 1 means the doc could not be
-routed, which is distinct from a doc that routed to zero remaining phases
-because it is finished.
+Two subcommands carry a routing outcome in the exit code rather than a payload
+verdict. `derive-phases` exits 1 when the doc could not be routed, which is
+distinct from a doc that routed to zero remaining phases because it is
+finished. `resolve-capability` exits 1 when the named advisor does not load,
+which is distinct from an advisor that ran and found nothing — the collapse
+#15 records, where a substituted dispatch produced `NO_CONFLICT`.
+
+`resolve-capability` reads its argument from argv, not stdin: it takes one
+bare token and inventing a JSON envelope for it would be ceremony.
 
 Note the payload divergence: `detect-signals` reads a **bare JSON list**, while
 `detect-track` reads a **JSON object** — it has two independent optional inputs
@@ -33,9 +40,17 @@ import sys
 
 from pydantic import ValidationError
 
-from review.models import ReporterDispatchEntry, ReviewFinding
-from review.phases import active_capabilities, active_phases, read_doc_signals
+from review.models import Capability, ReporterDispatchEntry, ReviewFinding
+from review.phases import (
+    Outcome,
+    active_capabilities,
+    active_phases,
+    epistemic_for,
+    read_doc_signals,
+    resolve_capability_agent,
+)
 from review.signals import active_dimensions, detect_injection, detect_signals, detect_track
+from review.transitions import DEFAULT_LEDGER, read_ledger
 from review.validate import validate_finding
 from review.verdict import compute_verdict
 
@@ -150,6 +165,62 @@ def _cmd_derive_phases(args: argparse.Namespace) -> int:
     sys.stdout.write("\n")
     # An underivable doc is a failure to route, not a successful empty result.
     return 1 if phases["unroutable"] else 0
+
+
+def _cmd_resolve_capability(args: argparse.Namespace) -> int:
+    """Verify a CROSS capability's advisor loads, before it is dispatched.
+
+    Exit 1 means the advisor did not resolve. That is a **dispatch failure**,
+    not a clean skip: the caller must record `Epistemic: UNTESTED` with
+    `Epistemic-by: dispatch failed — <reason>` and may not write `NO_CONFLICT`.
+
+    Exists as a subcommand because the guarantee has to be checkable from the
+    skill, which has `Bash` but cannot import Python. A prose instruction to
+    "record a dispatch failure" is the layer that already failed once (#15).
+    """
+    try:
+        capability = Capability(args.capability)
+    except ValueError:
+        return _payload_error(
+            "schema",
+            f"unknown capability {args.capability!r}; "
+            f"registered: {sorted(c.value for c in Capability)}",
+        )
+
+    result = resolve_capability_agent(capability, repo_root=args.repo_root)
+    json.dump(
+        {
+            "capability": capability.value,
+            "resolved": result["resolved"],
+            "agent": result["agent"],
+            "reason": result["reason"],
+            # Stated in the payload rather than left to the caller to infer:
+            # the value a *failed* resolution licenses is the thing #15 got
+            # wrong, so the command answers it rather than implying it.
+            "epistemic": (None if result["resolved"] else epistemic_for(Outcome.FAILED)),
+        },
+        sys.stdout,
+        indent=2,
+    )
+    sys.stdout.write("\n")
+    return 0 if result["resolved"] else 1
+
+
+def _cmd_transition_metrics(args: argparse.Namespace) -> int:
+    """Report the D10 metrics from the transition ledger.
+
+    Exit 1 means the ledger does not exist — the mechanism has never recorded a
+    transition, which is a different fact from a ledger that recorded none. An
+    empty-but-present ledger exits 0 with `loop_backs: 0`, and that zero is a
+    measurement rather than an absence.
+
+    Takes no stdin: the input is a file on disk, and requiring a JSON envelope
+    naming a path the default already knows would be ceremony.
+    """
+    metrics = read_ledger(args.ledger)
+    json.dump(metrics, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0 if metrics["exists"] else 1
 
 
 def _payload_error(reason: str, message: str) -> int:
@@ -269,6 +340,27 @@ def build_parser() -> argparse.ArgumentParser:
         help='Derive live BUILD phases + CROSS capabilities: {"doc": str} on stdin.',
     )
     p_phases.set_defaults(func=_cmd_derive_phases)
+
+    p_resolve = sub.add_parser(
+        "resolve-capability",
+        help="Verify a CROSS capability's advisor loads before dispatch; exit 1 if it does not.",
+    )
+    p_resolve.add_argument(
+        "capability",
+        help='The capability to resolve, e.g. "fog".',
+    )
+    p_resolve.set_defaults(func=_cmd_resolve_capability)
+
+    p_metrics = sub.add_parser(
+        "transition-metrics",
+        help="Report the D10 loop-back count from the transition ledger; exit 1 if absent.",
+    )
+    p_metrics.add_argument(
+        "--ledger",
+        default=DEFAULT_LEDGER,
+        help=f"Path to the transition ledger (default: {DEFAULT_LEDGER}).",
+    )
+    p_metrics.set_defaults(func=_cmd_transition_metrics)
 
     p_verdict = sub.add_parser("verdict", help="Compute the merge decision.")
     p_verdict.set_defaults(func=_cmd_verdict)

@@ -16,10 +16,13 @@ from review.models import (
     Phase,
 )
 from review.phases import (
+    CAPABILITY_AGENT,
     Outcome,
     active_capabilities,
     active_phases,
+    epistemic_for,
     read_doc_signals,
+    resolve_capability_agent,
 )
 
 
@@ -371,3 +374,146 @@ def test_every_corpus_doc_routes():
         assert not result["unroutable"], f"{doc.name} did not route: {signals}"
         covered = set(result["active"]) | set(result["skipped"])
         assert covered == {p.value for p in Phase}
+
+
+# --- capability resolution: the #15 collapse ---------------------------------
+#
+# These are the negative tests for the substituted-dispatch failure. The one
+# that matters is `test_unresolvable_advisor_cannot_yield_no_conflict`: it is
+# the executable form of the issue's "Done when", and it fails against any
+# implementation that lets a failed dispatch reach `NO_CONFLICT`.
+
+
+def test_fog_advisor_resolves_in_this_checkout():
+    """The regression test proper: `fog-advisor` must actually load.
+
+    #15's observed symptom. Reads the live agent file rather than a fixture,
+    because a fixture would pass while the real registry entry stayed broken —
+    which is the exact gap that let the original failure through.
+    """
+    result = resolve_capability_agent(Capability.FOG)
+    assert result["resolved"], result["reason"]
+    assert result["agent"] == ".claude/agents/fog-advisor.md"
+    assert result["reason"] == ""
+
+
+def test_unresolvable_advisor_cannot_yield_no_conflict():
+    """A dispatch that did not happen may never read as one that found nothing.
+
+    This is the whole issue in one assertion. `NO_CONFLICT` means "applicable
+    checks ran and surfaced nothing unresolved"; deriving it from a failed
+    dispatch is manufactured certainty.
+    """
+    assert epistemic_for(Outcome.FAILED) == "UNTESTED"
+    assert epistemic_for(Outcome.SKIPPED) == "UNTESTED"
+    assert epistemic_for(Outcome.COMPLETED, findings=0) == "NO_CONFLICT"
+    assert epistemic_for(Outcome.COMPLETED, findings=3) == "CONFLICTED"
+
+    # The property, not just the table: `NO_CONFLICT` is unreachable from any
+    # outcome other than COMPLETED, at any finding count.
+    for outcome in (Outcome.FAILED, Outcome.SKIPPED):
+        for findings in (0, 1, 99):
+            assert epistemic_for(outcome, findings) != "NO_CONFLICT"
+
+
+def test_missing_agent_file_fails_loud_with_reason(tmp_path):
+    """A missing advisor is a failure that names what it looked for.
+
+    Fails, and says which path — a bare False sends the caller back to guessing,
+    and a caller that has to guess writes the optimistic value.
+    """
+    result = resolve_capability_agent(Capability.FOG, repo_root=str(tmp_path))
+    assert result["resolved"] is False
+    assert ".claude/agents/fog-advisor.md" in result["reason"]
+    assert epistemic_for(Outcome.FAILED) == "UNTESTED"
+
+
+def test_agent_registering_under_wrong_name_does_not_resolve(tmp_path):
+    """The subtle substitution: the file exists and parses, but is not that agent.
+
+    A dispatch naming `fog-advisor` that lands on a file registering as
+    something else has resolved to a *different* advisor. Indistinguishable
+    from success unless the name is checked, which is why it is checked.
+    """
+    agent = tmp_path / ".claude" / "agents"
+    agent.mkdir(parents=True)
+    (agent / "fog-advisor.md").write_text(
+        "---\nname: something-else\ntools: Read\n---\n\nbody\n", encoding="utf-8"
+    )
+    result = resolve_capability_agent(Capability.FOG, repo_root=str(tmp_path))
+    assert result["resolved"] is False
+    assert "something-else" in result["reason"]
+
+
+def test_agent_without_front_matter_does_not_resolve(tmp_path):
+    """A file the registry cannot parse is not a registered agent."""
+    agent = tmp_path / ".claude" / "agents"
+    agent.mkdir(parents=True)
+    (agent / "fog-advisor.md").write_text("no front matter here\n", encoding="utf-8")
+    result = resolve_capability_agent(Capability.FOG, repo_root=str(tmp_path))
+    assert result["resolved"] is False
+    assert "front matter" in result["reason"]
+
+
+def test_capability_without_registered_agent_is_not_silently_ok():
+    """An unregistered capability fails rather than reporting a clean resolve.
+
+    Same rule as `active_capabilities`' unwired check: absence of a registration
+    is a bug, and reporting it as an ok is the vanishing failure this module
+    exists to prevent.
+    """
+    unregistered = [c for c in Capability if c not in CAPABILITY_AGENT]
+    assert unregistered, "test is vacuous if every capability has an agent"
+    for capability in unregistered:
+        result = resolve_capability_agent(capability)
+        assert result["resolved"] is False
+        assert "no registered agent" in result["reason"]
+
+
+def test_registered_agents_all_exist():
+    """Every entry in `CAPABILITY_AGENT` points at a real, loadable agent.
+
+    Catches the table drifting away from the filesystem — a rename that updates
+    one and not the other reintroduces #15 for a different capability.
+    """
+    for capability in CAPABILITY_AGENT:
+        result = resolve_capability_agent(capability)
+        assert result["resolved"], f"{capability.value}: {result['reason']}"
+
+
+def test_cli_resolve_capability_exits_1_on_failure(capsys, tmp_path):
+    """The skill's actual instrument: exit code and a reason it can quote."""
+    import json
+
+    from review.cli import main
+
+    code = main(["--repo-root", str(tmp_path), "resolve-capability", "fog"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert out["resolved"] is False
+    assert out["epistemic"] == "UNTESTED"
+    assert out["reason"]
+
+
+def test_cli_resolve_capability_exits_0_when_live(capsys):
+    """Against the real checkout, `fog` resolves and licenses no epistemic override."""
+    import json
+
+    from review.cli import main
+
+    code = main(["resolve-capability", "fog"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert out["resolved"] is True
+    assert out["epistemic"] is None
+
+
+def test_cli_resolve_capability_rejects_unknown_name(capsys):
+    import json
+
+    from review.cli import main
+
+    code = main(["resolve-capability", "not-a-capability"])
+    out = json.loads(capsys.readouterr().out)
+    assert code == 1
+    assert out["reason"] == "schema"

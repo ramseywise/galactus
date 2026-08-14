@@ -124,6 +124,19 @@ Two things to be strict about:
 
 Now dispatch `fog-advisor` for the worst-plausible-case pass.
 
+**Resolve it first**, and read the exit code:
+
+```bash
+uv run python -m review.cli resolve-capability fog
+```
+
+Exit 1 means the advisor did not load. **Do not run this stage inline instead** — an
+advisor's contract executed by the caller is not an independent advisor, and its findings
+must not be reported as though the isolated pass ran. Record the stage as
+`dispatch failed — <reason>` and say so in the output. A `/fog` run whose Stage 4 did not
+happen is a fog pass with a hole in it, and the reader has to be able to see the hole
+(#15).
+
 **Give it the design. Do not give it your reasoning about the design, the findings from
 stages 1–3, or the author's justification.** An advisor who reads the justification grades
 the justification. The independence is the entire value of the dispatch — the same
