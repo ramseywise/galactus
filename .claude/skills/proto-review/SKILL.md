@@ -30,7 +30,28 @@ Run commands with the target as working dir. Artifacts land in the TARGET repo's
 
 ## Stage 0: Scope Detection
 
-Before gathering context, determine the review scope from the branch and repo state:
+**First — the resolution path.** If the active plan doc is already `Status: EXECUTED` with
+`Review: pending`, this is a *re-invocation to resolve a pending review*, not a request to
+review again. Resolve it and stop:
+
+```
+Review: passed
+Completed: YYYY-MM-DD
+Status: COMPLETE
+From: EXECUTED
+```
+
+Write all four lines in **one** Edit. The hook validates `COMPLETE` by value, not presence —
+it rejects `COMPLETE` unless `Review:` reads `passed` and a `Completed:` date is present — so
+an edit that lands `Status: COMPLETE` before flipping `Review:` is blocked rather than
+leaving a doc that reads "done" over a review that never resolved.
+
+Confirm the pending review's findings were addressed before writing `passed` — if they were
+not, say so and leave `Status:` at `EXECUTED`. Never write `COMPLETE` in the same pass that
+writes `EXECUTED`: a skill cannot write both ends of an edge it is the midpoint of, and the
+`EXECUTED → COMPLETE` edge means "a human read the review and accepted it."
+
+Otherwise, determine the review scope from the branch and repo state:
 
 1. **Check branch prefix**: `bug/` or `spike/` → lightweight. Feature branch with plan doc → full.
 2. **Check for plan doc**: `find .claude/docs/plans/ -name "*$(branch-slug)*"`. Present → full. Absent → lightweight.
@@ -372,6 +393,9 @@ If plan doc exists, append the review section to the plan doc and set `Status: E
 on approval, plus `Review: pending` on the next line (`Review: passed` once the verdict is
 a pass). `Status:` carries exactly one enum member — no suffix.
 
+`EXECUTED` is where this pass stops. Advancing to `COMPLETE` happens on a later
+re-invocation, via the resolution path in Stage 0.
+
 ## Stage 8: Action (read-only default)
 
 Report the verdict to the user. Do NOT run `gh pr review` unless explicitly authorized.
@@ -386,6 +410,9 @@ If authorized:
 For plan-doc mode (no PR): append `## Review` section to plan doc, and set `Status:` to a
 canonical enum member — `EXECUTED` + `Review: passed` when the verdict is `approve`,
 `EXECUTED` + `Review: pending` otherwise. Never write a free-text status.
+
+A doc left at `EXECUTED` + `Review: pending` is *waiting*, not finished — re-invoking this
+skill on it takes the Stage 0 resolution path to `COMPLETE`.
 
 ## Boundaries
 

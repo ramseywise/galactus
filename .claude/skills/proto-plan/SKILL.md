@@ -134,6 +134,28 @@ needs them, are verifiable system states ("a service key returns real rows from
 
 ## Exit
 
+### Loop-back exhaustion
+
+This skill is the destination of the `EXECUTED → PLANNED` loop-back: review found blockers
+and the work returns here to be re-planned. **That loop is bounded at 2.** A re-plan is a
+session, not a re-dispatch, so the bound is not the 1 used for cheap retries.
+
+On the third arrival — the bound exhausted — do not re-plan again. The work is mis-scoped
+rather than mis-planned, and another cycle spends a session to learn that again. Write:
+
+```
+Status: SUPERSEDED
+Superseded-by: <the re-scoped doc, or `none — <reason>`>
+From: PLANNED
+```
+
+Then stop and tell the operator the bound was hit and why. `SUPERSEDED` is terminal for
+this doc but not for the work — `Superseded-by:` is what carries it forward, and naming it
+is what a hand-edited `Status:` would have destroyed. Count arrivals from the doc's own
+`## Review` sections; if the count is ambiguous, say so rather than guessing.
+
+### Normal exit
+
 When the plan is execute-ready (review verdict passes):
 
 1. **Set `Status: PLANNED`** on the plan doc.

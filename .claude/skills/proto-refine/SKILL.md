@@ -105,6 +105,38 @@ assessment grades your assessment; the independence is the entire value of the d
 that is a **dispatch failure** — record it and do not report a verdict as though the pass
 ran.
 
+This dispatch is a **CROSS** call: an adversarial capability aimed at the artifact, with
+context deliberately withheld. Its outcome is what the `Epistemic:` axis records.
+
+### Write the epistemic state
+
+Whatever happens in this stage — dispatched, skipped, or failed — write the result to the
+plan doc before Stage 4:
+
+```
+Epistemic: UNTESTED | NO_CONFLICT | CONFLICTED | BLOCKED
+Epistemic-by: <the capability, or `skipped — <reason>`, or `dispatch failed`>
+Epistemic-at: YYYY-MM-DD
+Epistemic-findings: <count>
+```
+
+| Outcome | Value |
+|---|---|
+| Dispatched, nothing unresolved | `NO_CONFLICT` |
+| Dispatched, open findings nobody closed | `CONFLICTED` |
+| Dispatched, a finding severe enough that advancing is a mistake | `BLOCKED` |
+| Skipped (plan not risky) or dispatch failed | `UNTESTED` |
+
+`NO_CONFLICT` is not `correct` — it means the applicable adversarial checks found no
+unresolved contradiction. Never upgrade "nothing was found" into "this is sound."
+
+**You may not write `READY` without a fresh `Epistemic:` from this run.** A value left by
+an earlier run is stale and does not satisfy this — re-dispatch or record the skip. The
+hook enforces coherence (it rejects `READY` + `CONFLICTED`/`BLOCKED`) but it cannot tell
+fresh from stale; that guarantee lives here, at the writer. `UNTESTED` + `READY` is legal
+and deliberately visible — it is the honest record of "ready by default, nothing checked
+it," and hiding it behind a required-field regime is what produces compliance theater.
+
 ## Stage 4 — Verdict
 
 One of four. The verdict is computed from Stages 1–3, not felt:
@@ -113,21 +145,33 @@ One of four. The verdict is computed from Stages 1–3, not felt:
 |---|---|---|
 | **READY** | All DoR checks pass; no unresolved trio disagreement | `READY` |
 | **REFINED** | Substantive gaps closed, one or more checks still open but non-blocking | `REFINED` |
-| **NEEDS-SPLIT** | Check 4 failed; name the seam | unchanged |
+| **NEEDS-SPLIT** | Check 4 failed; name the seam | `SUPERSEDED` + `Superseded-by:` naming the split docs |
 | **NOT-READY** | Any of checks 1, 3, 5, or 7 failed | unchanged |
 
 Checks 1, 3, 5, and 7 are blocking because each makes execution *unverifiable* rather
 than merely harder: no problem, no acceptance test, a missing dependency, or no way back.
 Checks 2, 4, and 6 are recoverable mid-session.
 
-**Never advance `Status:` on a NOT-READY or NEEDS-SPLIT verdict**, including when the
-user asks you to. An overridden gate is a gate that reports what it was told to report;
-if the human wants to proceed anyway that is their call to make explicitly, in the doc,
-in their own words — not by having this skill write a state the evidence does not support.
+**Never advance `Status:` toward `READY` on a NOT-READY or NEEDS-SPLIT verdict**, including
+when the user asks you to. An overridden gate is a gate that reports what it was told to
+report; if the human wants to proceed anyway that is their call to make explicitly, in the
+doc, in their own words — not by having this skill write a state the evidence does not
+support.
+
+**`SUPERSEDED` on NEEDS-SPLIT is not an advance — it is an exit.** Work that needs dividing
+has nowhere legal to go otherwise, so the operator hand-edits `Status:` to unblock the
+pipeline and the record of where the work went is destroyed. `SUPERSEDED` is terminal for
+*this doc* but not for the work: `Superseded-by:` must name the split docs, which is the
+record a hand-edit loses. Write it only when you can name them — if you cannot, the verdict
+is NOT-READY and `Status:` stays unchanged.
 
 Write `Status:` with a single Edit to the existing line. It must remain exactly one
 canonical token — `plan_status_validate.sh` rejects suffixes, so
 `READY (pending review)` blocks the write.
+
+Write `From:` alongside it, naming the state you are advancing *from* — `From: PLANNED`
+for `PLANNED → REFINED`, `From: REFINED` for `REFINED → READY`. The hook validates the
+pair against the legal-edge table and rejects a skipped state.
 
 ## Output
 

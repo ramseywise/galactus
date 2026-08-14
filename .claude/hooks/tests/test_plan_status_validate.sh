@@ -60,7 +60,7 @@ declare -a VALID=(
   "READY|Status: READY\n"
   "IN_PROGRESS|Status: IN_PROGRESS\n"
   "EXECUTED|Status: EXECUTED\nReview: pending\n"
-  "COMPLETE|Status: COMPLETE\n"
+  "COMPLETE|Status: COMPLETE\nReview: passed\nCompleted: 2026-08-14\n"
   "SUPERSEDED|Status: SUPERSEDED\nSuperseded-by: 2026-07-19-other.md\n"
 )
 for entry in "${VALID[@]}"; do
@@ -167,6 +167,163 @@ case "$LAST_MSG" in *"not a valid track"*) pass "explains — Track checked with
 write_doc "t-only-ok.md" "# Plan\n\nTrack: ml\n"
 run "$PLANS/t-only-ok.md"
 assert_exit0 "valid Track with no Status line"
+
+echo
+echo "=== Fenced snippets are not front matter ==="
+# A design doc that *documents* the state machine shows Status:/Epistemic: inside
+# code fences. Every scan is first-match-wins over lines, so without fence
+# filtering a snippet is indistinguishable from a declaration — and the doc that
+# specifies a rule gets judged by it. Track: never exposed this because no plan
+# doc discusses Track: in a fence at column zero.
+
+# Front matter wins over a later fenced Status:.
+write_doc "f-front-wins.md" "Status: PLANNED\nTrack: agent\n\n\`\`\`\nStatus: COMPLETE\nFrom: EXECUTED\n\`\`\`\n"
+run "$PLANS/f-front-wins.md"
+assert_exit0 "fenced Status: ignored, front matter used"
+
+# A fenced-only bad Status must not register at all — no Status line means the
+# doc is accepted, not blocked on the snippet's value.
+write_doc "f-only-fenced.md" "# Design\n\n\`\`\`\nStatus: NOT_A_STATE\n\`\`\`\n"
+run "$PLANS/f-only-fenced.md"
+assert_exit0 "fenced-only bad Status does not register"
+
+# The companion-field scan (has_field) reads the same filtered view: a fenced
+# Review: must not satisfy EXECUTED's requirement.
+write_doc "f-companion.md" "Status: EXECUTED\n\n\`\`\`\nReview: passed\n\`\`\`\n"
+run "$PLANS/f-companion.md"
+assert_blocked "fenced Review: does not satisfy EXECUTED"
+
+# A real front-matter companion still satisfies it with a fence present.
+write_doc "f-companion-ok.md" "Status: EXECUTED\nReview: pending\n\n\`\`\`\nStatus: COMPLETE\n\`\`\`\n"
+run "$PLANS/f-companion-ok.md"
+assert_exit0 "real Review: satisfies EXECUTED despite fenced snippet"
+
+# Indented fences (inside a list item) still toggle.
+write_doc "f-indented.md" "Status: PLANNED\n\n  \`\`\`\n  Status: NOT_A_STATE\n  \`\`\`\n"
+run "$PLANS/f-indented.md"
+assert_exit0 "indented fence toggles correctly"
+
+echo
+echo "=== From: validates against the legal-edge table ==="
+# LIMITATION, recorded deliberately: From: is a SELF-REPORT. PostToolUse runs
+# after the write, so the hook cannot read the pre-edit Status: — a writer that
+# lies about From: passes whenever the claimed edge happens to be legal. These
+# cases prove the table rejects declared-illegal edges, which catches accidental
+# skips; they do not and cannot prove a writer told the truth. Closing that gap
+# needs a PreToolUse hook and is deferred to its own issue.
+
+write_doc "e-legal.md" "Status: EXECUTED\nReview: pending\nFrom: IN_PROGRESS\n"
+run "$PLANS/e-legal.md"
+assert_exit0 "legal edge IN_PROGRESS → EXECUTED"
+
+write_doc "e-illegal.md" "Status: EXECUTED\nReview: pending\nFrom: READY\n"
+run "$PLANS/e-illegal.md"
+assert_blocked "illegal edge READY → EXECUTED"
+case "$LAST_MSG" in *"not a legal transition"*) pass "explains — illegal edge" ;; *) fail "no reason for illegal edge (got: ${LAST_MSG:-<empty>})" ;; esac
+
+write_doc "e-absent.md" "Status: EXECUTED\nReview: pending\n"
+run "$PLANS/e-absent.md"
+assert_exit0 "From: absent is valid (every pre-existing doc lacks it)"
+
+write_doc "e-terminal.md" "Status: COMPLETE\nFrom: EXECUTED\nReview: passed\nCompleted: 2026-08-14\n"
+run "$PLANS/e-terminal.md"
+assert_exit0 "legal edge EXECUTED → COMPLETE"
+
+# SUPERSEDED is escalation — reachable from anywhere, so no edge check applies.
+write_doc "e-sup.md" "Status: SUPERSEDED\nSuperseded-by: other.md\nFrom: RESEARCH\n"
+run "$PLANS/e-sup.md"
+assert_exit0 "SUPERSEDED reachable from any state"
+
+write_doc "e-badstate.md" "Status: PLANNED\nFrom: NOT_A_STATE\n"
+run "$PLANS/e-badstate.md"
+assert_blocked "From: with a non-canonical state"
+
+write_doc "e-suffix.md" "Status: REFINED\nFrom: PLANNED — after review\n"
+run "$PLANS/e-suffix.md"
+assert_blocked "From: with a suffix"
+
+echo
+echo "=== Epistemic: gates by value, never by presence ==="
+# Coherence, not presence: requiring the field on READY would rebuild the
+# `Review: pending` failure (a required field with an override becomes a field
+# everyone sets to the override). UNTESTED + READY stays legal AND visible.
+
+write_doc "p-conflicted.md" "Status: READY\nEpistemic: CONFLICTED\n"
+run "$PLANS/p-conflicted.md"
+assert_blocked "READY + CONFLICTED"
+case "$LAST_MSG" in *"not legal while Epistemic"*) pass "explains — READY blocked by epistemic state" ;; *) fail "no reason for READY+CONFLICTED (got: ${LAST_MSG:-<empty>})" ;; esac
+
+write_doc "p-blocked.md" "Status: READY\nEpistemic: BLOCKED\n"
+run "$PLANS/p-blocked.md"
+assert_blocked "READY + BLOCKED"
+
+write_doc "p-untested.md" "Status: READY\nEpistemic: UNTESTED\n"
+run "$PLANS/p-untested.md"
+assert_exit0 "READY + UNTESTED is legal and visible by design"
+
+write_doc "p-noconflict.md" "Status: READY\nEpistemic: NO_CONFLICT\n"
+run "$PLANS/p-noconflict.md"
+assert_exit0 "READY + NO_CONFLICT"
+
+# CONFLICTED is only incoherent with READY — it must not block other states.
+write_doc "p-planned.md" "Status: PLANNED\nEpistemic: CONFLICTED\n"
+run "$PLANS/p-planned.md"
+assert_exit0 "CONFLICTED is legal on a non-READY state"
+
+write_doc "p-badenum.md" "Status: PLANNED\nEpistemic: PROBABLY_FINE\n"
+run "$PLANS/p-badenum.md"
+assert_blocked "invalid Epistemic enum value"
+
+write_doc "p-absent.md" "Status: READY\n"
+run "$PLANS/p-absent.md"
+assert_exit0 "Epistemic: absent is valid — the hook never requires it"
+
+# Provenance companions are free-form and must not trip the enum check.
+write_doc "p-prov.md" "Status: READY\nEpistemic: NO_CONFLICT\nEpistemic-by: /assumption-audit\nEpistemic-at: 2026-08-14\nEpistemic-findings: 0\n"
+run "$PLANS/p-prov.md"
+assert_exit0 "Epistemic provenance companions accepted"
+
+# --- COMPLETE checks its companions by value, not presence -------------------
+# Status: and Review: are separate Edits, so a doc can transiently sit at
+# COMPLETE while Review: still reads pending. COMPLETE asserts an outcome, so
+# presence-only validation would certify the exact stuck-at-pending shape this
+# build exists to unstick.
+
+write_doc "c-pending.md" "Status: COMPLETE\nFrom: EXECUTED\nReview: pending\nCompleted: 2026-08-14\n"
+run "$PLANS/c-pending.md"
+assert_blocked "COMPLETE + Review: pending"
+case "$LAST_MSG" in *"Review: passed"*) pass "explains — COMPLETE needs a passed review" ;; *) fail "no reason for COMPLETE+pending (got: ${LAST_MSG:-<empty>})" ;; esac
+
+write_doc "c-noreview.md" "Status: COMPLETE\nFrom: EXECUTED\nCompleted: 2026-08-14\n"
+run "$PLANS/c-noreview.md"
+assert_blocked "COMPLETE with no Review: line"
+
+write_doc "c-nodate.md" "Status: COMPLETE\nFrom: EXECUTED\nReview: passed\n"
+run "$PLANS/c-nodate.md"
+assert_blocked "COMPLETE with no Completed: date"
+
+write_doc "c-ok.md" "Status: COMPLETE\nFrom: EXECUTED\nReview: passed\nCompleted: 2026-08-14\n"
+run "$PLANS/c-ok.md"
+assert_exit0 "COMPLETE with Review: passed + Completed:"
+
+# --- Fence detection is by marker and width, not a bare toggle ----------------
+# A 4-backtick block wrapping a 3-backtick one is the standard way to document
+# fence syntax. A boolean toggled on any ``` desyncs and leaks the inner
+# content as front matter; tilde fences bypass a backtick-only matcher entirely.
+
+write_doc "f-nested.md" "Status: PLANNED\n\`\`\`\`\n\`\`\`\nStatus: COMPLETE\n\`\`\`\n\`\`\`\`\n"
+run "$PLANS/f-nested.md"
+assert_exit0 "nested 4-backtick fence does not leak an inner Status:"
+
+write_doc "f-tilde.md" "Status: PLANNED\n~~~\nStatus: COMPLETE\n~~~\n"
+run "$PLANS/f-tilde.md"
+assert_exit0 "tilde fence hides its contents like a backtick fence"
+
+# The front-matter value must still win — proof the filter drops the snippet
+# rather than merely tolerating it.
+write_doc "f-tilde-super.md" "Status: PLANNED\n~~~\nStatus: SUPERSEDED\n~~~\n"
+run "$PLANS/f-tilde-super.md"
+assert_exit0 "a fenced SUPERSEDED does not trigger the Superseded-by: requirement"
 
 echo
 echo "RESULT: $PASS passed, $FAIL failed"

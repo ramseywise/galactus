@@ -23,7 +23,47 @@ STATES = {
 
 path = sys.argv[1]
 with open(path, encoding="utf-8") as fh:
-    lines = fh.readlines()
+    raw_lines = fh.readlines()
+
+
+def unfenced(src):
+    """Drop fenced code blocks before any field scan.
+
+    Front matter is never inside a fence. A doc that *documents* the state
+    machine — a design doc showing `Status: COMPLETE` in a snippet — would
+    otherwise be read as declaring it, because every scan below is
+    first-match-wins over raw lines. `Track:` never exposed this only because
+    no plan doc happened to discuss `Track:` in a fence at column zero.
+
+    Fences are matched by *marker and width*, not by a bare toggle. A boolean
+    flipped on any ``` desyncs on the standard idiom for documenting fences —
+    a 4-backtick block wrapping a 3-backtick one toggles four times and leaks
+    the inner content as front matter. A doc explaining this very function is
+    the most likely place that happens. Only a fence of the same marker and
+    at least the opening width closes the block (CommonMark), and tilde
+    fences count, so `~~~` cannot smuggle a `Status:` line past the filter.
+    """
+    out = []
+    opener = None
+    fence_re = re.compile(r"^[ \t]*(`{3,}|~{3,})")
+    for ln in src:
+        m = fence_re.match(ln)
+        if m:
+            marker = m.group(1)
+            if opener is None:
+                opener = marker
+                continue
+            if marker[0] == opener[0] and len(marker) >= len(opener):
+                opener = None
+                continue
+            # A shorter or different-marker fence is content inside the block.
+        if opener is None:
+            out.append(ln)
+    return out
+
+
+# Every scan below reads the filtered view, including has_field().
+lines = unfenced(raw_lines)
 
 # Tolerant detection: leading whitespace and the bold key form (`**Status**:`)
 # both occur in the corpus. Authoring form is bare `Status:` (spec, ## Mapping).
@@ -84,10 +124,111 @@ def has_field(name):
     return any(re.match(rf"^[ \t]*(?:\*\*)?{name}(?:\*\*)?:", ln) for ln in lines)
 
 
+def field_value(name):
+    pat = re.compile(rf"^[ \t]*(?:\*\*)?{name}(?:\*\*)?:[ \t]*(.*)$")
+    for ln in lines:
+        m = pat.match(ln)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
 if token == "EXECUTED" and not has_field("Review"):
     issues.append("  EXECUTED requires a 'Review:' line (pending | passed)")
+
+# COMPLETE is the one state that asserts an outcome rather than a position, so
+# its companions are checked by value. Requiring only presence would let a doc
+# land at COMPLETE carrying `Review: pending` — the state reads as "reviewed and
+# accepted" while the hook guaranteed something strictly weaker, and the stuck-
+# at-pending docs this build exists to unstick are exactly that shape. Writing
+# Status: and Review: is two Edits, so the intermediate file state is reachable.
+if token == "COMPLETE":
+    review = field_value("Review")
+    if review is None:
+        issues.append("  COMPLETE requires a 'Review:' line — and it must read 'passed'")
+    elif (review.split()[0] if review.split() else "") != "passed":
+        issues.append(
+            f"  COMPLETE requires 'Review: passed'; found {review!r}. "
+            "Resolve the review before recording the work as done"
+        )
+    if not has_field("Completed"):
+        issues.append("  COMPLETE requires a 'Completed:' date")
 if token == "SUPERSEDED" and not has_field("Superseded-by"):
     issues.append("  SUPERSEDED requires a 'Superseded-by:' line naming the replacing doc")
+
+# `From:` — the declared prior state, validated against the legal-edge table.
+#
+# Same rule as Track:, and for the same reason: validate the value, never require
+# the line. Every doc predating this lacks it; blocking on absence makes all of
+# them instantly unwritable.
+#
+# LIMITATION: this is a self-report. PostToolUse reads the file *after* the write,
+# so the hook cannot observe the prior value — a writer that lies about From:
+# passes whenever the claimed edge is legal. This catches accidental skips, not
+# deliberate ones. Hardening needs a PreToolUse hook and is deferred.
+LEGAL_EDGES = {
+    ("RESEARCH", "RESEARCHED"), ("RESEARCHED", "PLANNED"),
+    ("RESEARCH", "PLANNED"), ("PLANNED", "REFINED"),
+    ("PLANNED", "READY"), ("REFINED", "READY"),
+    ("READY", "IN_PROGRESS"), ("IN_PROGRESS", "EXECUTED"),
+    ("EXECUTED", "PLANNED"), ("EXECUTED", "COMPLETE"),
+}
+
+from_re = re.compile(r"^[ \t]*(?:\*\*)?From(?:\*\*)?:[ \t]*(.*)$")
+from_value = None
+for line in lines:
+    m = from_re.match(line)
+    if m:
+        from_value = m.group(1).strip()
+        break
+
+if from_value is not None and token:
+    prior = from_value.split()[0] if from_value.split() else ""
+    if prior not in STATES:
+        issues.append(
+            f"  From: '{prior}' is not a canonical state; expected one of: {', '.join(sorted(STATES))}"
+        )
+    elif from_value[len(prior):].strip():
+        issues.append("  From: must be exactly one token")
+    # SUPERSEDED is reachable from any state — escalation has no fixed origin.
+    elif token != "SUPERSEDED" and (prior, token) not in LEGAL_EDGES:
+        issues.append(
+            f"  '{prior}' → '{token}' is not a legal transition. Legal edges from "
+            f"'{prior}': {', '.join(sorted(b for a, b in LEGAL_EDGES if a == prior)) or '(none)'}"
+        )
+
+# `Epistemic:` — the second axis: what is known about the work's soundness, as
+# opposed to where the work is. READY is not the same as correct.
+#
+# Coherence, not presence. Requiring the field whenever Status: READY would
+# rebuild the `Review: pending` failure — a mandatory field with an escape hatch
+# becomes a field everyone sets to the escape hatch. Instead the hook rejects
+# illegal *combinations*, and the writer (/proto-refine) guarantees freshness.
+# UNTESTED + READY stays legal and visible: that is the "nothing checked it"
+# state, and making it illegal is what creates override pressure.
+EPISTEMIC = {"UNTESTED", "NO_CONFLICT", "CONFLICTED", "BLOCKED"}
+
+epistemic_re = re.compile(r"^[ \t]*(?:\*\*)?Epistemic(?:\*\*)?:[ \t]*(.*)$")
+epistemic_value = None
+for line in lines:
+    m = epistemic_re.match(line)
+    if m:
+        epistemic_value = m.group(1).strip()
+        break
+
+if epistemic_value is not None:
+    e = epistemic_value.split()[0] if epistemic_value.split() else ""
+    if e not in EPISTEMIC:
+        issues.append(
+            f"  '{e}' is not a valid epistemic state; expected one of: {', '.join(sorted(EPISTEMIC))}"
+        )
+    elif epistemic_value[len(e):].strip():
+        issues.append("  Epistemic: must be exactly one token")
+    elif token == "READY" and e in {"CONFLICTED", "BLOCKED"}:
+        issues.append(
+            f"  READY is not legal while Epistemic: is {e} — resolve the findings "
+            "or record why they do not block, then advance"
+        )
 
 if issues:
     print(f"Plan-doc front matter is not conforming in {path}:", file=sys.stderr)

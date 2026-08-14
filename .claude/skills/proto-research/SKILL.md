@@ -107,7 +107,7 @@ Write to `.claude/docs/plans/$DATE-$SLUG.md` — `$DATE` is today (`YYYY-MM-DD`)
 ```markdown
 # [task name]
 Date: [today]
-Status: PLANNED
+Status: RESEARCHED
 Track: [ml | agent]
 
 ## Research
@@ -152,6 +152,10 @@ before switching. The `## Research` section is now the record — the sources yo
 produce it are not needed downstream.
 
 **Next step**: `/proto-plan <name>` when research is reviewed and approved.
+
+This skill exits at `Status: RESEARCHED` — research done, not yet planned. `/proto-plan`
+is the only writer of `PLANNED`, and writing it here would claim a state describing work
+this phase did not do.
 
 If the research finds the requirement itself is unspecified — no agreed consumer, no
 stated cost of being wrong, no answer at one of the five layers — that is a FRAME gap, not
