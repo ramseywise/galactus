@@ -220,6 +220,9 @@ LEGACY_DOC_LABELS: dict[str, str | None] = {
     # mentions are quotations of the track router, not the doc's own subject.
     # Declares `Track: agent` itself.
     "2026-08-14-pipeline-orchestration.md": "agent",
+    # Control-plane design: decision seats, state axes, hook-enforced
+    # transitions. Agent-system architecture, not modelling.
+    "2026-08-14-orchestrator-design.md": "agent",
 }
 
 _SYNTHETIC_FIXTURES = [
