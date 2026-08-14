@@ -108,6 +108,25 @@ ran.
 This dispatch is a **CROSS** call: an adversarial capability aimed at the artifact, with
 context deliberately withheld. Its outcome is what the `Epistemic:` axis records.
 
+**Which capabilities are live here is derived, not recalled.** Ask the router rather than
+working from this list — the list is documentation and can drift; the derivation reads the
+doc's own state:
+
+```bash
+python3 -c "import json,sys;print(json.dumps({'doc':open(sys.argv[1]).read()}))" \
+  <plan-doc-path> | uv run python -m review.cli derive-phases
+```
+
+`capabilities.active` names what is callable at this point in the pipeline; `refine` is
+the scheduled call site for `assumption_audit` and `fog`. Every capability not active
+comes back in `capabilities.skipped` **with a reason** — the two halves are mandatory-
+complete, so a capability cannot silently vanish from the table. Exit 1 means the doc did
+not route at all: that is a derivation failure, not "no capabilities apply," and it must
+not be recorded as a clean skip.
+
+The risk conditions above still gate whether you *dispatch*. Derivation says what is
+callable; the conditions say whether calling is warranted.
+
 ### Write the epistemic state
 
 Whatever happens in this stage — dispatched, skipped, or failed — write the result to the

@@ -1,14 +1,20 @@
-"""Command-line surface for the review core. Three subcommands, stdlib only.
+"""Command-line surface for the review core. Five subcommands, stdlib only.
 
 `argparse`, not `click`: `click` is not in galactus's dependency tree, and
-adding a dependency for three subcommands in one small file is not a trade
+adding a dependency for five subcommands in one small file is not a trade
 worth making. Parity with guacamayo would be `uv add click` — never
 `pip install`, which `pip_guard.sh` blocks.
 
     validate-finding  < finding.json      exit 0 accept / 1 reject
     detect-signals    < ["path", ...]     active + skipped + injection hits
     detect-track      < {"doc": str, "files": [...]}   track + source + confidence
+    derive-phases     < {"doc": str}      live BUILD phases + CROSS capabilities
     verdict           < review.json       the merge decision
+
+`derive-phases` is the only subcommand whose exit code carries a routing
+outcome rather than a payload verdict: exit 1 means the doc could not be
+routed, which is distinct from a doc that routed to zero remaining phases
+because it is finished.
 
 Note the payload divergence: `detect-signals` reads a **bare JSON list**, while
 `detect-track` reads a **JSON object** — it has two independent optional inputs
@@ -28,6 +34,7 @@ import sys
 from pydantic import ValidationError
 
 from review.models import ReporterDispatchEntry, ReviewFinding
+from review.phases import active_capabilities, active_phases, read_doc_signals
 from review.signals import active_dimensions, detect_injection, detect_signals, detect_track
 from review.validate import validate_finding
 from review.verdict import compute_verdict
@@ -93,6 +100,56 @@ def _cmd_detect_track(args: argparse.Namespace) -> int:
     json.dump(result, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0
+
+
+def _cmd_derive_phases(args: argparse.Namespace) -> int:
+    """Derive the live BUILD phases and CROSS capabilities for a plan doc.
+
+    Input is `{"doc": str}` — the plan doc's text. Routing is content-first, so
+    the doc's own front matter decides, never its path.
+
+    `unroutable` is reported explicitly rather than inferred from an empty
+    `active` list: a doc whose state cannot be derived and a doc that is
+    genuinely finished both have no phases left, and collapsing them is the
+    false-confidence failure the three-way outcome rule exists to prevent.
+    """
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        return _payload_error("not_json", f"stdin is not valid JSON: {e}")
+
+    if not isinstance(payload, dict):
+        return _payload_error(
+            "schema",
+            f'payload must be a JSON object like {{"doc": "..."}}, got {type(payload).__name__}',
+        )
+
+    doc = payload.get("doc")
+    if not isinstance(doc, str):
+        return _payload_error(
+            "schema",
+            f"'doc' must be a string, got {type(doc).__name__}",
+        )
+
+    signals = read_doc_signals(doc)
+    phases = active_phases(signals)
+    capabilities = active_capabilities(signals)
+    json.dump(
+        {
+            "signals": signals,
+            "unroutable": phases["unroutable"],
+            "phases": {"active": phases["active"], "skipped": phases["skipped"]},
+            "capabilities": {
+                "active": capabilities["active"],
+                "skipped": capabilities["skipped"],
+            },
+        },
+        sys.stdout,
+        indent=2,
+    )
+    sys.stdout.write("\n")
+    # An underivable doc is a failure to route, not a successful empty result.
+    return 1 if phases["unroutable"] else 0
 
 
 def _payload_error(reason: str, message: str) -> int:
@@ -206,6 +263,12 @@ def build_parser() -> argparse.ArgumentParser:
         help='Classify a work item: {"doc": str, "files": [...]} on stdin (object, not a list).',
     )
     p_track.set_defaults(func=_cmd_detect_track)
+
+    p_phases = sub.add_parser(
+        "derive-phases",
+        help='Derive live BUILD phases + CROSS capabilities: {"doc": str} on stdin.',
+    )
+    p_phases.set_defaults(func=_cmd_derive_phases)
 
     p_verdict = sub.add_parser("verdict", help="Compute the merge decision.")
     p_verdict.set_defaults(func=_cmd_verdict)

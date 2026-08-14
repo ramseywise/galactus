@@ -113,6 +113,62 @@ REPORTER_ID_PREFIX: dict[str, str] = {
 }
 
 
+class Phase(StrEnum):
+    """The BUILD phases, in order.
+
+    BUILD only. FRAME is a band entered by intent, not a sequence — it has its
+    own status vocabulary (`Draft`/`Confirmed`/`In-build`, `DRAFT`) that shares
+    no members with the plan-doc enum, so it cannot be derived as a phase list.
+    REVIEW is a single phase here; the eleven-way fan-out *inside* it is
+    `Reporter`, one level down.
+    """
+
+    RESEARCH = "research"
+    PLAN = "plan"
+    REFINE = "refine"
+    EXECUTE = "execute"
+    REVIEW = "review"
+
+
+class Capability(StrEnum):
+    """The CROSS capabilities — positionless by construction.
+
+    These are not phases and must never be derived as one. A graph node is
+    defined by what precedes and follows it; CROSS has no position, because it
+    is callable on any artifact from any band. What it *does* have is scheduled
+    call sites (refine, review), which is what `active_capabilities` derives.
+    """
+
+    ASSUMPTION_AUDIT = "assumption_audit"
+    WAR_GAME = "war_game"
+    FOG = "fog"
+
+
+# The phase that produced each state, i.e. the phase whose completion the state
+# records. Read as: a doc at `RESEARCHED` has finished `research`.
+#
+# Authoritative for phase derivation the way `REPORTER_ID_PREFIX` is for
+# dimensions. Keyed by the plan-doc `Status:` enum that `plan_status_validate.sh`
+# guards; the two vocabularies must not drift, and `test_phases.py` asserts it.
+#
+# `RESEARCH` (the initial state) maps to None: no phase has completed yet.
+# `COMPLETE` and `SUPERSEDED` are terminal — nothing follows, which is what
+# makes them distinguishable from a run that merely stopped.
+STATE_COMPLETED_PHASE: dict[str, Phase | None] = {
+    "RESEARCH": None,
+    "RESEARCHED": Phase.RESEARCH,
+    "PLANNED": Phase.PLAN,
+    "REFINED": Phase.REFINE,
+    "READY": Phase.REFINE,
+    "IN_PROGRESS": Phase.REFINE,
+    "EXECUTED": Phase.EXECUTE,
+    "COMPLETE": Phase.REVIEW,
+    "SUPERSEDED": None,
+}
+
+TERMINAL_STATES: frozenset[str] = frozenset({"COMPLETE", "SUPERSEDED"})
+
+
 class FileLocation(BaseModel):
     path: str
     start_line: int | None = None
