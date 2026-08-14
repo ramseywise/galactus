@@ -18,8 +18,8 @@ from galactus.generate import (
     generate_collateral,
     schema_for,
 )
-from galactus.guardrails.validator import is_valid, validate
-from galactus.models import Fact, PipelineState
+from guardrails.validator import is_valid, validate
+from models import Fact, PipelineState
 
 
 class FakeLLM:

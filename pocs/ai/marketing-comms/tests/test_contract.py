@@ -14,7 +14,7 @@ from galactus.layout.contract import (
     load_template,
     load_template_file,
 )
-from galactus.models import (
+from models import (
     Fact,
     FieldConstraint,
     LayoutTemplate,
