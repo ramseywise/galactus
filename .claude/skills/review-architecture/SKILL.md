@@ -34,6 +34,10 @@ You are dispatched with exactly this one dimension loaded.
   logic instead of named constants that convey intent?
 - **Dead code**: Is there code, branches, or exports left in the diff that are no
   longer reachable or used?
+- **Nesting depth**: Is control flow nested deeply enough to obscure it — three or
+  more levels of conditional or loop that an early return, a guard clause, or an
+  extracted helper would flatten? Flag the depth, not the style: a `let` or an
+  `else` is not a finding when the alternative is more convoluted.
 
 ## Documentation Accuracy
 

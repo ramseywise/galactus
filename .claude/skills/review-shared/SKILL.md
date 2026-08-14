@@ -6,7 +6,7 @@ description: "Shared contracts for every review reporter — the canonical findi
 # review-shared
 
 The contracts every review reporter writes against. This skill holds no procedure of its
-own — it exists so that all ten `review-*` dimensions emit findings a single orchestrator
+own — it exists so that all eleven `review-*` dimensions emit findings a single orchestrator
 can merge without re-reading each dimension's private conventions.
 
 Load a reference when you need it, not preemptively:

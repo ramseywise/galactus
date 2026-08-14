@@ -7,7 +7,13 @@ worth making. Parity with guacamayo would be `uv add click` — never
 
     validate-finding  < finding.json      exit 0 accept / 1 reject
     detect-signals    < ["path", ...]     active + skipped + injection hits
+    detect-track      < {"doc": str, "files": [...]}   track + source + confidence
     verdict           < review.json       the merge decision
+
+Note the payload divergence: `detect-signals` reads a **bare JSON list**, while
+`detect-track` reads a **JSON object** — it has two independent optional inputs
+and a list cannot carry both. Same *contract* (JSON in, JSON out, exit 0),
+different *payload*. This is deliberate; do not "fix" the inconsistency.
 
 Every rejection carries a machine-readable `reason` tag so the Measurement rows
 (schema validity, quoted_span rate, skill-load fidelity) have an instrument.
@@ -22,7 +28,7 @@ import sys
 from pydantic import ValidationError
 
 from review.models import ReporterDispatchEntry, ReviewFinding
-from review.signals import active_dimensions, detect_injection, detect_signals
+from review.signals import active_dimensions, detect_injection, detect_signals, detect_track
 from review.validate import validate_finding
 from review.verdict import compute_verdict
 
@@ -55,7 +61,41 @@ def _cmd_detect_signals(args: argparse.Namespace) -> int:
     return 0
 
 
-def _verdict_error(reason: str, message: str) -> int:
+def _cmd_detect_track(args: argparse.Namespace) -> int:
+    """Classify a work item as the `ml` or `agent` track.
+
+    Input is a JSON **object** — `{"doc": str, "files": [...]}`, both optional —
+    not the bare list `detect-signals` reads. A malformed payload is a
+    rejection, not a traceback: the orchestrator piping into this reads JSON, so
+    it must get JSON it can branch on.
+    """
+    try:
+        payload = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        return _payload_error("not_json", f"stdin is not valid JSON: {e}")
+
+    if not isinstance(payload, dict):
+        return _payload_error(
+            "schema",
+            f"payload must be a JSON object like "
+            f'{{"doc": "...", "files": [...]}}, got {type(payload).__name__}',
+        )
+
+    files = payload.get("files")
+    if files is not None and not isinstance(files, list):
+        return _payload_error("schema", f"'files' must be a list, got {type(files).__name__}")
+
+    doc = payload.get("doc")
+    if doc is not None and not isinstance(doc, str):
+        return _payload_error("schema", f"'doc' must be a string, got {type(doc).__name__}")
+
+    result = detect_track(doc_text=doc, files=files, repo_root=args.repo_root)
+    json.dump(result, sys.stdout, indent=2)
+    sys.stdout.write("\n")
+    return 0
+
+
+def _payload_error(reason: str, message: str) -> int:
     """Emit a structured payload rejection on stdout and return exit 1.
 
     Same shape as `validate-finding`'s rejection, and for the same reason: the
@@ -130,12 +170,12 @@ def _cmd_verdict(args: argparse.Namespace) -> int:
     try:
         payload = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        return _verdict_error("not_json", f"stdin is not valid JSON: {e}")
+        return _payload_error("not_json", f"stdin is not valid JSON: {e}")
 
     try:
         findings, dispatch, injection_hits, validation_failures = _parse_verdict_payload(payload)
     except (TypeError, ValueError) as e:
-        return _verdict_error("schema", str(e))
+        return _payload_error("schema", str(e))
 
     decision = compute_verdict(findings, dispatch, injection_hits, validation_failures)
     json.dump({"merge_decision": decision.value}, sys.stdout, indent=2)
@@ -160,6 +200,12 @@ def build_parser() -> argparse.ArgumentParser:
         "detect-signals", help="Detect dispatch signals for a JSON list of files."
     )
     p_signals.set_defaults(func=_cmd_detect_signals)
+
+    p_track = sub.add_parser(
+        "detect-track",
+        help='Classify a work item: {"doc": str, "files": [...]} on stdin (object, not a list).',
+    )
+    p_track.set_defaults(func=_cmd_detect_track)
 
     p_verdict = sub.add_parser("verdict", help="Compute the merge decision.")
     p_verdict.set_defaults(func=_cmd_verdict)
