@@ -41,6 +41,10 @@ pocs/ml/fraud/data/
 # Generated report embeds distributional detail derived from those records — same
 # rationale as the ml-lending report.html line above.
 pocs/ml/fraud/docs/report.html
+# Segment centroids and cluster sizes over 29,096 real customers — aggregates derived
+# from real records are still real records, same rationale as the fraud report above.
+# The raw CSVs need no rule here: `*.csv` below already covers them.
+pocs/ml/customer segmentation/docs/
 *.csv
 *.parquet
 *.xlsx

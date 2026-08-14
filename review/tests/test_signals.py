@@ -223,6 +223,10 @@ LEGACY_DOC_LABELS: dict[str, str | None] = {
     # Control-plane design: decision seats, state axes, hook-enforced
     # transitions. Agent-system architecture, not modelling.
     "2026-08-14-orchestrator-design.md": "agent",
+    # Customer segmentation on the Trade Republic frame: clustering, feature
+    # matrix, silhouette against a named baseline, leakage over the split.
+    # Tabular modelling. Declares `Track: ml` itself.
+    "2026-08-14-gal-17-customer-segmentation.md": "ml",
 }
 
 _SYNTHETIC_FIXTURES = [
