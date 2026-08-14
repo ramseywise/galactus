@@ -125,7 +125,12 @@ lenses and the Definition of Ready, and is the only skill that can advance `Stat
 `READY`. This review is self-assessment; refine is not, which is why it is a separate
 session rather than another section here.
 
-For initiative-scale work, `/design-initiative` provides milestone decomposition + task backlog generation in one pass — use it when the plan covers a named initiative that needs phase checkpoints and a Linear-ready task breakdown rather than a single implementation plan.
+For initiative-scale work — a plan spanning several work items with phase checkpoints —
+split it into one plan doc per item rather than growing this one. The `>8 steps → split
+into phases` rule above is the same rule at a smaller scale. Milestones, where a plan
+needs them, are verifiable system states ("a service key returns real rows from
+`GET /kb/search`"), never activity ("API built"); see
+`.claude/skills/archived/design-initiative/ARCHIVED.md` for the full rule set.
 
 ## Exit
 

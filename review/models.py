@@ -4,7 +4,7 @@ Ported from `guacamayo/review/schemas/models.py`, narrowed to what a prototyping
 review needs: no fingerprints, no sweep records, no trend reports, no
 `ReviewReport` — the orchestrator writes its report as markdown.
 
-The ten-way `REPORTER_ID_PREFIX` map is authoritative. The `review_*` skills
+The eleven-way `REPORTER_ID_PREFIX` map is authoritative. The `review_*` skills
 follow it; `review/tests/test_prefix_map.py` fails loudly when they drift.
 """
 
@@ -71,7 +71,7 @@ class Category(StrEnum):
 
 
 class Reporter(StrEnum):
-    """The ten review dimensions.
+    """The eleven review dimensions.
 
     Guacamayo's legacy members (`akira_scan`, `sanyi`, `structure`,
     `agent_quality`) are not carried over: galactus has no persisted findings,
@@ -92,6 +92,7 @@ class Reporter(StrEnum):
     SAFEGUARDS = "safeguards"
     CONTRACTS = "contracts"
     LEAKAGE = "leakage"
+    PERFORMANCE = "performance"
 
 
 # Maps dimension reporter → required finding ID prefix (e.g. correctness → "CR").
@@ -108,6 +109,7 @@ REPORTER_ID_PREFIX: dict[str, str] = {
     Reporter.SAFEGUARDS: "SG",
     Reporter.CONTRACTS: "CT",
     Reporter.LEAKAGE: "LK",
+    Reporter.PERFORMANCE: "PF",
 }
 
 
@@ -180,7 +182,7 @@ class ReviewFinding(BaseModel):
     def dimension_id_prefix_matches_reporter(self) -> ReviewFinding:
         """Under the agent collapse this is skill-load verification, not naming.
 
-        One `review` agent serves all ten dimensions, so the prefix is the only
+        One `review` agent serves all eleven dimensions, so the prefix is the only
         in-band evidence that the dispatch loaded the skill it was told to.
         """
         expected = REPORTER_ID_PREFIX.get(self.reporter)

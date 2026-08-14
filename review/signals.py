@@ -2,14 +2,14 @@
 
 Regex-based, no LLM calls. Two jobs:
 
-- `detect_signals` / `active_dimensions` decide which of the ten dimensions
+- `detect_signals` / `active_dimensions` decide which of the eleven dimensions
   run, and record the skipped ones *with reasons* — a dispatch table that omits
   what did not run cannot be mandatory-complete.
 - `detect_injection` scans reviewed files for injection-shaped content. Its
   output is evidence in the brief *and* rung 0's second conjunct.
 
 Ported from `guacamayo/review/signals.py`, dropping `is_pipeline_code` and its
-two pattern lists — no dimension in the ten-way menu consumes it.
+two pattern lists — no dimension in the eleven-way menu consumes it.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
+
+from review.models import REPORTER_ID_PREFIX
 
 # Import patterns indicating LLM/agent framework usage
 _AGENT_IMPORT_PATTERNS = [
@@ -78,6 +80,56 @@ _ML_PATH_PATTERNS = [
     re.compile(r"(?:^|/)training/"),
 ]
 
+# The two tracks a work item can route to. The single place a track name is
+# enumerated — a second list would be a second answer to "what tracks exist".
+_TRACKS = ("ml", "agent")
+
+# Prose patterns for doc-level track detection. These are deliberately *not*
+# paraphrases of the import lists above: an import already has a pattern, and
+# restating it here in prose form would put two definitions of "ML code" in one
+# module. Every entry is a phrase that appears in a design doc and has no import
+# equivalent.
+_ML_DOC_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"train[/ ]test split",
+        r"target leakage",
+        r"feature engineering",
+        r"class imbalance",
+        r"cross[- ]validation",
+        r"baseline metric",
+        r"\bAUC\b",
+        r"\bRMSE\b",
+        r"\btabular\b",
+        r"\bdataframe\b",
+    )
+]
+_AGENT_DOC_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in (
+        r"tool call",
+        r"system prompt",
+        r"context window",
+        r"agent loop",
+        r"\bretrieval\b",
+        r"eval harness",
+        r"\bMCP\b",
+        r"LangGraph",
+        r"\bADK\b",
+        r"\bsubagent\b",
+    )
+]
+
+# Mirrors the hook's tolerant `Status:` form (`plan_status_validate.sh:30`).
+# Bold and leading-whitespace variants both occur in the corpus, and two
+# different notions of "a Track: line" between hook and router is exactly the
+# drift this must not introduce.
+_TRACK_RE = re.compile(r"^[ \t]*(?:\*\*)?Track(?:\*\*)?:[ \t]*(.*)$", re.MULTILINE)
+
+# Fenced code blocks inside a doc, so the *import* lists can be reused against
+# a doc's code rather than paraphrased into prose patterns.
+_FENCE_RE = re.compile(r"```.*?\n(.*?)```", re.DOTALL)
+
 # Injection-shaped content. This list is owned here, not borrowed: the four
 # override-shaped patterns are the classic case, and the last three catch
 # *scoped* poison, which does not override anything — it addresses a reviewer
@@ -130,7 +182,9 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
 ]
 
-# The six dimensions that run on every review, and the conditional four.
+# The seven dimensions that run on every review. The remaining four
+# (`runtime`, `safeguards`, `leakage`, `contracts`) are conditional, gated by
+# three signals in `active_dimensions` — agent code activates two of them.
 _ALWAYS_ON = [
     "intent",
     "correctness",
@@ -138,6 +192,7 @@ _ALWAYS_ON = [
     "testing",
     "safety",
     "architecture",
+    "performance",
 ]
 
 
@@ -217,6 +272,127 @@ def _find_sanyi_md(repo_root: str) -> bool:
         return False
 
 
+def _count_distinct(text: str, patterns: list[re.Pattern]) -> int:
+    """How many *distinct* patterns hit — not how many times any one of them did.
+
+    Ten occurrences of `dataframe` is one piece of evidence repeated, not ten;
+    counting matches instead of patterns would let a single keyword reach the
+    two-signal confidence bar on its own.
+    """
+    return sum(1 for p in patterns if p.search(text))
+
+
+def _doc_scan(doc_text: str) -> tuple[int, int]:
+    """Score a doc for each track: (ml_hits, agent_hits), distinct patterns.
+
+    Prose is scanned with the doc pattern lists; fenced code blocks are scanned
+    with the *import* lists that `detect_signals` already owns, so a doc that
+    pastes `from sklearn...` is read with the same definition of "ML code" the
+    file-level detector uses.
+    """
+    code = "\n".join(_FENCE_RE.findall(doc_text))
+
+    ml = _count_distinct(doc_text, _ML_DOC_PATTERNS)
+    agent = _count_distinct(doc_text, _AGENT_DOC_PATTERNS)
+
+    if code:
+        ml += _count_distinct(code, _ML_IMPORT_PATTERNS)
+        agent += _count_distinct(code, _AGENT_IMPORT_PATTERNS)
+
+    return ml, agent
+
+
+def detect_track(
+    doc_text: str | None = None,
+    files: list[str] | None = None,
+    repo_root: str = ".",
+) -> dict[str, object]:
+    """Classify a work item as the `ml` or `agent` track.
+
+    Four-level precedence: `declared` (a `Track:` line in the doc) → `doc`
+    (keyword scan) → `files` (`detect_signals`) → `default`.
+
+    **The router abstains rather than guesses.** When `confidence` is `"low"`,
+    `track` is `None` — not the fallback. A caller that reads only `track` gets
+    nothing usable and so cannot silently consume an inference; the fallback is
+    reported separately as `default_track`, which a caller must name explicitly
+    to use. The abstention rule lives in the return shape rather than in a
+    downstream skill's prose because an instruction is the weakest enforcement
+    layer available (`CLAUDE.md`: hook > linter > test > instruction), and a
+    router that quietly defaults is worse than no router — its callers cannot
+    tell inference from a coin flip.
+
+    Tie-break at the `doc` and `files` levels: both signals true → `ml` wins.
+    Asymmetric cost (`agent-uncertainty.md` §asymmetric cost) — routing ML work
+    to the agent track skips leakage discipline, which is the expensive
+    direction to get wrong.
+
+    Returns `track`, `source`, `confidence`, `reason`, and `default_track`.
+    """
+    if doc_text:
+        declared = _TRACK_RE.search(doc_text)
+        if declared:
+            value = declared.group(1).strip()
+            token = value.split()[0] if value.split() else ""
+            if token.lower() in _TRACKS:
+                return {
+                    "track": token.lower(),
+                    "source": "declared",
+                    "confidence": "high",
+                    "reason": f"declared 'Track: {token.lower()}' in the doc",
+                    "default_track": "agent",
+                }
+
+        ml_hits, agent_hits = _doc_scan(doc_text)
+        if ml_hits or agent_hits:
+            # Tie-break: both present → ml.
+            track = "ml" if ml_hits >= agent_hits and ml_hits else "agent"
+            hits = ml_hits if track == "ml" else agent_hits
+            # Fewer than two *distinct* patterns is one keyword, which is not
+            # evidence of a track — it is evidence of a word.
+            if hits < 2:
+                return {
+                    "track": None,
+                    "source": "doc",
+                    "confidence": "low",
+                    "reason": (
+                        f"only {hits} distinct doc pattern(s) matched "
+                        f"(ml={ml_hits}, agent={agent_hits}); too thin to classify"
+                    ),
+                    "default_track": "agent",
+                }
+            return {
+                "track": track,
+                "source": "doc",
+                "confidence": "high",
+                "reason": f"doc keyword scan: ml={ml_hits}, agent={agent_hits}",
+                "default_track": "agent",
+            }
+
+    if files:
+        signals = detect_signals(files, repo_root=repo_root)
+        if signals["is_ml_code"] or signals["is_agent_code"]:
+            track = "ml" if signals["is_ml_code"] else "agent"
+            return {
+                "track": track,
+                "source": "files",
+                "confidence": "high",
+                "reason": (
+                    f"file signals: is_ml_code={signals['is_ml_code']}, "
+                    f"is_agent_code={signals['is_agent_code']}"
+                ),
+                "default_track": "agent",
+            }
+
+    return {
+        "track": None,
+        "source": "default",
+        "confidence": "low",
+        "reason": "no doc or file signal",
+        "default_track": "agent",
+    }
+
+
 def active_dimensions(signals: dict[str, bool]) -> dict[str, object]:
     """Return the dimensions to dispatch *and* the ones skipped, with reasons.
 
@@ -247,6 +423,21 @@ def active_dimensions(signals: dict[str, bool]) -> dict[str, object]:
         active.append("contracts")
     else:
         skipped["contracts"] = "no SANYI.md in the repo"
+
+    # Mandatory-complete, enforced rather than intended. `_ALWAYS_ON` and the
+    # branches above name dimensions as bare strings, so a dimension added to
+    # `Reporter` but forgotten here would appear in neither list — vanishing
+    # from the dispatch table with no skip reason, which is indistinguishable
+    # from a dimension that ran clean. That is the one failure this function's
+    # two-halves contract exists to prevent, so it fails loudly here instead.
+    covered = set(active) | set(skipped)
+    expected = {r.value for r in REPORTER_ID_PREFIX}
+    if covered != expected:
+        raise AssertionError(
+            "active_dimensions must account for every registered dimension; "
+            f"unaccounted: {sorted(expected - covered)}, "
+            f"unregistered: {sorted(covered - expected)}"
+        )
 
     return {"active": active, "skipped": skipped}
 

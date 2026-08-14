@@ -8,7 +8,7 @@
       "location": {
         "files": [
           {
-            "path": "pocs/ai/marketing-comms/src/galactus/model/gateway.py",
+            "path": "pocs/ai/marketing-comms/src/model/gateway.py",
             "start_line": 111,
             "end_line": 111
           }

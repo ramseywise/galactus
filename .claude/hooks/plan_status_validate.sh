@@ -36,20 +36,48 @@ for line in lines:
         value = m.group(1).strip()
         break
 
-if value is None:
-    sys.exit(0)
-
 issues = []
-token = value.split()[0] if value.split() else ""
-suffix = value[len(token):].strip()
+token = ""  # stays empty when the doc has no Status: line; the EXECUTED /
+# SUPERSEDED checks below then simply do not fire.
 
-if token not in STATES:
-    issues.append(f"  '{token}' is not a canonical state; expected one of: {', '.join(sorted(STATES))}")
-if suffix:
-    issues.append(
-        f"  Status: carries a suffix ({suffix!r}) — it must be exactly one token. "
-        "Move detail to Released:/Outstanding:/Review:/Evidence:/Superseded-by:/Completed:"
-    )
+# `Track:` — same tolerant form as Status, and the same one-token rule.
+#
+# Validate the value; never require the line. Every plan doc that predates the
+# router lacks it, and blocking on absence would make all of them instantly
+# unwritable. Absence is valid; later phases backfill.
+track_re = re.compile(r"^[ \t]*(?:\*\*)?Track(?:\*\*)?:[ \t]*(.*)$")
+TRACKS = {"ml", "agent"}
+
+track_value = None
+for line in lines:
+    m = track_re.match(line)
+    if m:
+        track_value = m.group(1).strip()
+        break
+
+if track_value is not None:
+    t = track_value.split()[0] if track_value.split() else ""
+    if t not in TRACKS:
+        issues.append(f"  '{t}' is not a valid track; expected one of: {', '.join(sorted(TRACKS))}")
+    elif track_value[len(t):].strip():
+        issues.append("  Track: must be exactly one token (ml | agent)")
+
+# A doc with no Status: line is still checked for Track: above, then accepted.
+if value is None:
+    if not issues:
+        sys.exit(0)
+else:
+    token = value.split()[0] if value.split() else ""
+    suffix = value[len(token):].strip()
+
+
+    if token not in STATES:
+        issues.append(f"  '{token}' is not a canonical state; expected one of: {', '.join(sorted(STATES))}")
+    if suffix:
+        issues.append(
+            f"  Status: carries a suffix ({suffix!r}) — it must be exactly one token. "
+            "Move detail to Released:/Outstanding:/Review:/Evidence:/Superseded-by:/Completed:"
+        )
 
 
 def has_field(name):
@@ -62,10 +90,14 @@ if token == "SUPERSEDED" and not has_field("Superseded-by"):
     issues.append("  SUPERSEDED requires a 'Superseded-by:' line naming the replacing doc")
 
 if issues:
-    print(f"Plan-doc Status is not conforming in {path}:", file=sys.stderr)
+    print(f"Plan-doc front matter is not conforming in {path}:", file=sys.stderr)
     for issue in issues:
         print(issue, file=sys.stderr)
-    print("  Write is blocked until Status: carries exactly one canonical state.", file=sys.stderr)
+    print(
+        "  Write is blocked until Status: carries exactly one canonical state "
+        "and Track:, if present, is exactly one of: ml | agent.",
+        file=sys.stderr,
+    )
     sys.exit(10)
 PY
 

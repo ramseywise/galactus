@@ -1,7 +1,7 @@
 # Canonical Finding Schema
 
 Every review dimension outputs findings in this format. The shared schema is what lets
-the orchestrator merge and dedupe across ten dimensions and write one unified report.
+the orchestrator merge and dedupe across eleven dimensions and write one unified report.
 
 **`review/models.py` is authoritative.** This file documents it; where the two disagree,
 the code wins and this file is the bug. `review/validate.py` enforces it mechanically —
@@ -12,7 +12,8 @@ a finding that does not validate is rejected, not repaired.
 ```yaml
 id: <PREFIX>-<NNN>              # CR-001, SF-002 — prefix set by the dimension
 reporter: intent | correctness | silent_failure | testing | safety
-        | architecture | runtime | safeguards | contracts
+        | architecture | performance | runtime | safeguards | contracts
+        | leakage
 category: correctness | reliability | security | data | architecture
         | testing | operations | agent_behavior | evaluation | communication
 evidence_state: verified | supported | hypothesis | question   # see evidence-model.md
@@ -49,7 +50,7 @@ pre_existing: false             # true when the diff did not cause it
 - **`id`**: unique within a run, matching `{PREFIX}-{NNN}`. The prefix is set by the
   dimension — see the table below. Numbering restarts each run.
 - **`id` prefix is skill-load verification, not naming.** One `review` agent serves all
-  ten dimensions, so the prefix is the only in-band evidence that a dispatch loaded the
+  eleven dimensions, so the prefix is the only in-band evidence that a dispatch loaded the
   skill it was told to load. A `safety` dispatch returning `CR-001` is rejected as a
   skill-load failure, because that mismatch is what a wrong-skill dispatch looks like.
 - **`quoted_span` is required.** The literal source text at the line cited. A finding
@@ -71,8 +72,9 @@ pre_existing: false             # true when the diff did not cause it
 
 ## Dimension prefixes
 
-Mirrors `REPORTER_ID_PREFIX` in `review/models.py`. `review/tests/test_prefix_map.py`
-fails loudly if this table and the code drift apart.
+Mirrors `REPORTER_ID_PREFIX` in `review/models.py`. `review/tests/test_doc_registry.py`
+fails loudly if this table, the `reporter:` enum above, or the orchestrator's dispatch
+tables drift from the code.
 
 | Dimension | Skill | Prefix |
 |---|---|---|
@@ -86,6 +88,7 @@ fails loudly if this table and the code drift apart.
 | safeguards | `review-safeguards` | `SG` |
 | contracts | `review-contracts` | `CT` |
 | leakage | `review-leakage` | `LK` |
+| performance | `review-performance` | `PF` |
 
 The `wander` agent is not a dimension and emits questions, not findings — its output
 does not use this schema.

@@ -126,6 +126,48 @@ run "$PLANS/bold.md"
 assert_blocked "bold key form"
 case "$LAST_MSG" in *"not a canonical state"*) pass "detects bold key form" ;; *) fail "missed bold key form" ;; esac
 
+echo "=== Track: is validated when present, never required ==="
+# The line is optional by design: every plan doc written before the router lacks
+# it, and requiring it would make all of them instantly unwritable.
+
+write_doc "t-absent.md" "Status: READY\n\nNo track line here.\n"
+run "$PLANS/t-absent.md"
+assert_exit0 "no Track line (legacy docs stay writable)"
+[ -z "$LAST_MSG" ] && pass "silent — absent Track is valid" || fail "warned on absent Track: $LAST_MSG"
+
+for t in ml agent; do
+  write_doc "t-$t.md" "Status: READY\nTrack: $t\n"
+  run "$PLANS/t-$t.md"
+  assert_exit0 "valid Track: $t"
+  [ -z "$LAST_MSG" ] && pass "silent — valid Track: $t" || fail "warned on valid Track $t: $LAST_MSG"
+done
+
+write_doc "t-bogus.md" "Status: READY\nTrack: nonsense\n"
+run "$PLANS/t-bogus.md"
+assert_blocked "invalid Track value"
+case "$LAST_MSG" in *"not a valid track"*) pass "explains — invalid Track" ;; *) fail "no reason for invalid Track (got: ${LAST_MSG:-<empty>})" ;; esac
+
+write_doc "t-suffix.md" "Status: READY\nTrack: ml — because it is tabular\n"
+run "$PLANS/t-suffix.md"
+assert_blocked "Track with a suffix"
+case "$LAST_MSG" in *"exactly one token"*) pass "explains — Track suffix" ;; *) fail "no reason for Track suffix (got: ${LAST_MSG:-<empty>})" ;; esac
+
+write_doc "t-bold.md" "Status: READY\n  **Track**: nonsense\n"
+run "$PLANS/t-bold.md"
+assert_blocked "bold/indented Track form"
+case "$LAST_MSG" in *"not a valid track"*) pass "detects bold Track form" ;; *) fail "missed bold Track form" ;; esac
+
+# A Track: line is checked even with no Status: line — the early accept path for
+# a Status-less doc must not become a way to smuggle a bad Track past the hook.
+write_doc "t-only.md" "# Plan\n\nTrack: nonsense\n"
+run "$PLANS/t-only.md"
+assert_blocked "bad Track with no Status line"
+case "$LAST_MSG" in *"not a valid track"*) pass "explains — Track checked without Status" ;; *) fail "Track unchecked when Status absent" ;; esac
+
+write_doc "t-only-ok.md" "# Plan\n\nTrack: ml\n"
+run "$PLANS/t-only-ok.md"
+assert_exit0 "valid Track with no Status line"
+
 echo
 echo "RESULT: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
