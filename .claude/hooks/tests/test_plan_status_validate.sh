@@ -211,12 +211,12 @@ assert_exit0 "indented fence toggles correctly"
 
 echo
 echo "=== From: validates against the legal-edge table ==="
-# LIMITATION, recorded deliberately: From: is a SELF-REPORT. PostToolUse runs
-# after the write, so the hook cannot read the pre-edit Status: — a writer that
-# lies about From: passes whenever the claimed edge happens to be legal. These
-# cases prove the table rejects declared-illegal edges, which catches accidental
-# skips; they do not and cannot prove a writer told the truth. Closing that gap
-# needs a PreToolUse hook and is deferred to its own issue.
+# These cases test the EDGE TABLE, which is still this hook's job: they prove a
+# declared-illegal edge is rejected. They do not prove the writer told the truth
+# about the prior state, and they are not meant to — that is verified against the
+# doc on disk by plan_transition_validate.sh (PreToolUse), whose own suite is
+# test_plan_transition_validate.sh. The two hooks answer different questions:
+# this one owns "is that edge legal", the other owns "was that prior state there".
 
 write_doc "e-legal.md" "Status: EXECUTED\nReview: pending\nFrom: IN_PROGRESS\n"
 run "$PLANS/e-legal.md"

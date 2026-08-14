@@ -183,10 +183,26 @@ if token == "SUPERSEDED" and not has_field("Superseded-by"):
 # the line. Every doc predating this lacks it; blocking on absence makes all of
 # them instantly unwritable.
 #
-# LIMITATION: this is a self-report. PostToolUse reads the file *after* the write,
-# so the hook cannot observe the prior value — a writer that lies about From:
-# passes whenever the claimed edge is legal. This catches accidental skips, not
-# deliberate ones. Hardening needs a PreToolUse hook and is deferred.
+# `From:` is verified against the OBSERVED prior state by `plan_transition_validate.sh`
+# (PreToolUse), which reads the doc before the write. This hook still cannot see the
+# prior value and does not try to — it owns the legal-edge table and field presence;
+# the PreToolUse hook owns "was that prior state actually there".
+#
+# Residual gap, deliberate: the observer is fragment-scoped. It validates only a write
+# whose fragment carries BOTH From: and Status: AND whose Status: differs from the one
+# on disk — a restatement of settled front matter is not a transition and is not
+# checked. So a writer that splits the pair across two Edits is still unchecked.
+# Narrowing that means requiring From: presence, which #14 places out of scope — it
+# belongs at the writer. Measured 2026-08-14: current writers emit both fields in one
+# operation (7 of 7 passing writes on gal-17 produced one edge each), so the gap is
+# latent, not active.
+#
+# What the PreToolUse check certifies, exactly: the From: named in the write matched
+# the Status: on disk at that moment. It does NOT certify that the phase actually ran.
+# A writer told "declares From: READY but the doc is at PLANNED" can retry with
+# From: PLANNED and pass — correctly labelled, having skipped whatever the operator
+# thought happened. The edge table below is what catches the illegal ones; the
+# observer is about file state, not phase execution.
 LEGAL_EDGES = {
     ("RESEARCH", "RESEARCHED"), ("RESEARCHED", "PLANNED"),
     ("RESEARCH", "PLANNED"), ("PLANNED", "REFINED"),
@@ -306,6 +322,15 @@ log_recorder_session "plan_status_validate"
 # write declared no `From:` — see the emit site in the Python block above.
 if [ -n "$transition" ]; then
   IFS=$'\t' read -r t_from t_to t_track t_epistemic <<<"$transition"
+  # Tell log_transition whether an observer is REGISTERED at all. Without this it
+  # cannot separate "the observer ran and skipped this edge" (unverified) from
+  # "there is no observer" (absent) — a distinction that is the whole point of the
+  # field being three-valued. Presence of the hook file is the signal; whether it
+  # verified THIS edge is answered by the token, not by this variable.
+  if [ -f "$(dirname "$0")/plan_transition_validate.sh" ]; then
+    _TRANSITION_OBSERVER_LIVE=1
+    export _TRANSITION_OBSERVER_LIVE
+  fi
   log_transition "$path" "$t_from" "$t_to" "$t_track" "$t_epistemic"
 fi
 exit 0

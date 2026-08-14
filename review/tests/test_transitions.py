@@ -287,3 +287,83 @@ def test_unmeasurable_quantities_are_named_in_every_payload(tmp_path: Path) -> N
             "human_interventions",
         }
         assert all(v for v in unavailable.values()), "each gap states why, not just that"
+
+
+# --- observation: verified vs self-reported (galactus#14) --------------------
+#
+# The failure these guard is laundering: once an observer exists, the ledger
+# holds both checked and self-reported edges, and a count over the whole file
+# would quietly give the old ones the new credibility.
+
+
+def test_legacy_records_are_never_counted_as_verified(tmp_path: Path) -> None:
+    """Absent `observed` means "written before an observer existed" — never true.
+
+    This is the whole reason the field is not a boolean defaulting to False:
+    absent and unverified are different facts about how the edge was recorded.
+    """
+    path = write_ledger(
+        tmp_path,
+        [edge("a.md", "READY", "IN_PROGRESS"), edge("a.md", "IN_PROGRESS", "EXECUTED")],
+    )
+    obs = read_ledger(path)["observation"]
+    assert obs["verified"] == 0
+    assert obs["unverified"] == 0
+    assert obs["unobserved"] == 2
+    assert "self-reported" in str(obs["reason"])
+
+
+def test_populations_are_reported_separately(tmp_path: Path) -> None:
+    """A reader must not be able to quote a blended D10."""
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("a.md", "READY", "IN_PROGRESS"),  # legacy
+            edge("b.md", "READY", "IN_PROGRESS", observed="verified", observer=1),
+            edge("c.md", "READY", "IN_PROGRESS", observed="unverified", observer=1),
+        ],
+    )
+    result = read_ledger(path)
+    obs = result["observation"]
+    assert (obs["verified"], obs["unverified"], obs["unobserved"]) == (1, 1, 1)
+    # The blended total still exists — but never alone.
+    assert result["transitions"] == 3
+    assert "do not quote a blended total" in str(obs["reason"])
+
+
+def test_verified_loop_backs_counted_separately(tmp_path: Path) -> None:
+    """D10 is the loop-back rate; a verified subtotal is the admissible half."""
+    frm, to = LOOP_BACK_EDGE
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("a.md", frm, to),  # self-reported loop-back
+            edge("b.md", frm, to, observed="verified", observer=1),
+        ],
+    )
+    result = read_ledger(path)
+    assert result["loop_backs"] == 2
+    assert result["observation"]["loop_backs_verified"] == 1
+
+
+def test_unknown_observed_value_is_surfaced_not_folded(tmp_path: Path) -> None:
+    """A value this reader does not understand is not silently 'unobserved'."""
+    path = write_ledger(
+        tmp_path, [edge("a.md", "READY", "IN_PROGRESS", observed="probably", observer=1)]
+    )
+    obs = read_ledger(path)["observation"]
+    assert obs["unknown_values"] == ["probably"]
+    assert obs["unobserved"] == 0, "a record carrying the field is not 'no observer'"
+    assert obs["verified"] == 0
+
+
+def test_observer_vintages_are_listed_for_retraction(tmp_path: Path) -> None:
+    """The ledger is append-only; a bad vintage must be excludable by selection."""
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("a.md", "READY", "IN_PROGRESS", observed="verified", observer=1),
+            edge("b.md", "READY", "IN_PROGRESS", observed="verified", observer=2),
+        ],
+    )
+    assert read_ledger(path)["observation"]["observer_vintages"] == [1, 2]

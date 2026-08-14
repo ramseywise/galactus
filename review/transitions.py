@@ -167,6 +167,72 @@ def _recorder_status(markers: list[dict], transitions: int) -> dict[str, object]
     }
 
 
+def _observation_status(records: list[dict]) -> dict[str, object]:
+    """Split the edges into verified, unverified, and unobserved populations.
+
+    galactus#14. Once `plan_transition_validate.sh` (PreToolUse) exists, the
+    ledger holds two kinds of record — edges whose declared `From:` was checked
+    against the doc on disk, and edges written before any observer existed. A
+    D10 count over the whole file would silently launder the old ones into the
+    new credibility, so the populations are reported separately and a caller
+    cannot quote a blended number without seeing the split.
+
+    Three-valued, mirroring `attested` and for the same reason:
+
+    - `verified`   — the observer ran on this exact edge and the declared prior
+                     matched what was on disk.
+    - `unverified` — an observer was registered but did not check this edge.
+                     The fragment rule skips any write that does not carry both
+                     `From:` and `Status:`, and any that merely restates settled
+                     front matter.
+    - absent       — no observer, or the observer could not run. A PreToolUse
+                     crash exits non-2 and is otherwise indistinguishable from a
+                     pass, so this MUST stay distinct from `unverified`.
+
+    Absent is never upgraded to either of the other two. Same rule already
+    written into `_parse` for `kind`: an unmarked record is read as what it was
+    when written, never as what a later mechanism would have made it.
+    """
+    verified = [r for r in records if r.get("observed") == "verified"]
+    unverified = [r for r in records if r.get("observed") == "unverified"]
+    unobserved = [r for r in records if "observed" not in r]
+    # A value outside the vocabulary is not silently folded into `unobserved` —
+    # it means a writer emitted something this reader does not understand.
+    unknown = sorted(
+        {
+            str(r.get("observed"))
+            for r in records
+            if "observed" in r and r.get("observed") not in ("verified", "unverified")
+        }
+    )
+
+    loop_back_verified = sum(1 for r in verified if (r["from"], r["to"]) == LOOP_BACK_EDGE)
+
+    # Vintages let a defective observer generation be excluded by selection
+    # rather than by editing an append-only file.
+    vintages = sorted({r["observer"] for r in records if "observer" in r})
+
+    return {
+        "verified": len(verified),
+        "unverified": len(unverified),
+        "unobserved": len(unobserved),
+        "unknown_values": unknown,
+        "observer_vintages": vintages,
+        "loop_backs_verified": loop_back_verified,
+        "reason": (
+            "no edge has been verified against the doc on disk; every count here "
+            "is self-reported (the writer declared its own prior state)"
+            if not verified
+            else (
+                f"{len(verified)} edge(s) verified against the doc on disk, "
+                f"{len(unverified)} skipped by the fragment rule, "
+                f"{len(unobserved)} written before an observer existed — "
+                "do not quote a blended total"
+            )
+        ),
+    }
+
+
 def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
     """Compute the D10 metrics from the transition ledger.
 
@@ -215,6 +281,7 @@ def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
         "exists": True,
         "path": str(path),
         "recorder": _recorder_status(markers, len(records)),
+        "observation": _observation_status(records),
         "transitions": len(records),
         "runs_started": len(docs),
         "runs_completed": len(completed),

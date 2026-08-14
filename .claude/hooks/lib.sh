@@ -123,6 +123,45 @@ _transition_log_file() {
   printf '%s/.claude/logs/plan-transitions.jsonl' "$root"
 }
 
+# --- Per-write observation tokens (galactus#14) --------------------------------
+#
+# The PreToolUse hook (`plan_transition_validate.sh`) verifies a declared `From:`
+# against the doc on disk; the PostToolUse hook records the edge. They are separate
+# processes, so the verdict has to cross a process boundary — that is what these
+# tokens are.
+#
+# Keyed by (session, doc, from, to), NOT by session alone. `log_recorder_session`'s
+# sentinel latches once per session by design, which makes it a correct answer to
+# "was a recorder alive" and a WRONG answer to "was this edge observed": one
+# truthful write would vouch for every later write in the session, including the
+# ones the fragment rule skipped without comparing anything. The edge in the key is
+# what prevents a record from inheriting another write's credibility.
+_observation_token_path() {
+  local path="$1" from="$2" to="$3" sid
+  sid=$(jq -r '.session_id // empty' <<<"$_HOOK_INPUT" 2>/dev/null || true)
+  # No session id means no token rather than an unkeyed one — an unkeyed token
+  # could be consumed by an unrelated write. Same reasoning as log_recorder_session.
+  [ -z "$sid" ] && return 1
+  printf '%s/claude-observed-%s' "${TMPDIR:-/tmp}" \
+    "$(printf '%s%s%s%s' "$sid" "$(basename "$path")" "$from" "$to" | cksum | tr -d ' \t')"
+}
+
+write_observation_token() {
+  local tok
+  tok=$(_observation_token_path "$1" "$2" "$3") || return 0
+  : > "$tok" 2>/dev/null || true
+}
+
+# Consume the token: true only if THIS edge was verified, and the token is unlinked
+# on read so it cannot certify a second write of the same edge.
+consume_observation_token() {
+  local tok
+  tok=$(_observation_token_path "$1" "$2" "$3") || return 1
+  [ -e "$tok" ] || return 1
+  rm -f "$tok" 2>/dev/null || true
+  return 0
+}
+
 log_transition() {
   local path="$1" from="$2" to="$3" track="${4:-}" epistemic="${5:-}"
   local repo doc target record
@@ -151,8 +190,36 @@ log_transition() {
     esac
   fi
 
-  printf '{"ts":"%s",%s,"track":"%s","epistemic":"%s"}\n' \
-    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$record" "$track" "$epistemic" \
+  # `observed` and `observer` are appended OUTSIDE `record`, deliberately. `record`
+  # is the dedup key, matched as a substring against tail -1 above. Folding
+  # verification state into it would make dedup edge-AND-verification-scoped, so the
+  # same edge logged once verified and once not would stop collapsing — turning the
+  # double-count bug that guard exists to prevent back on.
+  #
+  # THREE-VALUED, not boolean, matching `attested` in review/transitions.py:114-167:
+  #   "verified"   — the observer ran on this exact edge and the prior matched disk
+  #   "unverified" — the observer ran but did not check this edge (fragment rule)
+  #   absent       — no observer, or the observer could not run
+  # A PreToolUse crash exits non-2 and is otherwise indistinguishable from a pass,
+  # so "could not run" MUST stay distinct from "ran and found nothing wrong". A
+  # boolean here would re-create exactly the collapse transitions.py corrects for.
+  local observed=""
+  if consume_observation_token "$path" "$from" "$to"; then
+    observed=',"observed":"verified"'
+  elif [ -n "${_TRANSITION_OBSERVER_LIVE:-}" ]; then
+    observed=',"observed":"unverified"'
+  fi
+
+  # `observer` is a version stamp, bumped when the comparison logic changes. The
+  # ledger is append-only and deliberately unrotated, so a defective vintage is
+  # otherwise permanent and inseparable from correct records. Retraction is a
+  # read-side filter on this integer — never a hand-edit of the JSONL, which would
+  # destroy the audit trail the ledger exists to be.
+  local observer=""
+  [ -n "$observed" ] && observer=',"observer":1'
+
+  printf '{"ts":"%s",%s,"track":"%s","epistemic":"%s"%s%s}\n' \
+    "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$record" "$track" "$epistemic" "$observed" "$observer" \
     >> "$target" || true
 }
 
