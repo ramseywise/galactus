@@ -2,27 +2,42 @@
 name: proto-scope
 description: >
   System design interview for a new AI project — produces DESIGN.md capturing problem,
-  actors, MVP scope, and key decisions before handing off to /project-genesis.
-  Triggers on: "scope a project", "design interview", "what should we build", "system design", "help me scope", "POC planning", "before genesis", "/proto-scope". Also triggered automatically when a user seems to be starting from scratch without a clear design.
+  actors, MVP scope, and key decisions, feeding /proto-design.
+  Two depths: `discovery` runs a plain-language pain-point conversation for someone
+  without system-design vocabulary and emits a Project Profile; bare runs the full
+  design interview.
+  Triggers on: "scope a project", "design interview", "what should we build", "system design", "help me scope", "POC planning", "/proto-scope", "new project idea", "nonprofit has a problem", "help me figure out what to build", "I have an idea".
 
   DSSG-aware: recognizes nonprofit-success-ai (customer portal) and project-mgmt-ai (lifecycle backend) and applies DSSG platform context automatically.
 ---
 
 # /proto-scope
 
-Upstream design conversation that runs **before** `/project-genesis`. Produces `DESIGN.md`. The two skills in sequence: `/proto-scope` → `/project-genesis` → `copier`.
+The FRAME band's scoping skill. Answers **what to build**, before `/proto-design` answers
+what shape the system takes and `/proto-research` starts the build band.
 
-`/project-genesis` answers HOW to build it (infrastructure). This skill answers WHAT to build. Don't conflate them — many design sessions happen weeks before the scaffold is run.
+## Routing
+
+Parse `$ARGUMENTS`:
+
+- First word `discovery` → **Discovery mode**: the upstream conversation, for someone
+  arriving with a pain point rather than a design. Emits a Project Profile — lighter than
+  `DESIGN.md`. Use when actors, boundaries, and technical approach are all still unnamed.
+- Otherwise → **Design mode**: the full system-design interview below. Emits `DESIGN.md`.
+
+Discovery answers *what's worth building?*; design answers *what exactly is it?* A session
+that starts in discovery continues into design once the profile exists — same skill, run
+twice, second time without the keyword.
 
 ## Usage
 
 ```
-/proto-scope [--output path/to/DESIGN.md]
+/proto-scope [discovery] [--output path/to/DESIGN.md]
 ```
 
 | Arg        | Default                                                             | Description                        |
 | ---------- | ------------------------------------------------------------------- | ---------------------------------- |
-| `--output` | `.claude/docs/DESIGN.md` (pre-scaffold) or `DESIGN.md` (in-project) | Where to write the design artifact |
+| `--output` | `.claude/docs/DESIGN.md` (pre-scaffold) or `DESIGN.md` (in-project); `.claude/docs/PROJECT-PROFILE.md` in discovery mode | Where to write the artifact |
 
 ---
 
@@ -74,10 +89,10 @@ If DSSG platform is detected:
 - Ask only what's specific to THIS project's slice (stage ownership, actor, AI scope, MVP)
 - Acknowledge what's already decided rather than re-deciding it
 
-### Step 0.6 — Consume Project Profile (from /project-discovery)
+### Step 0.6 — Consume Project Profile (from discovery mode)
 
 Scan for `.claude/docs/PROJECT-PROFILE.md` or `PROJECT-PROFILE.md` in the workspace.
-If found, this project went through `/project-discovery` upstream — many questions are
+If found, this project ran `/proto-scope discovery` first — many questions are
 already answered.
 
 **Load and map the profile to interview tiers:**
@@ -155,7 +170,7 @@ engagement status," you know the actor without asking.
      backend (not just retrieval) — name FOIA-Fluent's split-service shape (Next.js on Vercel + FastAPI on
      Railway, Supabase JWT shared identity) as the candidate topology in the summary, the same way the
      DSSG-context block below pre-fills known answers for `nonprofit-success-ai`/`project-mgmt-ai`. This
-     maps to `/project-genesis`'s `frontend_backend_topology` question (see §7 table).
+     is a system-boundary decision — record it in DESIGN.md and carry it to `/proto-design` (see §7).
 
 5. **Is this a fresh project or layering onto something?**
    - If layering: what already exists and what's off-limits to touch?
@@ -274,27 +289,28 @@ DESIGN.md anyway — a design with named gaps beats no design.
 Write the DESIGN.md to `--output` (default: `.claude/docs/DESIGN.md` if pre-scaffold,
 `DESIGN.md` in the project root if already inside a generated project).
 
-### Step 7 — Hand off to /project-genesis
+### Step 7 — Hand off to /proto-design
 
-After writing DESIGN.md, surface the `/project-genesis` answers that are now determinable
-from the design:
+After writing DESIGN.md, surface what the design has already settled for the five-layer
+spec, so `/proto-design` starts from answers rather than re-asking:
 
-| DESIGN.md answer                                | /project-genesis question                                                                    |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| AI approach + system shape                      | `project_type` (drives most other defaults; `existing_repo` = layering-only)                 |
-| Actors                                          | `primary_users`, `primary_chat_agent`                                                        |
-| External systems to integrate                   | `external_systems` (seeds integrations, Composio, web research, vector store), `agent_tools` |
-| Agent behavior (tools/memory/approval)          | `agent_tools`, `agent_memory`, `human_approval`                                              |
-| Data classification                             | `data_sensitivity`                                                                           |
-| Deployment / operator model (budget/scale)      | `deployment_target`, `vector_backend` complexity                                             |
-| Vector/retrieval needs                          | `vector_backend`                                                                             |
-| System boundaries (external user + own backend) | `frontend_backend_topology`                                                                  |
-| Optional tooling implied by the design          | `optional_features`                                                                          |
-| Evaluation table (metrics + targets)            | transcribed into `evals/targets.yaml` after render (see /project-genesis Step 4)             |
+| DESIGN.md answer | Feeds |
+|---|---|
+| AI approach + system shape | whether the system is agent-shaped, and the graph layer |
+| Actors | the consumer — who reads the output and what they decide with it |
+| Agent behavior (tools / memory / approval) | the harness and loop layers |
+| External systems to integrate | tool surface and its failure modes |
+| Data classification | context layer boundaries; what must never enter a prompt |
+| Deployment / operator model | scale and cost-of-wrong |
+| Vector / retrieval needs | context layer retrieval strategy |
+| Evaluation table (metrics + targets) | the success metrics `/proto-design` closes on |
 
-Tell the user: "Run `/project-genesis` next. Here's what to answer for the infrastructure
-questions:" — and list the pre-determined values. Questions still open can be answered
-interactively during `/project-genesis`.
+Anything the design left as `Deferred(<trigger>)` stays deferred — carry the trigger
+across rather than forcing an answer at spec time.
+
+Scaffolding is not a step here. Galactus's POCs are subdirectories under `pocs/ai/` and
+`pocs/ml/`; if this design targets a new standalone repo, that is
+`ai-project-template`'s copier stage, outside this pipeline.
 
 ---
 
@@ -454,11 +470,95 @@ _project-mgmt-ai_ (lifecycle backend / coordination service):
 
 ---
 
+## Discovery mode
+
+Folded in from `project-discovery`, 2026-08-14. Runs when the first word is `discovery`.
+
+This is a **conversation, not a form**. The person may be a first-time volunteer who has
+never built an AI system. The design interview above assumes vocabulary they may not have;
+this mode does not.
+
+### Tone contract — the reason this mode exists separately
+
+- **Plain language.** Say "the AI finds answers in documents", not "RAG pipeline".
+- **Concrete examples** from nonprofit contexts, not abstractions.
+- **Choices as cards with trade-offs**, never open questions that require expertise to
+  answer.
+- **If they are unsure, narrow by asking what the demo should SHOW.** That question maps
+  to an archetype more reliably than any amount of requirements talk.
+- **Never make them feel there is a right answer they are missing.** There isn't one.
+
+Violating the tone contract is the failure mode here — a discovery session that lapses
+into design vocabulary produces confident answers to questions the person did not
+understand, which is worse than no answers.
+
+### Steps
+
+**0 — Intake: who's in the room.** Two minutes, conversational. Role and background
+(calibrates every later explanation); setup (OS, editor, languages, daily tools); team
+working rules already agreed (review requirements, branch conventions, "never touch X").
+The people named here seed the actor table in design mode.
+
+**1 — Pain point elicitation.** Open with: *"Tell me about the nonprofit you're working
+with. What's painful for them today — what takes too long, falls through cracks, or
+frustrates people?"* Follow with *"can you give me a specific example — last week, what
+happened?"*, *"who does this work today, and how long does it take?"*, *"what happens when
+it goes wrong?"*
+
+The goal is a concrete problem with a named actor and a real consequence. Not "they need
+better data management" but *"their intake coordinator spends 3 hours per new client
+looking up which programs they qualify for."*
+
+**2 — Archetype matching.** Read `reference/archetype-selection.md`; present the 1–2 best
+matches as cards (name, one sentence on what it does, one on why it fits, a concrete
+similar project). If the pain point spans archetypes, name the primary — where the *hard
+problem* lives — and note the secondary as a phase-2 add-on.
+
+Then ask once: *"Does anyone talk to this out loud — a phone call, a live voice assistant —
+where they'd expect to interrupt it mid-sentence?"* A yes makes the design realtime/duplex:
+interrupt handling and a sub-second latency target are load-bearing, not polish. Push the
+tier in step 3 up one and read `agent-voice.md` before scoping. A voice *interface* over a
+request/response system — press to record, wait, get an answer — is not duplex and does not
+carry that cost.
+
+**3 — Complexity budget.** *"How much time and people do you have?"* Present three tiers
+from `reference/archetype-selection.md`:
+
+| Tier | Time | Team | What's realistic |
+|------|------|------|-----------------|
+| **Weekend sprint** | 1–2 days focused | 1–2 people | Working prototype, one happy path, no auth/deploy |
+| **Multi-sprint** | 2–6 weeks | 2–4 people | Production-ready core feature, basic eval, deployed somewhere |
+| **Semester** | 8–12 weeks | 3–6 people | Full system with auth, multi-tenancy, eval suite, handoff docs |
+
+Then: *"are there hard deadlines — a demo day, a board presentation, a cohort end date?"*
+
+**4 — Must-demonstrate items.** *"Imagine you're showing this to the nonprofit in 5
+minutes. What do they need to see working to say 'yes, this is useful'?"* Push for 3–5
+concrete items, reframing vague answers into demonstrable ones: "better data access" →
+*"a volunteer types a question and gets the right regulation back in 3 seconds."*
+
+**5 — Constraints and capacity**, then write the profile.
+
+### Output
+
+`.claude/docs/PROJECT-PROFILE.md` — intake, pain point, archetype (primary + any
+secondary), complexity tier, must-demonstrate list, constraints. Lighter than `DESIGN.md`
+and not a substitute for it.
+
+**Next**: re-run `/proto-scope` without the keyword to turn the profile into `DESIGN.md`.
+
+### Re-entry
+
+If a profile already exists, skip what is answered and fill only what is blank. Same rule
+as design mode.
+
+---
+
 ## Notes
 
-- Don't conflate `/proto-scope` with `/project-genesis`. Design and infrastructure are different
-  conversations at different times. Many `/proto-scope` sessions happen before any code exists.
-- If the design reveals a need the template genuinely can't scaffold, name it explicitly
-  rather than silently dropping it — same discipline as `/project-genesis` and `/new-agent`.
+- Design and infrastructure are different conversations at different times. Many
+  `/proto-scope` sessions happen before any code exists.
+- If the design reveals a need that cannot be scaffolded, name it explicitly rather than
+  silently dropping it — same discipline as `/new-agent`.
 - DESIGN.md is a living doc. Update it when decisions resolve or scope changes. It's not a
   one-time artifact — it's the authoritative record of what this project is for.

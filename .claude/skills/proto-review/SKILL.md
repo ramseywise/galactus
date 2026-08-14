@@ -353,6 +353,7 @@ Produce the unified report:
 | runtime | ... | N findings |
 | safeguards | ... | N findings |
 | contracts | ... | N findings |
+| leakage | ... | N findings |
 | plan-fidelity | ran / skipped | N findings |
 | lint/tests | ran / skipped | pass/fail |
 

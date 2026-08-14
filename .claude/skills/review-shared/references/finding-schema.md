@@ -12,7 +12,8 @@ a finding that does not validate is rejected, not repaired.
 ```yaml
 id: <PREFIX>-<NNN>              # CR-001, SF-002 — prefix set by the dimension
 reporter: intent | correctness | silent_failure | testing | safety
-        | architecture | runtime | safeguards | contracts
+        | architecture | performance | runtime | safeguards | contracts
+        | leakage
 category: correctness | reliability | security | data | architecture
         | testing | operations | agent_behavior | evaluation | communication
 evidence_state: verified | supported | hypothesis | question   # see evidence-model.md
@@ -71,8 +72,9 @@ pre_existing: false             # true when the diff did not cause it
 
 ## Dimension prefixes
 
-Mirrors `REPORTER_ID_PREFIX` in `review/models.py`. `review/tests/test_prefix_map.py`
-fails loudly if this table and the code drift apart.
+Mirrors `REPORTER_ID_PREFIX` in `review/models.py`. `review/tests/test_doc_registry.py`
+fails loudly if this table, the `reporter:` enum above, or the orchestrator's dispatch
+tables drift from the code.
 
 | Dimension | Skill | Prefix |
 |---|---|---|

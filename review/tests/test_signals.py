@@ -215,6 +215,11 @@ LEGACY_DOC_LABELS: dict[str, str | None] = {
     # The four context-engineering surfaces — skills, agents, hooks, specs —
     # and the agent loop that consumes them. Declares `Track: agent` itself.
     "2026-08-14-context-engineering-space.md": "agent",
+    # Orchestrating the pipeline itself: graph edges, loop-backs, the driver
+    # under the bands. Agent-system architecture, not modelling — the ML
+    # mentions are quotations of the track router, not the doc's own subject.
+    # Declares `Track: agent` itself.
+    "2026-08-14-pipeline-orchestration.md": "agent",
 }
 
 _SYNTHETIC_FIXTURES = [

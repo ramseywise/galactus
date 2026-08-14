@@ -41,10 +41,9 @@ plan, and CROSS attacks any artifact from any band.
 
 | Band | Skill | Entered when | Writes |
 |---|---|---|---|
-| Frame | `/project-discovery` | new client or project, nothing written down | Project Profile |
-| Frame | `/scope-poc` | profile exists, scope not yet pinned | `DESIGN.md` |
-| Frame | `/project-genesis` | design agreed, repo does not exist | repo scaffold (copier) |
-| Frame | `/design-system` | a requirement needs an agent spec | five-layer spec |
+| Frame | `/proto-scope discovery` | a pain point, no design vocabulary yet | Project Profile |
+| Frame | `/proto-scope` | scope not yet pinned | `DESIGN.md` |
+| Frame | `/proto-design` | a requirement needs an agent spec | five-layer spec |
 | Build | `/proto-research` | spec exists, unknowns remain | `## Research`, `Track:` |
 | Build | `/proto-plan` | research reviewed | `## Plan` |
 | Build | `/proto-refine` | plan written | the only writer of `REFINED` / `READY` |
@@ -54,10 +53,13 @@ plan, and CROSS attacks any artifact from any band.
 | Cross | `/war-game` | a plan about to ship | attack findings + mitigations + go/no-go |
 | Cross | `/fog` | a design that must handle not-knowing | ranked collapse sites |
 
-**FRAME is a band, not a sequence.** Its four skills are entered by intent.
-`/project-discovery` and `/project-genesis` run once per project; `/scope-poc` and
-`/design-system` run per initiative. The chain when starting from nothing is
-`/project-discovery` → `/scope-poc` → `/project-genesis` → copier.
+**FRAME is a band, not a sequence.** Entered by intent, not in fixed order. The chain when
+starting from nothing is `/proto-scope discovery` → `/proto-scope` → `/proto-design`, but
+a session that already has a `DESIGN.md` enters at `/proto-design`, and one that already
+has a spec skips FRAME entirely.
+
+Scaffolding is not a band here. Galactus's POCs are subdirectories under `pocs/ai/` and
+`pocs/ml/`, not generated repos; `ai-project-template` owns the copier stage.
 
 **BUILD runs in order**, with the plan doc in `.claude/docs/plans/` as the bus between
 phases. `Status:` is a state machine, not a label — a hook rejects values outside
@@ -71,14 +73,27 @@ rather than defaulted — an ML problem on the agent track produces a confident 
 nobody checked.
 
 **CROSS skills are capabilities, not phases.** They take an artifact — plan, spec,
-`DESIGN.md`, diff — and return a judgment. They never write the artifact they attack and
-never appear as a pipeline step. They are also the only skills here the model may reach
-for on its own: they are cheap and read-only, which is exactly what should be available
-the moment a load-bearing assumption shows up. `decide-shared` is their shared contract,
-as `review-shared` is for the twelve `review-*` dimensions.
+`DESIGN.md`, diff — and return a judgment. They never write the artifact they attack, never
+appear as a pipeline step, and **never touch `Status:`** — they write to
+`.claude/docs/decisions/`, a different tree from the one `plan_status_validate.sh` guards,
+so the state machine cannot be tripped by a capability. They are also the only skills the
+model may reach for on its own: cheap, read-only, and exactly what should be available the
+moment a load-bearing assumption shows up. `decide-shared` is their shared contract, as
+`review-shared` is for the thirteen `review-*` dimensions.
+
+**Tools, called from inside a band.** These are not phases and have no position:
+
+| Skill | Called by | Does |
+|---|---|---|
+| `/ml-transform` | `/proto-research` on `Track: ml` | Profiles a frame; emits the ColumnPlan. Advisory — never transforms silently |
+| `/ml-select` | `/proto-research` on `Track: ml` | The `(family, output)` pair + training config. Refuses to run before profiling |
+| `/new-agent` | `/proto-execute` | Scaffolds an ADK or LangGraph agent |
+| `/mcp-builder` | `/proto-execute` | Reference for writing an MCP server. Vendored; carries its own LICENSE |
+| `/skill-creator` | any | Creates or edits a skill in this repo |
 
 Retired skills live in `.claude/skills/archived/`, one `ARCHIVED.md` each explaining what
-moved where. They are not invocable.
+moved where and what is worth reviving. They are one directory below where the loader
+looks, so they are not invocable.
 
 ## Rules
 

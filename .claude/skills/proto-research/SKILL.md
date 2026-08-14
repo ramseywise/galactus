@@ -155,7 +155,7 @@ produce it are not needed downstream.
 
 If the research finds the requirement itself is unspecified — no agreed consumer, no
 stated cost of being wrong, no answer at one of the five layers — that is a FRAME gap, not
-a research gap. Stop and run `/design-system` to produce the spec, then return here.
+a research gap. Stop and run `/proto-design` to produce the spec, then return here.
 
 ## Fan-out mode
 

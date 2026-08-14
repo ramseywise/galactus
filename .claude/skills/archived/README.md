@@ -15,5 +15,8 @@ moved into a live skill or targeted a tool this repo does not use.
 | Skill | Archived | Reason | Substance now lives in |
 |---|---|---|---|
 | `design-prototype` | 2026-08-14 | Default mode duplicated `/proto-research` → `/proto-plan` | `proto-research` (track routing + ML contract) |
-| `design-sprint` | 2026-08-14 | Thinner overlap of `scope-poc`'s problem framing; PM lens galactus has no role for | — |
+| `design-sprint` | 2026-08-14 | Thinner overlap of `proto-scope`'s problem framing; PM lens galactus has no role for | — |
 | `design-initiative` | 2026-08-14 | Terminates in `/doc-to-linear-tickets`, which does not exist here; galactus tracks work in GitHub Issues | — |
+| `project-discovery` | 2026-08-14 | Same intake conversation as `proto-scope`, one vocabulary level down | `proto-scope discovery` mode + its `reference/` |
+| `project-genesis` | 2026-08-14 | Orchestrates "this repo's own `copier.yaml`" — galactus has none | `ai-project-template` owns the scaffolding stage |
+| `docs-check` | 2026-08-14 | `review-architecture` already covers docs-vs-code drift, and reports it on every review | `review-architecture` |

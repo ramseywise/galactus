@@ -1,6 +1,6 @@
 ---
-name: design-system
-description: "Translate a product requirement into an agent system spec, then stress it before any code exists. Grounds the requirement (consumer, correctness, cost of wrong, and scale), walks the five layers — prompt, context, harness, loop, graph — forcing an explicit answer or named deferral at each, simulates the design against adversarial scenarios, and closes with success metrics. Output is a spec that feeds /proto-research. Triggers: 'design an agent for X', 'spec out X before we build', 'system design for X', 'dry run this design', 'what should this system look like', '/design-system'."
+name: proto-design
+description: "Translate a product requirement into an agent system spec, then stress it before any code exists. Grounds the requirement (consumer, correctness, cost of wrong, and scale), walks the five layers — prompt, context, harness, loop, graph — forcing an explicit answer or named deferral at each, simulates the design against adversarial scenarios, and closes with success metrics. Output is a spec that feeds /proto-research. Triggers: 'design an agent for X', 'spec out X before we build', 'system design for X', 'dry run this design', 'what should this system look like', '/proto-design'."
 job: design
 disable-model-invocation: true
 allowed-tools: Read Grep Glob Write
@@ -70,18 +70,18 @@ stated requirement is either unmotivated or serving a requirement nobody wrote d
 of someone who has not thought about it produces either a fabricated number or a parked
 question. Offer a row instead:
 
-| Tier | Load | Latency | Spend ceiling |
-|---|---|---|---|
-| Prototype | demo-scale, <10 users | none — demo tolerance | free tier / trivial |
-| Real but small | tens of users, <1k runs/day | name one target (e.g. p95 < 10s) | a real monthly number |
-| Production | a stated projection | p95 target, with alerting | a real monthly number, with alerting |
+| Tier           | Load                           | Latency                                            | Spend ceiling                             |
+| -------------- | ------------------------------ | -------------------------------------------------- | ----------------------------------------- |
+| Prototype      | demo-scale, <10 users          | none — demo tolerance                              | free tier / trivial                       |
+| Real but small | tens of users, <1k runs/day    | name one target (e.g. p95 < 10s)                   | a real monthly number                     |
+| Production     | a stated projection            | p95 target, with alerting                          | a real monthly number, with alerting      |
 | Voice / duplex | concurrent calls, not runs/day | p95 first-audio-out < 800ms; barge-in stop < 200ms | per-minute of connected call, not per-run |
 
 **An accepted default is a resolved answer, not an unknown.** Record it with its
 provenance — `~500 runs/day (real-but-small tier default, unvalidated)` — and move on.
 Do **not** park it as an open question; open questions are for things that block, and an
 accepted default does not block. Park it only when the user says the number genuinely
-matters *and* does not know it.
+matters _and_ does not know it.
 
 Wrong-by-10× is recoverable and visible. Unstated is neither.
 
@@ -126,12 +126,12 @@ Context assembly is a **minimization problem, not a filling problem**: the small
 of high-signal tokens that gets the outcome. Apply the four levers **in order** — cost
 rises left to right:
 
-| Lever | Question |
-|---|---|
-| **Write** | Can this live outside the window entirely? |
-| **Select** | What comes back in, and when? |
-| **Compress** | Can this be smaller? |
-| **Isolate** | Does this need a separate window? |
+| Lever        | Question                                   |
+| ------------ | ------------------------------------------ |
+| **Write**    | Can this live outside the window entirely? |
+| **Select**   | What comes back in, and when?              |
+| **Compress** | Can this be smaller?                       |
+| **Isolate**  | Does this need a separate window?          |
 
 Isolate is last because it is the most expensive — tokens multiply and cross-agent
 context is lost.
@@ -155,21 +155,22 @@ same tokens. Every added source is added surface.
 **Agent = Model + Harness.** A harness constrains, informs, verifies, and corrects.
 Answer all four parts; most incomplete designs have the first two:
 
-| Part | Question |
-|---|---|
-| Acceptance baseline | What does "done and correct" mean, checkably? |
-| Execution boundary | Where does it run, and what can it touch? |
-| Feedback signals | How does the agent learn its last action was wrong? |
-| Rollback | How do we undo a bad action? |
+| Part                | Question                                            |
+| ------------------- | --------------------------------------------------- |
+| Acceptance baseline | What does "done and correct" mean, checkably?       |
+| Execution boundary  | Where does it run, and what can it touch?           |
+| Feedback signals    | How does the agent learn its last action was wrong? |
+| Rollback            | How do we undo a bad action?                        |
 
 **The most commonly missing part is rollback. The most commonly faked one is the
 acceptance baseline** — a vibes-based "looks good" standing in for a binary check. If
 you are about to write "the model reviews its own output," stop: that is generator and
 evaluator being the same agent.
 
-For each constraint, name the layer that encodes it: **hook > linter > test > tool schema
-> instruction line**. The test: *what happens if the agent ignores it?* If nothing
-catches it, the rule is documentation, not a constraint.
+For each constraint, name the layer that encodes it: \*\*hook > linter > test > tool schema
+
+> instruction line\**. The test: *what happens if the agent ignores it?\* If nothing
+> catches it, the rule is documentation, not a constraint.
 
 ### 4. Loop — the cycle that re-prompts and stops
 
@@ -185,8 +186,8 @@ hang, thrash, or silently ship garbage:**
 3. **Context management** — how iteration N+1 sees N without carrying the whole transcript.
 4. **Termination logic** — layered, independent exits: success, iteration cap, budget cap,
    stall detector.
-5. **Error handling** — recoverable vs hard blocker, and *change strategy by error type
-   rather than retrying the identical failed approach*.
+5. **Error handling** — recoverable vs hard blocker, and _change strategy by error type
+   rather than retrying the identical failed approach_.
 
 Then name the capability level: (1) tool-calling agent, (2) + verification, (3)
 event-driven, (4) hill-climbing. Levels 1–3 automate work; level 4 automates improvement.
@@ -199,7 +200,7 @@ only above that floor.
 
 Only if audio (or any duplex stream) flows both directions continuously. §4's five
 components remain necessary but are **not sufficient**: every one of them assumes a turn
-that *ends*, and a duplex loop has no `stop_reason` to end on. Five additional components
+that _ends_, and a duplex loop has no `stop_reason` to end on. Five additional components
 are required. Read `.claude/specs/agent-voice.md` before answering them — this list is the
 minimum bar, not the guidance.
 
@@ -210,13 +211,13 @@ minimum bar, not the guidance.
    pause they meant as a comma.
 2. **Barge-in and cancellation** — what happens when the user speaks while the agent is
    speaking. Name what gets cancelled (TTS playback, the in-flight LLM stream, or both),
-   and what the history records: what the agent *generated*, what the user actually
-   *heard*, and the interruption marker. There is no standard serialization for this —
+   and what the history records: what the agent _generated_, what the user actually
+   _heard_, and the interruption marker. There is no standard serialization for this —
    design it explicitly rather than inheriting a framework's.
 3. **Latency budget, decomposed per hop** — not one end-to-end number. Endpointing hold
-   + ASR finalize + LLM time-to-first-token + TTS first-audio, summing to a stated target.
-   LLM TTFT dominates, so **model tier is the latency knob** — that is a design-time
-   constraint on the whole graph, not deployment tuning.
+   - ASR finalize + LLM time-to-first-token + TTS first-audio, summing to a stated target.
+     LLM TTFT dominates, so **model tier is the latency knob** — that is a design-time
+     constraint on the whole graph, not deployment tuning.
 4. **Session lifetime** — a call is a long-lived stateful process, which contradicts the
    stateless-request default at `agent-runtime.md`. Name what owns connection lifetime,
    reconnect, and cleanup when the caller drops mid-turn.
@@ -226,7 +227,7 @@ minimum bar, not the guidance.
    with no analogue in text.
 
 Termination in a streaming loop binds the **session**, not the turn: turns per session,
-wall-clock, and spend. §4's iteration cap still applies to tool calls *within* a turn.
+wall-clock, and spend. §4's iteration cap still applies to tool calls _within_ a turn.
 
 ### 5. Graph — nodes and permitted transitions
 
@@ -235,19 +236,19 @@ a graph is a cost you justify, not a maturity level you graduate to.
 
 Name which of the five signals forces a node, or state that none do:
 
-| Signal | Why one loop structurally cannot do it |
-|---|---|
-| Distinct specialties | One agent carries each role's baggage into the next |
-| Parallel fan-out + join | A loop is sequential; the wall-clock cost is unnecessary |
-| Per-step model/tool variation | One agent enforces a uniform model and tool policy |
-| Auditable control flow | Emergent loop paths are hard to reconstruct afterward |
-| Overloaded verifier | One check judging several criteria confuses them |
+| Signal                        | Why one loop structurally cannot do it                   |
+| ----------------------------- | -------------------------------------------------------- |
+| Distinct specialties          | One agent carries each role's baggage into the next      |
+| Parallel fan-out + join       | A loop is sequential; the wall-clock cost is unnecessary |
+| Per-step model/tool variation | One agent enforces a uniform model and tool policy       |
+| Auditable control flow        | Emergent loop paths are hard to reconstruct afterward    |
+| Overloaded verifier           | One check judging several criteria confuses them         |
 
 "It feels cleaner" is not a signal. **The most common "we need a graph" is really an
 overloaded verifier** — split the rubric before splitting the system.
 
-If a node is justified, apply the true-dependency test to every proposed edge: *does the
-next step actually read the previous step's output?* If not, the serialization is
+If a node is justified, apply the true-dependency test to every proposed edge: _does the
+next step actually read the previous step's output?_ If not, the serialization is
 incidental and belongs in a fan-out. Start at 3–5 nodes.
 
 ### 6. HITL — where a human sits
@@ -271,7 +272,7 @@ Now attack the spec. Generate **three scenarios**, and do not let them all be ha
 1. **The nominal case** — what the requirement literally describes.
 2. **The malformed case** — input that is empty, truncated, wrong-typed, or adversarial.
    Prompt injection belongs here for anything reading external data.
-3. **The plausible-wrong case** — the agent produces confident, well-formed, *incorrect*
+3. **The plausible-wrong case** — the agent produces confident, well-formed, _incorrect_
    output. This is the one that finds real bugs, because it is the failure the acceptance
    baseline is supposed to catch and usually doesn't.
 
@@ -287,13 +288,13 @@ Turn N:
 ```
 
 Stop the walkthrough at the first point where the design cannot proceed. That stopping
-point *is* the finding. Do not repair it inline and continue — record it and start the
+point _is_ the finding. Do not repair it inline and continue — record it and start the
 next scenario.
 
 Emit findings in this shape:
 
-| # | Layer | What breaks | Spec change |
-|---|---|---|---|
+| #   | Layer | What breaks | Spec change |
+| --- | ----- | ----------- | ----------- |
 
 Then **revise the Stage 1 spec** to absorb the findings. Show what changed. A dry run
 that produces no revisions either got lucky or was not adversarial enough — say which.
@@ -309,14 +310,14 @@ Three short sections. All cheap here and expensive to reconstruct later.
 **What breaks first.** Now that the design is stated, read it back adversarially and name
 the weaknesses before a reviewer does. Two are enough:
 
-- Which component fails first as usage grows, and what does that failure look like *to a
-  user* — slow, wrong, an error, or silent staleness? Silent staleness is the one worth
+- Which component fails first as usage grows, and what does that failure look like _to a
+  user_ — slow, wrong, an error, or silent staleness? Silent staleness is the one worth
   hunting; the other three announce themselves.
 - How would you notice — what signal, and who is watching it?
 - What is the cheap mitigation, and is it in scope now or later?
 
-This is a design question, not a product-risk question. Stage 2 asks what the *scenarios*
-break; this asks what the *architecture* will cost you. "The model API rate-limits us and
+This is a design question, not a product-risk question. Stage 2 asks what the _scenarios_
+break; this asks what the _architecture_ will cost you. "The model API rate-limits us and
 requests queue" is a perfectly good answer.
 
 **Success metrics, with numbers.** Not "it should be accurate" — a threshold on a named
@@ -326,7 +327,7 @@ name the instrument as work, not as an assumption.
 
 **The known next moves.** What is deliberately out of scope for v1, and what would force
 each one in. This is not a roadmap — it is the record of which simplifications were
-*chosen* rather than *overlooked*, which is the distinction a reviewer six weeks from now
+_chosen_ rather than _overlooked_, which is the distinction a reviewer six weeks from now
 cannot recover from the code. A design that names its own deferrals is legible;
 one that doesn't reads as either finished or careless, and it is usually neither.
 
@@ -341,22 +342,31 @@ Status: DRAFT
 Requirement: <the user's words, verbatim>
 
 ## Grounding
+
 Consumer / Correct-means / Cost-of-wrong
 
 ## Scale
+
 Volume / Latency budget / Cost per run + ceiling / Loop bounds.
 Tier defaults recorded with provenance where accepted.
 Non-functional requirements, and which are load-bearing.
 
 ## Observability
+
 What you'd pull up to diagnose a bad run. Redaction requirements, if any.
 
 ## Prompt
+
 ## Context
+
 ## Harness
+
 ## Loop
+
 ## Streaming loop
+
 ## Graph
+
 ## HITL
 
 Each section: the decision, or `DEFERRED — <what would force this later>`.
@@ -364,21 +374,27 @@ Each section: the decision, or `DEFERRED — <what would force this later>`.
 deleting the heading, so a reader can tell the case was considered.
 
 ## Simulation
+
 Three scenarios with turn-by-turn walkthroughs.
 
 ## Findings
+
 The table.
 
 ## Revisions
+
 What changed in the spec, and why.
 
 ## What breaks first
+
 Which component, what the user sees, how you'd notice, the cheap mitigation.
 
 ## Measurement
+
 Success metrics with numbers. Known next moves, and what forces each.
 
 ## Open questions
+
 Only what genuinely needs a human decision. "None" is a valid answer — do not
 manufacture questions to fill the section.
 ```

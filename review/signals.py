@@ -18,6 +18,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from review.models import REPORTER_ID_PREFIX
+
 # Import patterns indicating LLM/agent framework usage
 _AGENT_IMPORT_PATTERNS = [
     re.compile(r"from\s+anthropic\b"),
@@ -180,7 +182,9 @@ _INJECTION_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
 ]
 
-# The seven dimensions that run on every review, and the conditional four.
+# The seven dimensions that run on every review. The remaining four
+# (`runtime`, `safeguards`, `leakage`, `contracts`) are conditional, gated by
+# three signals in `active_dimensions` — agent code activates two of them.
 _ALWAYS_ON = [
     "intent",
     "correctness",
@@ -419,6 +423,21 @@ def active_dimensions(signals: dict[str, bool]) -> dict[str, object]:
         active.append("contracts")
     else:
         skipped["contracts"] = "no SANYI.md in the repo"
+
+    # Mandatory-complete, enforced rather than intended. `_ALWAYS_ON` and the
+    # branches above name dimensions as bare strings, so a dimension added to
+    # `Reporter` but forgotten here would appear in neither list — vanishing
+    # from the dispatch table with no skip reason, which is indistinguishable
+    # from a dimension that ran clean. That is the one failure this function's
+    # two-halves contract exists to prevent, so it fails loudly here instead.
+    covered = set(active) | set(skipped)
+    expected = {r.value for r in REPORTER_ID_PREFIX}
+    if covered != expected:
+        raise AssertionError(
+            "active_dimensions must account for every registered dimension; "
+            f"unaccounted: {sorted(expected - covered)}, "
+            f"unregistered: {sorted(covered - expected)}"
+        )
 
     return {"active": active, "skipped": skipped}
 
