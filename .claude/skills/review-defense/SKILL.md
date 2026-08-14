@@ -1,8 +1,7 @@
 ---
-name: war-game
-description: "Attack a plan before it ships. Dispatches independent adversaries — each given one distinct way the plan could fail — then merges their threats into a ranked list with mitigations and a go/no-go read. Same fan-out shape as the review reporters, aimed at a plan instead of a diff. Callable on any plan, spec, or design. Triggers on: 'war game this', 'how does this fail', 'red team the plan', 'attack this design', 'what breaks', '/war-game'."
+name: review-defense
+description: "Attack a plan before it ships. Dispatches independent adversaries — each given one distinct way the plan could fail — then merges their threats into a ranked list with mitigations and a go/no-go read. Same fan-out shape as the review reporters, aimed at a plan instead of a diff. Callable on any plan, spec, or design. Triggers on: 'war game this', 'how does this fail', 'red team the plan', 'attack this design', 'what breaks', '/review-defense'."
 job: derisk
-disable-model-invocation: true
 allowed-tools: Read Grep Glob Bash Write Agent
 ---
 
@@ -47,14 +46,14 @@ each `review-*` dimension a different remit — and keeps `wander` separate from
 
 Standard angles — pick 3–5 that actually apply, and say which you dropped and why:
 
-| Angle | Attacks | Asks |
-|---|---|---|
-| **Dependency** | What we don't control | What if the vendor/API/service/team is late, wrong, or gone? |
-| **Scale** | Volume assumptions | What breaks at 10×? What is O(n²) that looked O(n)? |
-| **Adversarial** | Hostile input | What does a malicious or merely careless user do? |
-| **Operational** | Run-time reality | 3am failure — who is paged, what do they see, can they roll back? |
-| **Sequencing** | Plan order | What if step 3 finishes but step 4 cannot start? Partial-state? |
-| **Human** | The team | What if the one person who understands this leaves mid-build? |
+| Angle           | Attacks               | Asks                                                              |
+| --------------- | --------------------- | ----------------------------------------------------------------- |
+| **Dependency**  | What we don't control | What if the vendor/API/service/team is late, wrong, or gone?      |
+| **Scale**       | Volume assumptions    | What breaks at 10×? What is O(n²) that looked O(n)?               |
+| **Adversarial** | Hostile input         | What does a malicious or merely careless user do?                 |
+| **Operational** | Run-time reality      | 3am failure — who is paged, what do they see, can they roll back? |
+| **Sequencing**  | Plan order            | What if step 3 finishes but step 4 cannot start? Partial-state?   |
+| **Human**       | The team              | What if the one person who understands this leaves mid-build?     |
 
 Add a bespoke angle when the plan invites one. A plan touching money, PII, or irreversible
 external effects gets an angle aimed at exactly that, always.
@@ -62,7 +61,7 @@ external effects gets an angle aimed at exactly that, always.
 ## Stage 2 — Dispatch, isolated
 
 Dispatch one subagent per angle via the Agent tool, **concurrently, in a single message**.
-Each gets the plan and *its own angle only*.
+Each gets the plan and _its own angle only_.
 
 **Attackers must not see each other's output.** Corroboration only means something if it
 is independent — two attackers reading each other produce agreement, and agreement is not
@@ -114,14 +113,14 @@ attacker for it rather than adding it yourself.
 
 For each surviving threat, one of four — and name which:
 
-| | Meaning |
-|---|---|
-| **Prevent** | Change the plan so it cannot happen |
-| **Detect** | It can happen; we will know fast. Name the signal and who sees it |
-| **Recover** | It will happen; here is the path back. Name the rollback |
-| **Accept** | Cost of mitigation exceeds cost of the failure. State that trade explicitly |
+|             | Meaning                                                                     |
+| ----------- | --------------------------------------------------------------------------- |
+| **Prevent** | Change the plan so it cannot happen                                         |
+| **Detect**  | It can happen; we will know fast. Name the signal and who sees it           |
+| **Recover** | It will happen; here is the path back. Name the rollback                    |
+| **Accept**  | Cost of mitigation exceeds cost of the failure. State that trade explicitly |
 
-`Accept` is a legitimate answer and must be *chosen*, not defaulted into. An unmitigated
+`Accept` is a legitimate answer and must be _chosen_, not defaulted into. An unmitigated
 threat with no decision attached is the one that surprises everyone later.
 
 Prefer prevention where it is cheap, detection where prevention is expensive, and be
@@ -133,12 +132,12 @@ rollback, say that out loud — it is a finding about the plan.
 
 Computed, in order — first match wins. Not judged:
 
-| Condition | Read |
-|---|---|
-| Any attacker failed to dispatch or returned unusably | `incomplete` — the plan was not fully attacked |
-| Any `fatal` threat with no `prevent` or `recover` mitigation | `redesign` |
-| Any `costly` threat unmitigated | `proceed-with-changes` |
-| Otherwise | `proceed` |
+| Condition                                                    | Read                                           |
+| ------------------------------------------------------------ | ---------------------------------------------- |
+| Any attacker failed to dispatch or returned unusably         | `incomplete` — the plan was not fully attacked |
+| Any `fatal` threat with no `prevent` or `recover` mitigation | `redesign`                                     |
+| Any `costly` threat unmitigated                              | `proceed-with-changes`                         |
+| Otherwise                                                    | `proceed`                                      |
 
 The first row is first for the same reason it is first in the review verdict ladder: **a
 war game that could not attack part of the plan has not cleared it.** Attacker silence is

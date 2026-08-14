@@ -2,7 +2,6 @@
 name: fog
 description: "Interrogate a design or built system for how it handles not-knowing. Maps what is known and unknown, finds the sites where 'I don't know' silently becomes an answer, checks which decisions are irreversible, and dispatches an independent advisor for the worst-plausible-case pass. Callable on a spec, a plan, or code that already ships. Triggers on: 'how does this fail', 'what are we not seeing', 'fog of war', 'stress this design', 'what happens when it does not know', '/fog'."
 job: frame
-disable-model-invocation: true
 allowed-tools: Read Grep Glob Bash Write Agent
 ---
 
