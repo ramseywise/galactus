@@ -125,3 +125,16 @@ global `~/.claude/`. Normally that is a double-load blocker. Here it is intentio
 galactus is a self-contained showcase — anyone who clones it gets a working setup with no
 access to a private home directory. **Canon remains `~/.claude/`;** the copies here are
 rendered payload. Fix generic skills upstream, then re-vendor.
+
+**`.claude/hooks/` is payload too — and unlike the skills, it is payload that does not
+run.** `settings.json` registers hooks as `$CLAUDE_PROJECT_DIR/.claude/hooks/<name>`, and
+in this workspace `~/workspace/.claude` is a symlink to `~/.claude`. On a session rooted
+at `~/workspace`, that path resolves to the operator's global hooks — never to the files
+in this directory. A fresh clone of galactus gets the working setup the vendoring exists
+for; here, editing `.claude/hooks/` changes nothing at runtime.
+
+This is the root of galactus#20: the global copies were behind, and the repo-local ones
+everybody was editing were never invoked. **Fix a hook in `~/.claude/hooks/` first, then
+re-vendor, and keep the two byte-identical.** `plan_status_validate.sh`,
+`plan_transition_validate.sh`, and both test suites are in sync as of 2026-08-15; `cmp`
+is the check.

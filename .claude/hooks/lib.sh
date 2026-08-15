@@ -123,7 +123,7 @@ _transition_log_file() {
   printf '%s/.claude/logs/plan-transitions.jsonl' "$root"
 }
 
-# --- Per-write observation tokens (galactus#14) --------------------------------
+# --- Per-write observation tokens (galactus#14) ------------------------------------
 #
 # The PreToolUse hook (`plan_transition_validate.sh`) verifies a declared `From:`
 # against the doc on disk; the PostToolUse hook records the edge. They are separate
@@ -132,15 +132,15 @@ _transition_log_file() {
 #
 # Keyed by (session, doc, from, to), NOT by session alone. `log_recorder_session`'s
 # sentinel latches once per session by design, which makes it a correct answer to
-# "was a recorder alive" and a WRONG answer to "was this edge observed": one
-# truthful write would vouch for every later write in the session, including the
-# ones the fragment rule skipped without comparing anything. The edge in the key is
-# what prevents a record from inheriting another write's credibility.
+# "was a recorder alive" and a WRONG answer to "was this edge observed": one truthful
+# write would vouch for every later write in the session, including the ones the
+# fragment rule skipped without comparing anything. The edge in the key is what
+# prevents a record from inheriting another write's credibility.
 _observation_token_path() {
   local path="$1" from="$2" to="$3" sid
   sid=$(jq -r '.session_id // empty' <<<"$_HOOK_INPUT" 2>/dev/null || true)
-  # No session id means no token rather than an unkeyed one — an unkeyed token
-  # could be consumed by an unrelated write. Same reasoning as log_recorder_session.
+  # No session id means no token rather than an unkeyed one — an unkeyed token could
+  # be consumed by an unrelated write. Same reasoning as log_recorder_session.
   [ -z "$sid" ] && return 1
   printf '%s/claude-observed-%s' "${TMPDIR:-/tmp}" \
     "$(printf '%s%s%s%s' "$sid" "$(basename "$path")" "$from" "$to" | cksum | tr -d ' \t')"
@@ -152,8 +152,8 @@ write_observation_token() {
   : > "$tok" 2>/dev/null || true
 }
 
-# Consume the token: true only if THIS edge was verified, and the token is unlinked
-# on read so it cannot certify a second write of the same edge.
+# Consume the token: true only if THIS edge was verified, and the token is unlinked on
+# read so it cannot certify a second write of the same edge.
 consume_observation_token() {
   local tok
   tok=$(_observation_token_path "$1" "$2" "$3") || return 1
@@ -184,25 +184,48 @@ log_transition() {
   # in different seconds. The tail -1 scope is deliberate — the same edge traversed
   # again later (a genuine loop-back, the quantity being measured) is separated by
   # other records and must still be counted.
+  # The dedup read and the append at the bottom are one read-modify-write, and the two
+  # registered copies fire CONCURRENTLY on a single Write — so both can read the same
+  # tail -1, both miss the match, and both append. Observed 2026-08-15 in the galactus
+  # ledger: one edge recorded twice at an identical timestamp. That is the double count
+  # the guard exists to prevent, happening inside the guard, which is why the guard has
+  # to hold a lock rather than merely look.
+  #
+  # mkdir is the mutex: atomic on every filesystem, and it needs no flock, which macOS
+  # does not ship. A lock left behind by a hook killed mid-write is reclaimed after a
+  # minute — otherwise one crash would silence the ledger permanently. On timeout the
+  # append proceeds UNLOCKED: a lost edge is worse than a duplicate, since undercounting
+  # is the failure galactus#20 was opened for and a duplicate is still visible on read.
+  local lock="${target}.lock" held="" _i=0
+  if [ -d "$lock" ] && [ -n "$(find "$lock" -maxdepth 0 -mmin +1 2>/dev/null)" ]; then
+    rmdir "$lock" 2>/dev/null || true
+  fi
+  while [ "$_i" -lt 100 ]; do
+    if mkdir "$lock" 2>/dev/null; then held=1; break; fi
+    sleep 0.01
+    _i=$((_i + 1))
+  done
+  _release_lock() { [ -n "$held" ] && rmdir "$lock" 2>/dev/null; return 0; }
+
   if [ -f "$target" ] && [ -s "$target" ]; then
     case "$(tail -1 "$target" 2>/dev/null || true)" in
-      *"$record"*) return 0 ;;
+      *"$record"*) _release_lock; return 0 ;;
     esac
   fi
 
-  # `observed` and `observer` are appended OUTSIDE `record`, deliberately. `record`
-  # is the dedup key, matched as a substring against tail -1 above. Folding
-  # verification state into it would make dedup edge-AND-verification-scoped, so the
-  # same edge logged once verified and once not would stop collapsing — turning the
-  # double-count bug that guard exists to prevent back on.
+  # `observed` and `observer` are appended OUTSIDE `record`, deliberately. `record` is
+  # the dedup key, matched as a substring against tail -1 above. Folding verification
+  # state into it would make dedup edge-AND-verification-scoped, so the same edge
+  # logged once verified and once not would stop collapsing — turning the double-count
+  # bug that guard exists to prevent back on.
   #
-  # THREE-VALUED, not boolean, matching `attested` in review/transitions.py:114-167:
+  # THREE-VALUED, not boolean, matching `attested` in galactus review/transitions.py:
   #   "verified"   — the observer ran on this exact edge and the prior matched disk
   #   "unverified" — the observer ran but did not check this edge (fragment rule)
   #   absent       — no observer, or the observer could not run
-  # A PreToolUse crash exits non-2 and is otherwise indistinguishable from a pass,
-  # so "could not run" MUST stay distinct from "ran and found nothing wrong". A
-  # boolean here would re-create exactly the collapse transitions.py corrects for.
+  # A PreToolUse crash exits non-2 and is otherwise indistinguishable from a pass, so
+  # "could not run" MUST stay distinct from "ran and found nothing wrong". A boolean
+  # here would re-create exactly the collapse transitions.py corrects for.
   local observed=""
   if consume_observation_token "$path" "$from" "$to"; then
     observed=',"observed":"verified"'
@@ -210,34 +233,34 @@ log_transition() {
     observed=',"observed":"unverified"'
   fi
 
-  # `observer` is a version stamp, bumped when the comparison logic changes. The
-  # ledger is append-only and deliberately unrotated, so a defective vintage is
-  # otherwise permanent and inseparable from correct records. Retraction is a
-  # read-side filter on this integer — never a hand-edit of the JSONL, which would
-  # destroy the audit trail the ledger exists to be.
+  # `observer` is a version stamp, bumped when the comparison logic changes. The ledger
+  # is append-only and deliberately unrotated, so a defective vintage is otherwise
+  # permanent and inseparable from correct records. Retraction is a read-side filter on
+  # this integer — never a hand-edit of the JSONL, which would destroy the audit trail
+  # the ledger exists to be.
   local observer=""
   [ -n "$observed" ] && observer=',"observer":1'
 
-  # `backfill` marks an edge walked to reconcile the doc with work already done,
-  # not an edge the pipeline actually traversed at that moment. Set
-  # `GALACTUS_BACKFILL=1` for the duration of the reconciliation.
+  # `backfill` marks an edge walked to reconcile the doc with work already done, not an
+  # edge the pipeline actually traversed at that moment. Set `GALACTUS_BACKFILL=1` for
+  # the duration of the reconciliation.
   #
-  # It exists because the alternative is worse in both directions. Leaving a
-  # merged work item stranded mid-state makes `runs_completed` under-report;
-  # walking the edges unmarked makes the ledger claim four same-minute
-  # transitions for work spread over days, and that ledger is the sole input to
-  # the loop-back rate D10 turns on. A marked edge lets the reader keep the doc
-  # honest and the measurement honest at once.
+  # It exists because the alternative is worse in both directions. Leaving a merged work
+  # item stranded mid-state makes `runs_completed` under-report; walking the edges
+  # unmarked makes the ledger claim four same-minute transitions for work spread over
+  # days, and that ledger is the sole input to the loop-back rate D10 turns on. A marked
+  # edge lets the reader keep the doc honest and the measurement honest at once.
   #
-  # Appended outside `record` for the same reason as `observed`: the dedup key
-  # must stay edge-scoped, or the same edge logged once backfilled and once live
-  # would stop collapsing.
+  # Appended outside `record` for the same reason as `observed`: the dedup key must stay
+  # edge-scoped, or the same edge logged once backfilled and once live would stop
+  # collapsing.
   local backfill=""
   [ -n "${GALACTUS_BACKFILL:-}" ] && backfill=',"backfill":true'
 
   printf '{"ts":"%s",%s,"track":"%s","epistemic":"%s"%s%s%s}\n' \
     "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$record" "$track" "$epistemic" "$observed" "$observer" \
     "$backfill" >> "$target" || true
+  _release_lock
 }
 
 # Mark that a recorder was alive in this session — galactus#20 fix direction 2.

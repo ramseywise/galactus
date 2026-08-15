@@ -66,6 +66,13 @@ declare -a VALID=(
   "READY|Status: READY\n"
   "IN_PROGRESS|Status: IN_PROGRESS\n"
   "EXECUTED|Status: EXECUTED\nReview: pending\n"
+  # Every member of the Review: vocabulary, not only the one /proto-execute writes.
+  # `failed` and `blocked` are the outcomes that hold a doc AT EXECUTED; a hook that
+  # accepted only `pending` and `passed` would make a failed review unrecordable and
+  # push writers to lie about the outcome to get past the gate.
+  "EXECUTED-passed|Status: EXECUTED\nReview: passed\n"
+  "EXECUTED-failed|Status: EXECUTED\nReview: failed\n"
+  "EXECUTED-blocked|Status: EXECUTED\nReview: blocked\n"
   "COMPLETE|Status: COMPLETE\nReview: passed\nCompleted: 2026-08-14\n"
   "SUPERSEDED|Status: SUPERSEDED\nSuperseded-by: 2026-07-19-other.md\n"
 )
@@ -86,6 +93,17 @@ declare -a BAD=(
   "suffix|Status: EXECUTED — pending /proto-review\nReview: pending\n|carries a suffix"
   "EXECUTED without Review|Status: EXECUTED\n|requires a 'Review:' line"
   "SUPERSEDED without pointer|Status: SUPERSEDED\n|requires a 'Superseded-by:' line"
+  # COMPLETE's companions are checked by VALUE, not presence. The c-* section below
+  # covers the same three shapes; these entries additionally pin the wording, so a
+  # rewrite that keeps blocking but stops explaining why still fails here.
+  "COMPLETE at Review: pending|Status: COMPLETE\nReview: pending\nCompleted: 2026-08-14\n|requires 'Review: passed'"
+  "COMPLETE without Completed|Status: COMPLETE\nReview: passed\n|requires a 'Completed:' date"
+  "COMPLETE without Review|Status: COMPLETE\nCompleted: 2026-08-14\n|must read 'passed'"
+  # Review: is an enum, not free text. Without these the field would satisfy
+  # EXECUTED's requirement by presence alone, which is the stuck-at-pending shape
+  # in a different disguise: any prose after the colon would count as an outcome.
+  "Review: not run|Status: EXECUTED\nReview: not run\n|is not a valid outcome"
+  "Review with suffix|Status: EXECUTED\nReview: passed with nits\n|exactly one token"
 )
 i=0
 for entry in "${BAD[@]}"; do
@@ -208,6 +226,15 @@ assert_exit0 "real Review: satisfies EXECUTED despite fenced snippet"
 write_doc "f-indented.md" "Status: PLANNED\n\n  \`\`\`\n  Status: NOT_A_STATE\n  \`\`\`\n"
 run "$PLANS/f-indented.md"
 assert_exit0 "indented fence toggles correctly"
+
+# The filter must not become an escape hatch. Every case above proves the hook
+# ignores what is INSIDE a fence; this one proves the presence of a fence does not
+# make it ignore what is outside — the direction in which a fence-filter bug is a
+# silent bypass rather than a false reject.
+write_doc "f-plus-bad.md" "Status: BOGUS\n\n\`\`\`\nStatus: COMPLETE\n\`\`\`\n"
+run "$PLANS/f-plus-bad.md"
+assert_blocked "unfenced BOGUS beside a fence"
+case "$LAST_MSG" in *"not a canonical state"*) pass "fence filter is not an escape hatch" ;; *) fail "fence filter swallowed a real violation" ;; esac
 
 echo
 echo "=== From: validates against the legal-edge table ==="
@@ -505,6 +532,33 @@ GALACTUS_BACKFILL=1 run "$PLANS/b-dedup.md"
 [ "$(wc -l < "$GALACTUS_TRANSITION_LOG")" -eq 1 ] \
   && pass "the backfill flag stays out of the dedup key" \
   || fail "the backfill flag stays out of the dedup key ($(wc -l < "$GALACTUS_TRANSITION_LOG") records)"
+
+# --- The double-fire is CONCURRENT ---------------------------------------------
+# Every dedup case above runs the hook in SERIES, which the `tail -1` read collapses
+# on its own. Two registered copies fired on one Write overlap: both read the ledger
+# before either appends, both miss the match, both write. That is not hypothetical —
+# it produced two records for one edge at an identical timestamp in the real galactus
+# ledger on 2026-08-15, which is the double count the guard exists to prevent
+# occurring inside the guard. Series-only coverage is why it went unseen.
+
+: > "$GALACTUS_TRANSITION_LOG"
+write_doc "b-race.md" "Status: EXECUTED\nFrom: IN_PROGRESS\nReview: pending\n"
+printf '{"tool_input":{"file_path":"%s"}}' "$PLANS/b-race.md" > "$TMP/race.json"
+for _ in 1 2 3 4 5 6 7 8; do
+  bash "$HOOK" < "$TMP/race.json" >/dev/null 2>&1 &
+done
+wait || true
+RACE_N=$(wc -l < "$GALACTUS_TRANSITION_LOG")
+[ "$RACE_N" -eq 1 ] \
+  && pass "concurrent double-fire collapses to one record" \
+  || fail "concurrent double-fire collapses to one record (got $RACE_N)"
+
+# The lock must not outlive the call. A leaked lock directory makes every later write
+# pay the full timeout and then append unlocked — the race back, plus a 1s stall on
+# every plan-doc edit.
+[ ! -d "${GALACTUS_TRANSITION_LOG}.lock" ] \
+  && pass "the ledger lock is released, not leaked" \
+  || fail "the ledger lock is released, not leaked"
 
 echo
 echo "RESULT: $PASS passed, $FAIL failed"

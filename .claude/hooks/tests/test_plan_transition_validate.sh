@@ -180,10 +180,27 @@ assert_exit0 "case 14: settled doc restated verbatim (Write)"
 
 # Cases 15-16 — REAL corpus docs, not fixtures. These are the two docs that carry a
 # persistent From:; both were false-rejected by the pre-revision logic.
-CORPUS_A="$REPO/.claude/docs/plans/2026-08-14-gal-17-customer-segmentation.md"
-CORPUS_B="$REPO/.claude/docs/plans/2026-08-14-orchestrator-design.md"
+#
+# The corpus is a SEPARATE root from the hook. This file is vendored into every repo
+# that carries the hook, but only some of those repos hold plan docs — the operator's
+# `~/.claude` deliberately holds none. Defaulting the root to $REPO and hard-failing
+# when it is absent would make the global copy permanently red for a corpus it is not
+# supposed to have; skipping silently would restore the blind spot cases 15-16 exist
+# to close. So: no corpus is an announced SKIP, an EMPTY corpus is a failure, and a
+# corpus missing one of the two named docs is drift and still fails.
+CORPUS_DIR="${PLAN_CORPUS_ROOT:-$REPO}/.claude/docs/plans"
+CORPUS_A="$CORPUS_DIR/2026-08-14-gal-17-customer-segmentation.md"
+CORPUS_B="$CORPUS_DIR/2026-08-14-orchestrator-design.md"
 
-if [ -f "$CORPUS_A" ]; then
+if [ ! -d "$CORPUS_DIR" ]; then
+  echo "SKIP: cases 15-16 + corpus sweep — no plan corpus at $CORPUS_DIR"
+  echo "      re-run with PLAN_CORPUS_ROOT=/path/to/a/repo to exercise them"
+  CORPUS_DIR=""
+fi
+
+if [ -z "$CORPUS_DIR" ]; then
+  :
+elif [ -f "$CORPUS_A" ]; then
   head -12 "$CORPUS_A" > "$TMP/frag_a.md"
   run_pre_file "$D" "$CORPUS_A" "$TMP/frag_a.md"
   assert_exit0 "case 15: real gal-17 doc, own front matter as fragment"
@@ -191,7 +208,9 @@ else
   fail "case 15: corpus doc missing — $CORPUS_A"
 fi
 
-if [ -f "$CORPUS_B" ]; then
+if [ -z "$CORPUS_DIR" ]; then
+  :
+elif [ -f "$CORPUS_B" ]; then
   head -12 "$CORPUS_B" > "$TMP/frag_b.md"
   run_pre_file "$D" "$CORPUS_B" "$TMP/frag_b.md"
   assert_exit0 "case 16: real orchestrator-design doc, own front matter as fragment"
@@ -212,14 +231,23 @@ echo "=== Whole-corpus sweep: no doc in the repo is false-rejected ==="
 # false reject on a file already committed to the repo.
 SWEPT=0
 BLOCKED_DOCS=""
-for f in "$REPO"/.claude/docs/plans/*.md; do
-  [ -f "$f" ] || continue
-  head -12 "$f" > "$TMP/frag_sweep.md"
-  run_pre_file "$D" "$f" "$TMP/frag_sweep.md"
-  SWEPT=$(( SWEPT + 1 ))
-  [ "$LAST_RC" -ne 0 ] && BLOCKED_DOCS="$BLOCKED_DOCS $(basename "$f")"
-done
-if [ -z "$BLOCKED_DOCS" ]; then
+if [ -n "$CORPUS_DIR" ]; then
+  for f in "$CORPUS_DIR"/*.md; do
+    [ -f "$f" ] || continue
+    head -12 "$f" > "$TMP/frag_sweep.md"
+    run_pre_file "$D" "$f" "$TMP/frag_sweep.md"
+    SWEPT=$(( SWEPT + 1 ))
+    [ "$LAST_RC" -ne 0 ] && BLOCKED_DOCS="$BLOCKED_DOCS $(basename "$f")"
+  done
+fi
+if [ -z "$CORPUS_DIR" ]; then
+  :
+elif [ "$SWEPT" -eq 0 ]; then
+  # A corpus directory with no docs in it passes the loop trivially. That is the
+  # vacuous green the sweep is least able to survive: it reads identically to
+  # "every doc was checked" in the RESULT line.
+  fail "corpus sweep: $CORPUS_DIR exists but holds no plan docs — sweep proved nothing"
+elif [ -z "$BLOCKED_DOCS" ]; then
   pass "corpus sweep: $SWEPT docs, 0 false rejects"
 else
   fail "corpus sweep: false-rejected —$BLOCKED_DOCS"
