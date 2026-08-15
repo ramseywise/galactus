@@ -29,20 +29,17 @@ dev = [
     "ruff>=0.8",
     "seaborn>=0.13.2",
 ]
+# `runs/ml/customer segmentation/` and `tests/unit/ml` import these directly. They
+# already resolved transitively, which meant the POC's imports worked by accident;
+# declaring them makes the dependency real. Contrast `runs/ml/fraud/`, which keeps a
+# whole external toolkit out of this venv via ML_PACKAGE_ROOT — a handful of standard
+# libraries does not warrant that.
 ml = [
     "catboost>=1.2.10",
     "matplotlib>=3.11.1",
     "pandas>=3.0.5",
     "scikit-learn>=1.9.0",
     "statsmodels>=0.14.6",
-]
-# `runs/ml/customer segmentation/` imports these directly. They already resolved
-# transitively, which meant the POC's imports worked by accident; declaring them makes
-# the dependency real. Contrast `runs/ml/fraud/`, which keeps a whole external toolkit
-# out of this venv via ML_PACKAGE_ROOT — two standard libraries do not warrant that.
-ml = [
-    "pandas>=3.0",
-    "scikit-learn>=1.9",
 ]
 
 # No [build-system]: galactus is not a distributable package. The code under
