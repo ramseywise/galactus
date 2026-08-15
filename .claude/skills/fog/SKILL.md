@@ -2,7 +2,6 @@
 name: fog
 description: "Interrogate a design or built system for how it handles not-knowing. Maps what is known and unknown, finds the sites where 'I don't know' silently becomes an answer, checks which decisions are irreversible, and dispatches an independent advisor for the worst-plausible-case pass. Callable on a spec, a plan, or code that already ships. Triggers on: 'how does this fail', 'what are we not seeing', 'fog of war', 'stress this design', 'what happens when it does not know', '/fog'."
 job: frame
-disable-model-invocation: true
 allowed-tools: Read Grep Glob Bash Write Agent
 ---
 
@@ -124,6 +123,19 @@ Two things to be strict about:
 ## Stage 4 — Dispatch the advisor (isolated)
 
 Now dispatch `fog-advisor` for the worst-plausible-case pass.
+
+**Resolve it first**, and read the exit code:
+
+```bash
+uv run python -m review.cli resolve-capability fog
+```
+
+Exit 1 means the advisor did not load. **Do not run this stage inline instead** — an
+advisor's contract executed by the caller is not an independent advisor, and its findings
+must not be reported as though the isolated pass ran. Record the stage as
+`dispatch failed — <reason>` and say so in the output. A `/fog` run whose Stage 4 did not
+happen is a fog pass with a hole in it, and the reader has to be able to see the hole
+(#15).
 
 **Give it the design. Do not give it your reasoning about the design, the findings from
 stages 1–3, or the author's justification.** An advisor who reads the justification grades

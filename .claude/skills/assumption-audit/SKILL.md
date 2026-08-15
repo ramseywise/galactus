@@ -2,7 +2,6 @@
 name: assumption-audit
 description: "Find the load-bearing guesses in a plan, spec, or design before they are built on. Names each assumption, rates it by confidence and decision impact, and gives the cheapest check that would settle it. Callable at any point — before research, after planning, mid-execute when something feels wrong. Triggers on: 'what are we assuming', 'audit the assumptions', 'what could make this wrong', 'stress the premises', '/assumption-audit'."
 job: frame
-disable-model-invocation: true
 allowed-tools: Read Grep Glob Bash Write
 ---
 

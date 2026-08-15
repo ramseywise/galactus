@@ -19,7 +19,7 @@ It is the `review-shared` of the decide family. Same role, different family.
 
 ## Capability, not phase
 
-The workflow skills are **positional**: `/workflow-research` runs before `/workflow-plan`
+The workflow skills are **positional**: `/proto-research` runs before `/proto-plan`
 because plan reads research's output. That is the true-dependency test, and they pass it.
 
 The capability skills are **situational**: you call `/assumption-audit` when a plan rests
@@ -54,7 +54,7 @@ if it ever matters enough.
 The section above sorts *skills* from *phases*. This one sorts **skills from agents**, which
 is the question that comes up the moment a skill wants more than one perspective.
 
-The direction is fixed, and every dispatch in this repo already runs it: `/workflow-review`
+The direction is fixed, and every dispatch in this repo already runs it: `/proto-review`
 dispatches three reporters, `/fog` dispatches `fog-advisor`, `/war-game` dispatches one
 attacker per angle. **No agent invokes a skill.** Agents may *preload* a shared contract
 (`skills: [review-shared]`) as reference material, which is loading, not calling.

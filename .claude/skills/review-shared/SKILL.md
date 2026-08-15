@@ -1,12 +1,12 @@
 ---
 name: review-shared
-description: "Shared contracts for every review reporter — the canonical finding schema, the evidence model, the context brief, and the merge-decision ladder. Preloaded by the review and wander agents and used by /workflow-review rather than invoked directly. Load it when writing a new dimension or when two dimensions disagree about a finding's severity."
+description: "Shared contracts for every review reporter — the canonical finding schema, the evidence model, the context brief, and the merge-decision ladder. Preloaded by the review and wander agents and used by /proto-review rather than invoked directly. Load it when writing a new dimension or when two dimensions disagree about a finding's severity."
 ---
 
 # review-shared
 
 The contracts every review reporter writes against. This skill holds no procedure of its
-own — it exists so that all ten `review-*` dimensions emit findings a single orchestrator
+own — it exists so that all eleven `review-*` dimensions emit findings a single orchestrator
 can merge without re-reading each dimension's private conventions.
 
 Load a reference when you need it, not preemptively:

@@ -22,8 +22,10 @@ dev = [
     "httpx>=0.27",
     "ipykernel>=7.3.0",
     "jupyterlab>=4.6.3",
+    "numpy>=2.5.2",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=7.1.0",
     "ruff>=0.8",
     "seaborn>=0.13.2",
 ]
@@ -34,9 +36,17 @@ ml = [
     "scikit-learn>=1.9.0",
     "statsmodels>=0.14.6",
 ]
+# `runs/ml/customer segmentation/` imports these directly. They already resolved
+# transitively, which meant the POC's imports worked by accident; declaring them makes
+# the dependency real. Contrast `runs/ml/fraud/`, which keeps a whole external toolkit
+# out of this venv via ML_PACKAGE_ROOT — two standard libraries do not warrant that.
+ml = [
+    "pandas>=3.0",
+    "scikit-learn>=1.9",
+]
 
 # No [build-system]: galactus is not a distributable package. The code under
-# `pocs/ai/marketing-comms/` is a case study read in place, not an importable library —
+# `runs/ai/marketing-comms/` is a case study read in place, not an importable library —
 # declaring a build backend made `uv sync` fail looking for `src/galactus/`, which
 # blocked installing the dev tools too.
 
@@ -58,12 +68,42 @@ select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "BLE"]
 # N803/N806: ML naming conventions (X, y, X_train)
 ignore = ["E501", "RUF001", "RUF002", "RUF003", "N803", "N806"]
 
+[tool.ruff.lint.isort]
+# `package = false` (see pytest config below) means neither package is installed
+# into the venv, so ruff cannot infer them from the environment and sorts both as
+# third-party — which merges the local import block into the vendor block and
+# reports the correctly-ordered source as I001. Declaring them here fixes the
+# classification rather than reordering imports to satisfy a wrong one.
+# The marketing-comms modules are flat under its `src/`, not under a `galactus`
+# package — an abandoned package move left `src/galactus/` as empty directories
+# and the tests importing through them until 2026-08-15.
+known-first-party = [
+    "api",
+    "config",
+    "generate",
+    "guardrails",
+    "ingest",
+    "layout",
+    "model",
+    "models",
+    "observability",
+    "review",
+    "store",
+]
+
 [tool.pytest.ini_options]
-testpaths = ["pocs/ai/marketing-comms/tests", "review/tests", "tests/unit/ml"]
+# Every test directory under `runs/` is listed explicitly. An omission does not
+# fail — it collects zero tests from that poc, which is indistinguishable from
+# that poc passing. `runs/ml/fraud/tests` was missing until 2026-08-15, so its
+# 35 tests had never run under a bare `uv run pytest`.
+testpaths = [
+    "runs/ai/marketing-comms/tests",
+    "review/tests",
+    "runs/ml/customer segmentation/tests",
+    "runs/ml/fraud/tests",
+]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root
-# has to be declared here. `pocs/ai/marketing-comms/` is on the path too: `evals/` is a
+# has to be declared here. `runs/ai/marketing-comms/` is on the path too: `evals/` is a
 # script directory imported as `evals.run` by the case study's `tests/test_evals.py`.
-# `.` puts the repo root on the path so `ml/` imports as `ml.*` — the vendored ML
-# payload's internal imports are absolute (`from ml.selection.registry import ...`).
-pythonpath = ["pocs/ai/marketing-comms/src", "pocs/ai/marketing-comms", "."]
+pythonpath = ["runs/ai/marketing-comms/src", "runs/ai/marketing-comms"]

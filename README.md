@@ -2,7 +2,7 @@
 
 Two things live here:
 
-1. **`pocs/ai/marketing-comms/`** — a case study: constrained marketing-collateral generation, where an LLM
+1. **`runs/ai/marketing-comms/`** — a case study: constrained marketing-collateral generation, where an LLM
    writes the content and deterministic code decides whether it fits.
 2. **`.claude/`** — the engineering setup that builds things like it. Skills, subagent
    reporters, hooks, and specs, wired into a design → research → plan → execute → review
@@ -12,7 +12,7 @@ The rest of this README describes the case study.
 
 ---
 
-## pocs/ai/marketing-comms — constrained collateral generation
+## runs/ai/marketing-comms — constrained collateral generation
 
 Given two companies and a prompt, it produces a two-column brief whose
 every field satisfies a declared layout contract — word floors and ceilings,
@@ -21,7 +21,7 @@ the output fits, because that is arithmetic.
 
 > **Counting characters is a job for code. The model's job is content.**
 
-Full reasoning in [pocs/ai/marketing-comms/docs/DESIGN.md](pocs/ai/marketing-comms/docs/DESIGN.md).
+Full reasoning in [runs/ai/marketing-comms/docs/DESIGN.md](runs/ai/marketing-comms/docs/DESIGN.md).
 
 ## Quickstart
 
@@ -30,7 +30,7 @@ Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 ```bash
 uv sync
 uv run pytest                              # deterministic core; no network, no API key
-uv run python pocs/ai/marketing-comms/evals/run.py --dry-run
+uv run python runs/ai/marketing-comms/evals/run.py --dry-run
 ```
 
 The whole deterministic core — contract, validator, repair-hint generation,
@@ -41,13 +41,13 @@ To run against the real model:
 
 ```bash
 export ANTHROPIC_API_KEY=...          # or put it in a gitignored .env
-uv run uvicorn galactus.api:app --app-dir pocs/ai/marketing-comms/src --reload
+uv run uvicorn galactus.api:app --app-dir runs/ai/marketing-comms/src --reload
 ```
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | Required only for provider-backed paths |
-| `GALACTUS_MODEL` | see `pocs/ai/marketing-comms/src/galactus/config.py` | Model id |
+| `GALACTUS_MODEL` | see `runs/ai/marketing-comms/src/galactus/config.py` | Model id |
 | `GALACTUS_MAX_REPAIRS` | 3 | Repair budget before deterministic fallback |
 | `GALACTUS_LOG_LEVEL` | INFO | structlog level |
 
@@ -100,14 +100,14 @@ Facts are grounded before drafting: claims that cannot be resolved to a span in
 an uploaded PDF are dropped rather than flagged. Sender and receiver context are
 kept separate end to end.
 
-[pocs/ai/marketing-comms/docs/DESIGN.md](pocs/ai/marketing-comms/docs/DESIGN.md) traces a single request through all ten steps,
+[runs/ai/marketing-comms/docs/DESIGN.md](runs/ai/marketing-comms/docs/DESIGN.md) traces a single request through all ten steps,
 and states plainly what is *not* implemented.
 
 ## Evaluation
 
 ```bash
-uv run python pocs/ai/marketing-comms/evals/run.py --dry-run   # scripted adapter, no spend
-uv run python pocs/ai/marketing-comms/evals/run.py --json      # live, machine-readable
+uv run python runs/ai/marketing-comms/evals/run.py --dry-run   # scripted adapter, no spend
+uv run python runs/ai/marketing-comms/evals/run.py --json      # live, machine-readable
 ```
 
 Four metrics: contract-compliance rate, repair-attempt distribution,
@@ -116,7 +116,7 @@ fallback rate, and grounding precision.
 ## Layout
 
 ```
-pocs/ai/marketing-comms/src/galactus/
+runs/ai/marketing-comms/src/galactus/
   api.py            FastAPI surface — 202, background task, the pipeline itself
   generate.py       Prompt + JSON Schema construction, the repair loop
   models.py         Pydantic types — PipelineState, Violation, Fact, templates
@@ -134,23 +134,23 @@ pocs/ai/marketing-comms/src/galactus/
     text.py         pymupdf text path — verifiable spans
     vision.py       Vision path, used only when the text path comes up thin
     facts.py        Fact extraction and span grounding
-pocs/ai/marketing-comms/templates/      Layout contracts as JSON
-pocs/ai/marketing-comms/evals/          Eval harness and cases
-pocs/ai/marketing-comms/tests/          Test suite
-pocs/ai/marketing-comms/docs/           DESIGN.md, cloud architecture, presentation
+runs/ai/marketing-comms/templates/      Layout contracts as JSON
+runs/ai/marketing-comms/evals/          Eval harness and cases
+runs/ai/marketing-comms/tests/          Test suite
+runs/ai/marketing-comms/docs/           DESIGN.md, cloud architecture, presentation
 ```
 
 ## Docs
 
-- [pocs/ai/marketing-comms/docs/DESIGN.md](pocs/ai/marketing-comms/docs/DESIGN.md) — the reframe, the contract, one request traced end to end, and what was deliberately not built
-- [pocs/ai/marketing-comms/docs/architecture-gcp.md](pocs/ai/marketing-comms/docs/architecture-gcp.md) — production design target (not implemented)
-- [pocs/ai/marketing-comms/docs/architecture-aws.md](pocs/ai/marketing-comms/docs/architecture-aws.md) — AWS mapping and the three places it is not one-to-one
-- [pocs/ai/marketing-comms/docs/presentation.html](pocs/ai/marketing-comms/docs/presentation.html) — 10 slides, self-contained, opens offline
+- [runs/ai/marketing-comms/docs/DESIGN.md](runs/ai/marketing-comms/docs/DESIGN.md) — the reframe, the contract, one request traced end to end, and what was deliberately not built
+- [runs/ai/marketing-comms/docs/architecture-gcp.md](runs/ai/marketing-comms/docs/architecture-gcp.md) — production design target (not implemented)
+- [runs/ai/marketing-comms/docs/architecture-aws.md](runs/ai/marketing-comms/docs/architecture-aws.md) — AWS mapping and the three places it is not one-to-one
+- [runs/ai/marketing-comms/docs/presentation.html](runs/ai/marketing-comms/docs/presentation.html) — 10 slides, self-contained, opens offline
 
 ## Status
 
 A prototype built as a take-home exercise. It is not deployed and has no
 authentication, rate limiting, or spend cap — see the *What we did not build*
-and *Standing assumptions* sections of [pocs/ai/marketing-comms/docs/DESIGN.md](pocs/ai/marketing-comms/docs/DESIGN.md), which
+and *Standing assumptions* sections of [runs/ai/marketing-comms/docs/DESIGN.md](runs/ai/marketing-comms/docs/DESIGN.md), which
 are deliberate omissions with stated reasoning rather than an inventory of
 oversights.

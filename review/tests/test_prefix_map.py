@@ -1,7 +1,7 @@
-"""The cross-artifact test: skills and core must agree on the ten prefixes.
+"""The cross-artifact test: skills and core must agree on the eleven prefixes.
 
 Green since Step 7 of the prototyping-review-subsystem plan created the original
-nine `review-*` skills; `review-leakage` made it ten.
+nine `review-*` skills; `review-leakage` made it ten, `review-performance` eleven.
 
 `models.py` is authoritative and the skills follow it, never the reverse. This
 test is what makes registration code rather than directory convention: adding a
@@ -30,6 +30,13 @@ _PREFIX_KEY = re.compile(r"^prefix:\s*([A-Z]{2})\s*$", re.MULTILINE)
 # every dispatch loads alongside its one dimension skill.
 _NON_DIMENSION_SKILLS = {"review-shared"}
 
+# CROSS-band skills (`/review-defense`) also match the glob. They attack an
+# artifact and return a judgment rather than reporting findings against a diff,
+# so they have no `Reporter` member and no prefix. They declare `job:`; the
+# dimension skills do not, so the key is the discriminator — a new CROSS skill
+# is excluded by construction rather than by being added to a list here.
+_JOB_KEY = re.compile(r"^job:\s*\S+", re.MULTILINE)
+
 
 def _frontmatter(text: str) -> str:
     if not text.startswith("---"):
@@ -47,7 +54,10 @@ def _declared_prefixes() -> dict[str, str]:
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.is_file():
             continue
-        match = _PREFIX_KEY.search(_frontmatter(skill_md.read_text()))
+        frontmatter = _frontmatter(skill_md.read_text())
+        if _JOB_KEY.search(frontmatter):
+            continue
+        match = _PREFIX_KEY.search(frontmatter)
         # Skill names are hyphenated (the loader rejects underscores); Reporter
         # values are underscored. `silent-failure` → `silent_failure`.
         dimension = skill_dir.name.removeprefix("review-").replace("-", "_")

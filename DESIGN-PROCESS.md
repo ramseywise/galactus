@@ -87,9 +87,9 @@ plan writes `## Plan`; execute reads the plan and writes code. Each phase then r
 Spawn prompt (execute — fresh session):
 │ cd <repo-path>
 │ Read <plan-doc-path>
-│ /workflow-execute <slug>
+│ /proto-execute <slug>
 ```
-— `.claude/skills/workflow-plan/SKILL.md`
+— `.claude/skills/proto-plan/SKILL.md`
 
 The deliberation that produced a decision is exactly what the next phase should *not*
 inherit. Write beats compress; a decision recorded in a file is worth more than the same
@@ -205,7 +205,7 @@ because it is ambitious but because nothing can ever evaluate to done.
 
 ### The worked example
 
-The pocs/ai/marketing-comms case study is a loop with all five present:
+The runs/ai/marketing-comms case study is a loop with all five present:
 
 ```
 draft ──▶ validate ──┐
@@ -229,7 +229,7 @@ protocol event marks the end of a turn — it is inferred from the stream, which
 end a judgement rather than a signal, and the five components above do not describe the
 shape. `.claude/skills/design-system/SKILL.md` §4b names the variant;
 `.claude/specs/agent-voice.md` is the depth. The test is whether you can point at the
-event that ends a turn. Nothing in this repo is duplex — pocs/ai/marketing-comms is request/response — so the
+event that ends a turn. Nothing in this repo is duplex — runs/ai/marketing-comms is request/response — so the
 variant is documented here, not demonstrated.
 
 ### Four capability levels
@@ -290,7 +290,7 @@ edges, and hooks are deterministic edges** — the ones no model chooses to take
             └──────────────┼──────────────┘      fan-in
                            ▼
                   ┌─────────────────┐
-                  │ workflow-review │  dedupe → rank → verdict
+                  │ proto-review    │  dedupe → rank → verdict
                   └─────────────────┘
 ```
 

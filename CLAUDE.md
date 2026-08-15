@@ -1,6 +1,6 @@
 # galactus
 
-Contract-bounded LLM generation. `pocs/ai/marketing-comms/` holds the reference implementation: a FastAPI
+Contract-bounded LLM generation. `runs/ai/marketing-comms/` holds the reference implementation: a FastAPI
 service that generates length-constrained marketing copy grounded in uploaded PDFs.
 
 **Thesis:** counting characters is a job for code; the model's job is content.
@@ -8,12 +8,12 @@ service that generates length-constrained marketing copy grounded in uploaded PD
 ## Stack
 
 Python 3.12, `uv` (never `pip` — a hook blocks it), FastAPI, Pydantic v2, Anthropic SDK,
-structlog. Tests live at `pocs/ai/marketing-comms/tests/`, evals at `pocs/ai/marketing-comms/evals/`.
+structlog. Tests live at `runs/ai/marketing-comms/tests/`, evals at `runs/ai/marketing-comms/evals/`.
 
 ```bash
 uv sync                              # install
-uv run pytest pocs/ai/marketing-comms/tests -q           # tests
-uv run python pocs/ai/marketing-comms/evals/run.py --dry-run   # evals, no API spend
+uv run pytest runs/ai/marketing-comms/tests -q           # tests
+uv run python runs/ai/marketing-comms/evals/run.py --dry-run   # evals, no API spend
 ```
 
 ## Specs
@@ -36,30 +36,83 @@ inapplicable. Where the design is request → response → done, ignore it entir
 
 ## The pipeline
 
-Design → build → review, with the plan doc as the bus between phases:
+Four bands. FRAME decides what to build, BUILD builds it, REVIEW judges it against the
+plan, and CROSS attacks any artifact from any band.
 
-| Phase | Skill | Writes |
-|---|---|---|
-| Design | `/design-system` | A spec: the five layers answered or explicitly deferred |
-| Research | `/workflow-research` | `## Research` in `.claude/docs/plans/YYYY-MM-DD-<slug>.md` |
-| Plan | `/workflow-plan` | `## Plan` in the same doc |
-| Refine | `/workflow-refine` | A readiness verdict; the only writer of `REFINED` / `READY` |
-| Execute | `/workflow-execute` | Code; flips `Status:` |
-| Review | `/workflow-review` | Verdict against `## Plan` |
+| Band | Skill | Entered when | Writes |
+|---|---|---|---|
+| Frame | `/proto-scope discovery` | a pain point, no design vocabulary yet | Project Profile |
+| Frame | `/proto-scope` | scope not yet pinned | `DESIGN.md` |
+| Frame | `/proto-design` | a requirement needs an agent spec | five-layer spec |
+| Build | `/proto-research` | spec exists, unknowns remain | `## Research`, `Track:` |
+| Build | `/proto-plan` | research reviewed | `## Plan` |
+| Build | `/proto-refine` | plan written | the only writer of `REFINED` / `READY` |
+| Build | `/proto-execute` | plan is `READY` | code; flips `Status:` |
+| Review | `/proto-review` | before the first commit | verdict against `## Plan` |
+| Cross | `/assumption-audit` | any artifact resting on load-bearing guesses | ranked assumptions + cheapest check |
+| Cross | `/war-game` | a plan about to ship | attack findings + mitigations + go/no-go |
+| Cross | `/fog` | a design that must handle not-knowing | ranked collapse sites |
 
-`Status:` is a state machine, not a label — a hook rejects values outside
+**FRAME is a band, not a sequence.** Entered by intent, not in fixed order. The chain when
+starting from nothing is `/proto-scope discovery` → `/proto-scope` → `/proto-design`, but
+a session that already has a `DESIGN.md` enters at `/proto-design`, and one that already
+has a spec skips FRAME entirely.
+
+Scaffolding is not a band here. A run of the pipeline is a subdirectory under `runs/ai/`
+or `runs/ml/`, not a generated repo; `ai-project-template` owns the copier stage.
+`runs/_index/` is reserved for run records — one per training execution, a different grain
+from the run directory that produced it, which is why the name is prefixed: `_index` can
+never collide with a run. **galactus does not define the record shape.** The registry is
+`ai-project-template`'s `experiments/` module (`record`, `provenance`, `fingerprint`, with a
+`NotApplicable` sentinel so a missing metric never reads as `0.0`); galactus consumes it.
+Nothing writes here yet — a run's result currently lives as a `summary.json` under its own
+`docs/`, which is why the lending baseline could be overturned but not reproduced.
+
+**BUILD runs in order**, with the plan doc in `.claude/docs/plans/` as the bus between
+phases. `Status:` is a state machine, not a label — a hook rejects values outside
 `RESEARCH → RESEARCHED → PLANNED → REFINED → READY → IN_PROGRESS → EXECUTED → COMPLETE`
 (plus `SUPERSEDED`). One work item per plan doc.
+
+`Track:` is the other validated field — `ml` or `agent`. `/proto-research` is its only
+writer, and it routes on what the work *fits*, not what it is called: fitting a model is
+`ml`, calling one is `agent`. The tracks are not symmetric, so the ambiguous case is asked
+rather than defaulted — an ML problem on the agent track produces a confident metric
+nobody checked.
+
+**CROSS skills are capabilities, not phases.** They take an artifact — plan, spec,
+`DESIGN.md`, diff — and return a judgment. They never write the artifact they attack, never
+appear as a pipeline step, and **never touch `Status:`** — they write to
+`.claude/docs/decisions/`, a different tree from the one `plan_status_validate.sh` guards,
+so the state machine cannot be tripped by a capability. They are also the only skills the
+model may reach for on its own: cheap, read-only, and exactly what should be available the
+moment a load-bearing assumption shows up. `decide-shared` is their shared contract, as
+`review-shared` is for the thirteen `review-*` dimensions.
+
+**Tools, called from inside a band.** These are not phases and have no position:
+
+| Skill | Called by | Does |
+|---|---|---|
+| `/ml-transform` | `/proto-research` on `Track: ml` | Profiles a frame; emits the ColumnPlan. Advisory — never transforms silently |
+| `/ml-select` | `/proto-research` on `Track: ml` | The `(family, output)` pair + training config. Refuses to run before profiling |
+| `/new-agent` | `/proto-execute` | Scaffolds an ADK or LangGraph agent |
+| `/mcp-builder` | `/proto-execute` | Reference for writing an MCP server. Vendored; carries its own LICENSE |
+| `/skill-creator` | any | Creates or edits a skill in this repo |
+
+Retired skills live in `.claude/skills/archived/`, one `ARCHIVED.md` each explaining what
+moved where and what is worth reviving. They are one directory below where the loader
+looks, so they are not invocable.
 
 ## Rules
 
 - **`uv add`, never `pip install`.** Enforced by `pip_guard.sh`.
 - **Never commit on `main`.** Work happens on `{PREFIX}-{NUM}-{slug}`, `bug/{slug}`, or
   `spike/{slug}`.
-- **POCs under `pocs/` are working code, not frozen exhibits.** Refactor, fix, and bring
-  them to convention like anything else here. `pocs/ai/marketing-comms/` is the reference
+- **Runs under `runs/` are working code, not frozen exhibits.** Refactor, fix, and bring
+  them to convention like anything else here. `runs/ai/marketing-comms/` is the reference
   implementation, so changes to it should be deliberate and keep its 277 tests green —
   but "it is the case study" is not a reason to leave drift in place.
+- **A new test directory under `runs/` must be added to `testpaths` in `pyproject.toml`.**
+  Omitting it does not fail; it collects zero tests, which reads exactly like passing.
 - **A rule you rely on belongs in a hook, not here.** This file is a table of contents.
   If an agent can ignore a line here with no consequence, that line is documentation —
   encode it at the strongest available layer instead (hook > linter > test > tool schema

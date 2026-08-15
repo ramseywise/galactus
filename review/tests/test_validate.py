@@ -1,6 +1,6 @@
 """One accept, one reject per mechanism, and the reject reasons are tagged.
 
-Fixtures are anchored on `pocs/ai/marketing-comms/src/galactus/model/gateway.py:111`, which
+Fixtures are anchored on `runs/ai/marketing-comms/src/model/gateway.py:111`, which
 really does read `import anthropic` — the `quoted_span` check is only meaningful
 against real source.
 """
