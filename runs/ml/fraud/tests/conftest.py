@@ -2,7 +2,7 @@
 
 No real row enters a test file — every fixture here is a seeded generator, in the spirit
 of `lebanese-blonde/src/synthetic.py`. The guard is tested against shapes, not against the
-actual fraud sample; `pocs/ml/fraud/src/run.py` is what exercises it against the real
+actual fraud sample; `runs/ml/fraud/src/run.py` is what exercises it against the real
 frame, and that is an integration concern, not a unit-test one.
 """
 

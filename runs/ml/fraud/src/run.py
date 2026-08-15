@@ -18,11 +18,11 @@ WHAT THIS RUN IS
     behaviour under thinness, not a fraud-detection result.
 
 DATA HANDLING
-    `pocs/ml/fraud/data/` is gitignored and never read into anything that gets committed.
+    `runs/ml/fraud/data/` is gitignored and never read into anything that gets committed.
     This script prints aggregates only — metrics, counts, column names. It never prints a
     row, a row index, or an identifier value (`uuid` is dropped before it is ever loaded
     into a feature matrix; see `IDENTIFIER_COLUMNS`). The generated HTML report is written
-    to `pocs/ml/fraud/docs/report.html`, which is gitignored for the same reason: it embeds
+    to `runs/ml/fraud/docs/report.html`, which is gitignored for the same reason: it embeds
     distributional detail derived from real records.
 
 RUNNING IT
@@ -31,7 +31,7 @@ RUNNING IT
     dependencies. This script is run against an external interpreter that has `ml`
     importable:
 
-        ML_PACKAGE_ROOT=/path/containing/ml python pocs/ml/fraud/src/run.py
+        ML_PACKAGE_ROOT=/path/containing/ml python runs/ml/fraud/src/run.py
 
     `ML_PACKAGE_ROOT` is prepended to `sys.path`. Without it the import fails with a
     message saying so, rather than a bare ImportError.
@@ -125,8 +125,8 @@ def build_frame(csv_path: Path) -> pd.DataFrame:
     if not csv_path.exists():
         raise SystemExit(
             f"no data at {csv_path}.\n"
-            "pocs/ml/fraud/data/ is gitignored and holds real records; it is not part of "
-            "the repository. See pocs/ml/fraud/README.md for how to obtain a copy."
+            "runs/ml/fraud/data/ is gitignored and holds real records; it is not part of "
+            "the repository. See runs/ml/fraud/README.md for how to obtain a copy."
         )
 
     df = pd.read_csv(csv_path, sep=";", low_memory=False)

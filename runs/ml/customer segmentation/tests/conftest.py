@@ -1,7 +1,7 @@
 """Path shim and synthetic fixtures for the segmentation POC.
 
 No real row enters a test file — every fixture here is hand-written, in the spirit of
-`pocs/ml/fraud/tests/conftest.py`. The real 1.1M-row frame is exercised only by
+`runs/ml/fraud/tests/conftest.py`. The real 1.1M-row frame is exercised only by
 `src/run.py`, which is an integration concern, not a unit-test one.
 
 The `sys.path` insert follows the fraud POC: nothing installs this POC into the venv, so

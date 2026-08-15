@@ -67,7 +67,7 @@
    "threshold": null
   }
  ],
- "report": "pocs/ml/fraud/docs/report.html",
+ "report": "runs/ml/fraud/docs/report.html",
  "headline_metric": "average_precision",
  "prevalence_floor": 0.0175,
  "refusal": {

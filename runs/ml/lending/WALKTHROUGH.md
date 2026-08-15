@@ -2,7 +2,7 @@
 
 Status: EXECUTED
 Date: 2026-08-11
-Data: `pocs/ml/lending/data/lending_club_2015Q4.csv` (real extract, 45,224 × 151, gitignored)
+Data: `runs/ml/lending/data/lending_club_2015Q4.csv` (real extract, 45,224 × 151, gitignored)
 Reference frame: `lebanese-blonde` (read-only; never written to during this run)
 
 ## The question

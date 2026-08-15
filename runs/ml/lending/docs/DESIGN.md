@@ -3,7 +3,7 @@
 Status: PROFILED — no modelling decisions taken beyond the baseline config below.
 Date: 2026-08-11
 Plan: [`2026-08-10-ml-capability-parity.md`](../../.claude/docs/plans/2026-08-10-ml-capability-parity.md) Phase D, Step 14
-Framing: [`pocs/ml/lending/README.md`](../README.md)
+Framing: [`runs/ml/lending/README.md`](../README.md)
 
 ---
 
@@ -15,14 +15,14 @@ real frame, before any modelling. It records what the data says.
 **It is not about the client.** The frame profiled here is a public US peer-lending
 dataset standing in for collections data that has not arrived. Every number below is a
 property of *that* dataset. Nothing here promotes an **Assumed** label in
-[`pocs/ml/lending/README.md`](../README.md) to **Given** — a Lending Club extract cannot confirm
+[`runs/ml/lending/README.md`](../README.md) to **Given** — a Lending Club extract cannot confirm
 anything about a client's business, and the six domain unknowns are untouched by it.
 
 The proxy exercises the *toolkit*. It does not answer the *domain*.
 
 ### Label convention
 
-[`pocs/ml/lending/README.md`](../README.md) labels domain statements **Given** (client-stated) or
+[`runs/ml/lending/README.md`](../README.md) labels domain statements **Given** (client-stated) or
 **Assumed** (our inference). This document needs a third, because the proxy introduces
 facts that are neither:
 
@@ -38,7 +38,7 @@ facts that are neither:
 ## The frame
 
 **Observed.** Source: [`codesignal/lending-club-loan-accepted`](https://huggingface.co/datasets/codesignal/lending-club-loan-accepted)
-on HuggingFace, CC0-1.0. Local path `pocs/ml/lending/data/lending_club_2015Q4.csv` — **gitignored,
+on HuggingFace, CC0-1.0. Local path `runs/ml/lending/data/lending_club_2015Q4.csv` — **gitignored,
 never committed**.
 
 | Property | Value |
@@ -364,7 +364,7 @@ that guard for a structure the data does not have. Recorded as open item 1 inste
 
 ## Step 15 result
 
-Run: [`pocs/ml/lending/src/run.py`](../src/run.py). 39,770 rows, **88 features**, 5-fold
+Run: [`runs/ml/lending/src/run.py`](../src/run.py). 39,770 rows, **88 features**, 5-fold
 `StratifiedGroupKFold`, `class_weight`, isotonic calibration. No models skipped.
 
 | Model | PR-AUC | ROC-AUC | Brier before → after |

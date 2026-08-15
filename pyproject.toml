@@ -26,9 +26,9 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.8",
 ]
-# `pocs/ml/customer segmentation/` imports these directly. They already resolved
+# `runs/ml/customer segmentation/` imports these directly. They already resolved
 # transitively, which meant the POC's imports worked by accident; declaring them makes
-# the dependency real. Contrast `pocs/ml/fraud/`, which keeps a whole external toolkit
+# the dependency real. Contrast `runs/ml/fraud/`, which keeps a whole external toolkit
 # out of this venv via ML_PACKAGE_ROOT — two standard libraries do not warrant that.
 ml = [
     "pandas>=3.0",
@@ -36,7 +36,7 @@ ml = [
 ]
 
 # No [build-system]: galactus is not a distributable package. The code under
-# `pocs/ai/marketing-comms/` is a case study read in place, not an importable library —
+# `runs/ai/marketing-comms/` is a case study read in place, not an importable library —
 # declaring a build backend made `uv sync` fail looking for `src/galactus/`, which
 # blocked installing the dev tools too.
 
@@ -66,14 +66,14 @@ known-first-party = ["galactus", "review"]
 
 [tool.pytest.ini_options]
 testpaths = [
-    "pocs/ai/marketing-comms/tests",
+    "runs/ai/marketing-comms/tests",
     "review/tests",
     # Without this line a bare `uv run pytest` collects zero tests from the
     # segmentation POC, and its absence is indistinguishable from its passing.
-    "pocs/ml/customer segmentation/tests",
+    "runs/ml/customer segmentation/tests",
 ]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root
-# has to be declared here. `pocs/ai/marketing-comms/` is on the path too: `evals/` is a
+# has to be declared here. `runs/ai/marketing-comms/` is on the path too: `evals/` is a
 # script directory imported as `evals.run` by the case study's `tests/test_evals.py`.
-pythonpath = ["pocs/ai/marketing-comms/src", "pocs/ai/marketing-comms"]
+pythonpath = ["runs/ai/marketing-comms/src", "runs/ai/marketing-comms"]

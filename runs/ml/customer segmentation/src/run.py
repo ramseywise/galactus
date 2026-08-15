@@ -9,7 +9,7 @@ WHAT THIS RUN IS
 
     **A refusing run is a successful run.** If the leakage guard reports any FAIL, this
     exits 0, writes the report, and declines to name a winning k. Following
-    `pocs/ml/fraud/src/run.py`: a guard that can be talked past is not a guard.
+    `runs/ml/fraud/src/run.py`: a guard that can be talked past is not a guard.
 
 DATA HANDLING
     `csv/` is covered by the repo-wide `*.csv` ignore and `docs/` is ignored explicitly —
@@ -24,7 +24,7 @@ PROVENANCE
     predates a fix.
 
 RUNNING IT
-    uv run --group ml python "pocs/ml/customer segmentation/src/run.py"
+    uv run --group ml python "runs/ml/customer segmentation/src/run.py"
 """
 
 from __future__ import annotations

@@ -20,7 +20,7 @@ from review.signals import (
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
-AGENT_FILE = "pocs/ai/marketing-comms/src/model/gateway.py"
+AGENT_FILE = "runs/ai/marketing-comms/src/model/gateway.py"
 LEAKY_FIXTURE = "review/tests/fixtures/leaky_pipeline.py"
 CLEAN_FIXTURE = "review/tests/fixtures/clean_pipeline.py"
 
@@ -114,7 +114,7 @@ def test_ml_path_without_ml_content_does_not_activate():
     """A path match alone is not enough. `ml/` holds READMEs and configs; a
     non-Python file under a matching directory has no fit path to review."""
     signals = detect_signals(
-        ["pocs/ai/marketing-comms/README.md", "models/schema.sql"], repo_root="."
+        ["runs/ai/marketing-comms/README.md", "models/schema.sql"], repo_root="."
     )
     assert signals["is_ml_code"] is False
 

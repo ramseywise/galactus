@@ -46,7 +46,7 @@ of) a threshold nobody should act on.
 ## Layout
 
 ```
-pocs/ml/fraud/
+runs/ml/fraud/
 ├── README.md              This document
 ├── docs/
 │   ├── before-guard.json  Captured "before" run — no guard, no warning, a hollow threshold
