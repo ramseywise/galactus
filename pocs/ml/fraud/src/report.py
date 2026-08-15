@@ -52,14 +52,52 @@ def _refusal_banner(summary: dict[str, Any]) -> str:
     )
 
 
+class ReportAnchorError(RuntimeError):
+    """An injection anchor was not found in the toolkit's report.
+
+    Raised rather than skipped. Every injection below carries something the reader needs
+    in order to read the numbers correctly — the refusal, the floor, the fairness note —
+    so an injection that silently no-ops produces a report that looks complete and is not.
+    That is the same failure this poc exists to refuse, one layer up: a confident-looking
+    artefact with the caveat quietly missing.
+
+    The anchors are `ml.reporting.html`'s markup, which is upstream, unpinned, and free to
+    change. They *will* drift. This exception is what makes the drift loud; `test_report.py`
+    pins each anchor against a real `write_report` document so the drift is caught in CI
+    rather than in a report someone is already reading.
+    """
+
+
+def _replace_once(document: str, marker: str, replacement: str, *, what: str) -> str:
+    """Literal single replacement that raises when the marker is absent."""
+    if marker not in document:
+        raise ReportAnchorError(
+            f"cannot inject {what}: anchor {marker!r} is not in the report. "
+            "ml.reporting.html's markup has changed — update the anchor in report.py."
+        )
+    return document.replace(marker, replacement, 1)
+
+
+def _sub_once(document: str, pattern: str, replacement: str, *, what: str) -> str:
+    """Single regex substitution that raises when the pattern does not match."""
+    document, n = re.subn(pattern, replacement, document, count=1, flags=re.DOTALL)
+    if n == 0:
+        raise ReportAnchorError(
+            f"cannot inject {what}: pattern {pattern!r} did not match the report. "
+            "ml.reporting.html's markup has changed — update the anchor in report.py."
+        )
+    return document
+
+
 def _inject_refusal_banner(document: str, summary: dict[str, Any]) -> str:
     """Place the refusal banner immediately before the model comparison table, so it is
     the first thing a reader sees after the section heading — ahead of any metric."""
-    if not summary["refusal"]["operating_point_reported"]:
-        banner = _refusal_banner(summary)
-        marker = "<h2>Model comparison</h2>"
-        document = document.replace(marker, f"{marker}\n{banner}", 1)
-    return document
+    if summary["refusal"]["operating_point_reported"]:
+        return document
+    marker = "<h2>Model comparison</h2>"
+    return _replace_once(
+        document, marker, f"{marker}\n{_refusal_banner(summary)}", what="the refusal banner"
+    )
 
 
 def _inject_floor_note(document: str, summary: dict[str, Any]) -> str:
@@ -68,27 +106,29 @@ def _inject_floor_note(document: str, summary: dict[str, Any]) -> str:
     floor = summary["prevalence_floor"]
     note = _floor_note(summary)
 
-    # Run-facts block: append a floor fact row right after the class-balance row.
-    document = re.sub(
-        r"(<tr><th>class balance</th><td>[^<]*</td></tr>)",
-        rf"\1<tr><th>PR-AUC floor</th><td>{floor:.4f} (positive-class prevalence)</td></tr>",
+    # Run-facts block: append a floor fact to the <dl class="meta"> definition list.
+    document = _sub_once(
         document,
-        count=1,
+        r'(<dl class="meta">.*?)(</dl>)',
+        rf"\1<div><dt>PR-AUC floor</dt><dd>{floor:.4f} (positive-class prevalence)</dd></div>\2",
+        what="the PR-AUC floor fact",
     )
 
     # PR-AUC column header: state what chance is, right in the header cell.
-    document = document.replace(
+    document = _replace_once(
+        document,
         "<th>PR-AUC</th>",
         f"<th>PR-AUC (floor {floor:.4f})</th>",
-        1,
+        what="the PR-AUC column header floor",
     )
 
-    # Floor note as its own paragraph directly under the model comparison table.
-    document = re.sub(
-        r"(<table><thead><tr><th>model</th><th>PR-AUC[^\n]*</tbody></table>)",
-        rf"\1<p class='meta'>{note}</p>",
+    # Floor note as its own paragraph directly under the model comparison table. Anchored
+    # from the heading so it lands under the *model* table and not some later one.
+    document = _sub_once(
         document,
-        count=1,
+        r"(<h2>Model comparison</h2>.*?</tbody>\s*</table></div>)",
+        rf"\1\n<p class='meta'>{note}</p>",
+        what="the prevalence floor note",
     )
     return document
 
@@ -100,7 +140,9 @@ def _inject_fairness_notes(document: str, summary: dict[str, Any]) -> str:
         return document
     items = "".join(f"<li>{note}</li>" for note in notes)
     section = f"<h2>Fairness notes</h2><ul>{items}</ul>"
-    return document.replace("</body></html>", f"{section}\n</body></html>", 1)
+    return _replace_once(
+        document, "</body>", f"{section}\n</body>", what="the fairness notes section"
+    )
 
 
 def write_fraud_report(

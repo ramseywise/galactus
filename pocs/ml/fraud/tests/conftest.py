@@ -8,13 +8,46 @@ frame, and that is an integration concern, not a unit-test one.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+_POC = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_POC / "src"))
+
+# The only real `ml.reporting.html.write_report` output committed anywhere in this repo.
+# The fraud poc's own report.html is gitignored, and `ml.reporting` has no source in this
+# checkout (the ML_PACKAGE_ROOT gap), so the report cannot be regenerated here — the
+# sibling poc's artefact is the sole available ground truth for the toolkit's markup.
+_UPSTREAM_REPORT = _POC.parents[0] / "lending" / "docs" / "report.html"
+
+
+@pytest.fixture
+def upstream_report() -> str:
+    """A genuine toolkit report, used to pin every injection anchor against real markup.
+
+    Inventing the HTML here would defeat the purpose: the anchors were originally written
+    against imagined markup and three of the five never matched anything the toolkit
+    actually emits. A fixture that agrees with the implementation cannot catch that.
+    """
+    if not _UPSTREAM_REPORT.exists():
+        pytest.skip(f"no upstream report sample at {_UPSTREAM_REPORT}")
+    return _UPSTREAM_REPORT.read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def fraud_summary() -> dict:
+    """The committed summary from the guarded proving run — the refusal case."""
+    return json.loads((_POC / "docs" / "summary.json").read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def before_guard_summary() -> dict:
+    """The committed summary from the unguarded run — the phase's negative control."""
+    return json.loads((_POC / "docs" / "before-guard.json").read_text(encoding="utf-8"))
 
 
 class _FixedFolds:
