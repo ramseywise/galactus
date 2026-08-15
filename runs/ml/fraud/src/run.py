@@ -46,9 +46,14 @@ import os
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_DATA = REPO_ROOT / "pocs" / "ml" / "fraud" / "data" / "dataset.csv"
-DEFAULT_REPORT = REPO_ROOT / "pocs" / "ml" / "fraud" / "docs" / "report.html"
+# Relative to this run's own directory, not spelled out from the repo root. The
+# absolute form named the tree — `pocs/ml/fraud/...` — and survived the pocs -> runs
+# rename as a path to a directory that no longer exists, defaulting both arguments to
+# somewhere nothing is. `runs/ml/lending` was already written this way and came
+# through the same rename untouched.
+RUN_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DATA = RUN_ROOT / "data" / "dataset.csv"
+DEFAULT_REPORT = RUN_ROOT / "docs" / "report.html"
 
 # --- toolkit import ---------------------------------------------------------------
 # Done before the `ml.*` imports so the failure is a sentence, not a stack trace.
