@@ -260,12 +260,16 @@ overrides this default list:
 |---|---|
 | Tests | New behavior has a test that fails without the change |
 | Lint | `make lint` (or stack equivalent) is clean |
-| Docs | Docs contradicting the new behavior are updated, not just appended to |
+| Doc parity | Design docs match the implementation: linked paths resolve, described behavior matches what the code does, guarantees are not overclaimed, and the limitations list neither disclaims capabilities that now exist nor omits gaps that remain |
 | Config | No new hardcoded tunable that belongs in config or env |
 | Errors | New failure paths are handled, not swallowed |
+| Seam conformance | Test fakes match the full signature of the port they stand in for, and a contract test pins the real adapter's wire shape independently of the fake (`review-testing` § Seam conformance) |
+| Runnable demo | The app starts and serves its demo path outside the test harness (real server, real config). `TestClient` green is not evidence the process runs — configuration knobs, per-request client construction, startup reconciliation of orphaned state, and lock contention only surface under the real process |
 | Reversibility | The change can be rolled back without a data migration, or the migration is written |
 
-Gaps become findings with appropriate merge_impact.
+Gaps become findings with appropriate merge_impact. When a prototype fails several
+of these at once, the fix path is `/proto-harden` (the checklist distilled from
+`bug/marketing-comms-review-fixes`), then re-review.
 
 If a plan doc exists, also check:
 - All plan steps accounted for (from Stage 2)

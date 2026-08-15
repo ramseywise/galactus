@@ -34,6 +34,35 @@ relevant ref before reporting against it:
 - Are trace and final output both evaluated?
 - Are cost and latency considered?
 
+### Eval falsifiability
+
+An eval that cannot fail measures nothing, and it is the highest-value check in
+this section because it fails green. Evidence base:
+`bug/marketing-comms-review-fixes` — a scripted provider drafted from a fixed
+word list authored to match the fixtures, so the grounding rate measured
+vocabulary overlap with a constant and was structurally incapable of dropping.
+Check:
+
+- **Both directions are tested.** For every headline metric there is a test that
+  a good input scores positive *and* a test that a bad input scores negative.
+  The negative is the load-bearing one: without it the positive is
+  unfalsifiable.
+- **Scripted providers respond to their inputs** — a harness double must derive
+  its output from what it was actually prompted with (the facts in the prompt),
+  not from constants authored to match the fixtures. Otherwise a regression that
+  stops feeding the model its inputs leaves the metric green.
+- **Config parity with production.** The eval runs the same constants and
+  budgets the app runs — shared definitions, thresholds threaded as parameters,
+  not re-hardcoded. An operator override that moves production behavior must
+  move the eval numbers, or the harness measures a configuration nobody runs.
+- **Fixture tables are validated at load.** A case table keyed by literal ids
+  must fail loudly when a case is renamed or a required entry is missing —
+  silent fall-through to a default profile keeps printing plausible numbers
+  while measuring nothing. The validator itself runs against the shipped
+  fixtures in CI.
+- **Eval fakes conform to the port** (full signature) — otherwise the harness
+  drifts from the system it grades.
+
 ## Human Responsibility
 
 - Who approves? Who is accountable?

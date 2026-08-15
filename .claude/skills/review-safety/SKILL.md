@@ -51,6 +51,41 @@ You are dispatched with exactly this one dimension loaded.
 - **Source of truth**: Is it clear what the single source of truth is, or does
   this diff create a second one?
 
+## Service-surface checklist
+
+Concrete defect classes, each found live in `bug/marketing-comms-review-fixes`.
+Check every one the diff's surface makes reachable:
+
+- **Client string → filesystem path**: any client-supplied id that reaches a
+  path must be allowlist-gated (e.g. `^[a-z0-9_]+$`) *before* path construction.
+  An ungated `directory / f"{client_id}.json"` is a traversal probe and a read
+  primitive, not just a lookup.
+- **Upload bounds, checked at read time**: the read itself must be capped
+  (`await file.read(cap + 1)` then length-check → 413). Read-whole-body-then-check
+  does not prevent the OOM it appears to.
+- **Magic bytes over declared type**: client MIME type and filename are
+  untrusted; validate content by magic at the boundary. A mislabelled file
+  accepted today is a failed job tomorrow, discovered by the wrong person.
+- **Blocking work on the async loop**: sync DB writes of large blobs, document
+  parsing, and rasterization inline on the event loop let one large request
+  stall every other client's poll. They belong in `asyncio.to_thread` (and
+  file-backed SQLite needs WAL + busy timeout, or concurrent clients get
+  `database is locked` 500s).
+- **TOCTOU / repeated open**: a check under one open/read and the use under
+  another is a race window (and re-parse churn) — do both under one handle. A
+  count taken under open A does not bound a render under open B.
+- **Mutation scope = tenant AND id**: deletes/updates keyed by guessable id
+  alone let one tenant mutate another's data. Scope the WHERE clause by both,
+  and keep the 404 indistinguishable from not-exists — no existence oracle.
+- **Listings return metadata, never the blob** (`length(content)`, not
+  `content`).
+- **Ingested document content is fenced as data** before it reaches a prompt,
+  with an explicit treat-as-data instruction — uploaded files are untrusted
+  third-party input at the prompt-injection sink.
+- **Responses are whitelisted from the response model's fields**, never splatted
+  from the stored document — internal fields (dedup keys, tenant ids, original
+  prompts) leak through `Model(**stored_doc)`, or crash it.
+
 ## Constraints
 
 These five bind every finding you return.
