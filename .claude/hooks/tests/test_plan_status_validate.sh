@@ -211,12 +211,12 @@ assert_exit0 "indented fence toggles correctly"
 
 echo
 echo "=== From: validates against the legal-edge table ==="
-# LIMITATION, recorded deliberately: From: is a SELF-REPORT. PostToolUse runs
-# after the write, so the hook cannot read the pre-edit Status: — a writer that
-# lies about From: passes whenever the claimed edge happens to be legal. These
-# cases prove the table rejects declared-illegal edges, which catches accidental
-# skips; they do not and cannot prove a writer told the truth. Closing that gap
-# needs a PreToolUse hook and is deferred to its own issue.
+# These cases test the EDGE TABLE, which is still this hook's job: they prove a
+# declared-illegal edge is rejected. They do not prove the writer told the truth
+# about the prior state, and they are not meant to — that is verified against the
+# doc on disk by plan_transition_validate.sh (PreToolUse), whose own suite is
+# test_plan_transition_validate.sh. The two hooks answer different questions:
+# this one owns "is that edge legal", the other owns "was that prior state there".
 
 write_doc "e-legal.md" "Status: EXECUTED\nReview: pending\nFrom: IN_PROGRESS\n"
 run "$PLANS/e-legal.md"
@@ -393,6 +393,80 @@ assert_exit0 "a write with no From: is valid — not every write is a transition
 [ "$(wc -l < "$GALACTUS_TRANSITION_LOG")" -eq "$before" ] \
   && pass "ledger does NOT record a write that declares no From:" \
   || fail "ledger does NOT record a write that declares no From:"
+
+# --- The recorder marker (galactus#20 fix direction 2) ------------------------
+# The ledger above records edges *traversed*. That leaves one thing unsaid: a
+# session where nothing moved is byte-identical to a session where no recorder
+# ran — the failure #20 hit, where the wrong copy of this hook won and recorded
+# nothing at all. A once-per-session marker is what makes the difference legible.
+#
+# `run()` deliberately sends no session_id, which is why nothing above emitted a
+# marker. That is itself the first property: no id, no marker — never an
+# invented one.
+
+# run_sid <session-id> <path> — the payload the harness actually supplies.
+run_sid() {
+  local sid="$1" p="$2" err
+  err="$TMP/stderr.$$"
+  set +e
+  printf '{"session_id":"%s","tool_input":{"file_path":"%s"}}' "$sid" "$p" | bash "$HOOK" 2>"$err"
+  LAST_RC=$?
+  set -e
+  LAST_MSG=$(cat "$err")
+}
+
+marker_count() {
+  grep -c "\"kind\":\"session\",\"session\":\"$1\"" "$GALACTUS_TRANSITION_LOG" 2>/dev/null || true
+}
+
+[ "$(grep -c '"kind":"session"' "$GALACTUS_TRANSITION_LOG" 2>/dev/null || true)" -eq 0 ] \
+  && pass "no session_id yields no marker — the hook never invents a session identity" \
+  || fail "no session_id yields no marker"
+
+# Marker fixtures need their own TMPDIR: the once-per-session latch is a sentinel
+# file, and a stale one from an earlier run would silently suppress the marker,
+# turning this section green for the wrong reason.
+export TMPDIR="$TMP/sentinels"
+mkdir -p "$TMPDIR"
+
+# The case the marker exists for: a validate pass that moved nothing. Every
+# assertion above this point involves an edge; this one has none, which is
+# exactly why the edge ledger alone could not witness it.
+: > "$GALACTUS_TRANSITION_LOG"
+write_doc "m-prose.md" "Status: PLANNED\n\nProse only, no From: line.\n"
+run_sid "SESS-A" "$PLANS/m-prose.md"
+assert_exit0 "a no-transition write still passes"
+[ "$(marker_count SESS-A)" -eq 1 ] \
+  && pass "a pass with NO transition still marks the recorder alive" \
+  || fail "a pass with NO transition still marks the recorder alive"
+[ "$(grep -vc '"kind":"session"' "$GALACTUS_TRANSITION_LOG" 2>/dev/null || true)" -eq 0 ] \
+  && pass "the marker is not an edge — it adds no transition record" \
+  || fail "the marker is not an edge"
+
+# Once per session, not once per write. The ledger is never rotated, so a marker
+# on every write would bury the edges it exists to contextualize. This also
+# covers the merged-settings double-fire: both hook copies run, one marker lands.
+run_sid "SESS-A" "$PLANS/m-prose.md"
+run_sid "SESS-A" "$PLANS/m-prose.md"
+[ "$(marker_count SESS-A)" -eq 1 ] \
+  && pass "the marker is latched — one per session, not one per write" \
+  || fail "the marker is latched (got $(marker_count SESS-A))"
+
+# A different session is a different marker: that is what makes a *gap* visible
+# rather than inferred.
+run_sid "SESS-B" "$PLANS/m-prose.md"
+[ "$(marker_count SESS-B)" -eq 1 ] \
+  && pass "a second session records its own marker" \
+  || fail "a second session records its own marker"
+
+# A rejected write means the recorder ran and disagreed. It was still alive, and
+# the marker must say so — otherwise a session that only ever wrote invalid docs
+# reads as no recorder at all.
+run_sid "SESS-C" "$PLANS/t-reject.md"
+assert_blocked "illegal edge still rejected under a session id"
+[ "$(marker_count SESS-C)" -eq 0 ] \
+  && pass "a blocked write records no marker — the doc never landed" \
+  || fail "a blocked write records no marker"
 
 echo
 echo "RESULT: $PASS passed, $FAIL failed"

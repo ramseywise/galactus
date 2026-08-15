@@ -211,8 +211,13 @@ def _cmd_transition_metrics(args: argparse.Namespace) -> int:
 
     Exit 1 means the ledger does not exist — the mechanism has never recorded a
     transition, which is a different fact from a ledger that recorded none. An
-    empty-but-present ledger exits 0 with `loop_backs: 0`, and that zero is a
-    measurement rather than an absence.
+    empty-but-present ledger exits 0 with `loop_backs: 0`.
+
+    Whether that zero is a measurement or an absence is `recorder.attested`, not
+    the exit code: a present ledger proves a recorder ran at some point, never
+    that one ran during the window being read (galactus#20). Consumers reading
+    `loop_backs` must read `recorder` alongside it — `attested: false` makes
+    every count a lower bound, and `attested: null` makes it no reading at all.
 
     Takes no stdin: the input is a file on disk, and requiring a JSON envelope
     naming a path the default already knows would be ceremony.

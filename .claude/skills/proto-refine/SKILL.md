@@ -35,6 +35,43 @@ An unreadable or empty target is an **error, not a failed gate**. A gate that re
 
 ---
 
+## Stage 0 — Size the gate to the plan
+
+**The gate's cost must scale with the work's size.** Run this before Stage 1 and say which
+path you took, in one line, with the reason.
+
+Count the files the plan's Steps actually write (its `**Files**:` lines), and read its
+Risks table for persistent-state effects.
+
+| Path | When | Stages 1-3 become |
+|---|---|---|
+| **Light** | ≤2 files written, AND no persistent-state or external effect, AND no step touching a shared config that other sessions load | Trio compressed to **one** card of ≤3 sentences total. DoR still all seven checks — they are cheap and they are the gate. Stage 3 **skipped by default**. |
+| **Full** | anything else | As written below. |
+
+Light path still returns a real verdict and still writes `Epistemic: UNTESTED` with
+`skipped — light path, <reason>`. It is not a rubber stamp: the seven DoR checks are what
+catch an unbuildable plan, and they run either way. What Light drops is the *adversarial*
+apparatus, which is the expensive half and the half that only earns its cost when
+something irreversible is at stake.
+
+**Two escapes back to Full, both mandatory.** Light is a starting position, not a
+commitment:
+
+- **Any DoR check fails** → finish on the Full path. A failing check is evidence the plan
+  is not as small as it looked.
+- **The plan writes a hook, a gate, a shared skill, or anything every future session
+  loads** → Full, regardless of file count. Blast radius is not measured in files. A
+  150-line hook on `PreToolUse Write|Edit` is two files and affects every write in the
+  repo forever.
+
+That second rule is written from a real case: GAL-14 was a ~150-line bash hook plus a test
+file, which reads as Light by file count. It was correctly run Full, and the failure pass
+found a defect that would have blocked every settled plan doc in the repo on the first
+write after registration. **The file count was small; the blast radius was not.** Size the
+gate to what the plan can break, not to how much it types.
+
+---
+
 ## Stage 1 — The trio, as three lenses
 
 Three perspectives, one mind, one verdict. **Do not dispatch these as agents** — they are
@@ -89,15 +126,29 @@ say where the seam is; that is more useful than "too big."
 
 ## Stage 3 — Dispatch the failure pass (conditional)
 
-**Only when the plan is risky.** Dispatch `fog-advisor` when any of these hold:
+**Skipped entirely on the Light path** (Stage 0). On the Full path, dispatch `fog-advisor`
+when any of these hold:
 
 - Check 7 failed or is `n/a` because the work touches persistent state.
 - The plan introduces a new probabilistic step that something downstream consumes.
-- EM's lens flagged blast radius.
-- Any DoR check failed at all and the plan is being pushed through anyway.
+- EM's lens flagged blast radius **and named what it would damage** — not a general note
+  that the change is important.
+- Any DoR check failed **on a blocking check** (1, 3, 5, 7) and the plan is being pushed
+  through anyway.
 
 Otherwise skip it and say you skipped it, with the reason. A gate that dispatches an
 advisor on every trivial plan trains people to ignore the advisor.
+
+**These conditions are OR'd, so they must each be narrow.** Two were widened deliberately
+above, after a ~150-line hook plan matched three of the original four and drew the full
+apparatus. "EM flagged blast radius" now requires EM to say *what breaks*, and "any DoR
+check failed" is restricted to the four blocking checks — a failed check 2, 4 or 6 is
+recoverable mid-session and is not evidence the plan needs an adversary.
+
+**One dispatch, not a standing panel.** The advisor returns findings; your job is to
+verify the load-bearing ones and act, not to re-dispatch until nothing new appears. If a
+verified finding changes the design materially, the plan goes back to `/proto-plan` — a
+second gate pass on the same doc grades a plan that no longer exists.
 
 **Give it the plan. Not your trio card, not your DoR results.** An advisor who reads your
 assessment grades your assessment; the independence is the entire value of the dispatch
@@ -231,9 +282,11 @@ pair against the legal-edge table and rejects a skipped state.
 
 **Verdict**: READY | REFINED | NEEDS-SPLIT | NOT-READY
 **Status**: PLANNED → <new state, or "unchanged">
+**Path**: Light | Full — <one-line reason, incl. any escape back to Full>
 
 ### Trio
 PM / Designer / EM cards. Disagreements stated, not averaged.
+One compressed card of ≤3 sentences on the Light path.
 
 ### Definition of Ready
 The seven checks, each pass/fail/n-a with one line of evidence.
@@ -262,7 +315,29 @@ Spawn prompt (execute — fresh session):
 ──────────────────────────────────────
 ```
 
-Omit the spawn prompt on any verdict other than READY. Offering the next step after a
+On **NOT-READY**, close with the revision loop instead — the verdict is not the end of the
+work, and a gate that reports a failure with no way forward is where the pipeline stalls:
+
+```
+──────────────────────────────────────
+Refinement complete. Verdict: NOT-READY
+Next: /proto-plan <slug> — close the items under "What is missing", then re-gate.
+
+Spawn prompt (revise — fresh session):
+┌─────────────────────────────────────
+│ cd <repo-path>
+│ Read <plan-doc-path>
+│ /proto-plan <slug>   # close the "What is missing" items, then /proto-refine
+└─────────────────────────────────────
+──────────────────────────────────────
+```
+
+**Expect one, at most two, revision passes.** A third means the plan is not being refined
+but redesigned, and the verdict should be NEEDS-SPLIT or the work should go back to
+`/proto-scope`. Iterating a document against a gate until it passes is how a gate becomes
+a formality — the items under "What is missing" are the work, not the document.
+
+Omit the execute spawn prompt on any verdict other than READY. Offering the next step after a
 failed gate is how gates get skipped.
 
 ## Failure modes of this skill
