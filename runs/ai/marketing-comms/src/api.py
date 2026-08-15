@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from config import Settings
 from fastapi import (
     BackgroundTasks,
     Depends,
@@ -28,13 +27,15 @@ from fastapi import (
     HTTPException,
     UploadFile,
 )
+from pydantic import BaseModel
+
+from config import Settings
 from generate import generate_collateral
 from ingest.facts import ingest_pdf_bytes
 from layout.contract import TemplateNotFoundError, load_template_cached
 from model.gateway import LLM, AnthropicAdapter, LLMError
 from models import PipelineState
 from observability import bind_job, clear_job, configure_structlog
-from pydantic import BaseModel
 from store import Store
 
 DEFAULT_TEMPLATE_ID = "two_column_brief"

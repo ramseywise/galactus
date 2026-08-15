@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import pytest
 
-from galactus.guardrails.validator import count_words, is_valid, validate
-from galactus.models import FieldConstraint, LayoutTemplate
+from guardrails.validator import count_words, is_valid, validate
+from models import FieldConstraint, LayoutTemplate
 
 # ---------------------------------------------------------------------------
 # The clean case — the baseline every other test mutates away from

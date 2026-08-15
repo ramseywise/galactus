@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import structlog
+
 from ingest.tables import facts_from_table, row_span_contains_cells
 from ingest.text import facts_from_pages, resolve_span
 from ingest.vision import image_to_message, render_page_png

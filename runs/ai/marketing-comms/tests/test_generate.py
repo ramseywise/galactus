@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from galactus.generate import (
+from generate import (
     build_prompt,
     build_repair_prompt,
     generate_collateral,

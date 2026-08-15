@@ -62,15 +62,33 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "N803", "N806"]
 # third-party — which merges the local import block into the vendor block and
 # reports the correctly-ordered source as I001. Declaring them here fixes the
 # classification rather than reordering imports to satisfy a wrong one.
-known-first-party = ["galactus", "review"]
+# The marketing-comms modules are flat under its `src/`, not under a `galactus`
+# package — an abandoned package move left `src/galactus/` as empty directories
+# and the tests importing through them until 2026-08-15.
+known-first-party = [
+    "api",
+    "config",
+    "generate",
+    "guardrails",
+    "ingest",
+    "layout",
+    "model",
+    "models",
+    "observability",
+    "review",
+    "store",
+]
 
 [tool.pytest.ini_options]
+# Every test directory under `runs/` is listed explicitly. An omission does not
+# fail — it collects zero tests from that poc, which is indistinguishable from
+# that poc passing. `runs/ml/fraud/tests` was missing until 2026-08-15, so its
+# 35 tests had never run under a bare `uv run pytest`.
 testpaths = [
     "runs/ai/marketing-comms/tests",
     "review/tests",
-    # Without this line a bare `uv run pytest` collects zero tests from the
-    # segmentation POC, and its absence is indistinguishable from its passing.
     "runs/ml/customer segmentation/tests",
+    "runs/ml/fraud/tests",
 ]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root

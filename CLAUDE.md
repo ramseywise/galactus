@@ -58,8 +58,11 @@ starting from nothing is `/proto-scope discovery` → `/proto-scope` → `/proto
 a session that already has a `DESIGN.md` enters at `/proto-design`, and one that already
 has a spec skips FRAME entirely.
 
-Scaffolding is not a band here. Galactus's POCs are subdirectories under `runs/ai/` and
-`runs/ml/`, not generated repos; `ai-project-template` owns the copier stage.
+Scaffolding is not a band here. A run of the pipeline is a subdirectory under `runs/ai/`
+or `runs/ml/`, not a generated repo; `ai-project-template` owns the copier stage.
+`runs/_index/` is reserved for the execution registry (issue #4 Phase 1) — one record per
+training execution, which is a different grain from the run directory that produced it and
+is why the name is prefixed: `_index` can never collide with a run.
 
 **BUILD runs in order**, with the plan doc in `.claude/docs/plans/` as the bus between
 phases. `Status:` is a state machine, not a label — a hook rejects values outside
@@ -100,10 +103,12 @@ looks, so they are not invocable.
 - **`uv add`, never `pip install`.** Enforced by `pip_guard.sh`.
 - **Never commit on `main`.** Work happens on `{PREFIX}-{NUM}-{slug}`, `bug/{slug}`, or
   `spike/{slug}`.
-- **POCs under `runs/` are working code, not frozen exhibits.** Refactor, fix, and bring
+- **Runs under `runs/` are working code, not frozen exhibits.** Refactor, fix, and bring
   them to convention like anything else here. `runs/ai/marketing-comms/` is the reference
   implementation, so changes to it should be deliberate and keep its 277 tests green —
   but "it is the case study" is not a reason to leave drift in place.
+- **A new test directory under `runs/` must be added to `testpaths` in `pyproject.toml`.**
+  Omitting it does not fail; it collects zero tests, which reads exactly like passing.
 - **A rule you rely on belongs in a hook, not here.** This file is a table of contents.
   If an agent can ignore a line here with no consequence, that line is documentation —
   encode it at the strongest available layer instead (hook > linter > test > tool schema

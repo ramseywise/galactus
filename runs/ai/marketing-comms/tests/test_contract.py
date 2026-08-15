@@ -7,7 +7,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from galactus.layout.contract import (
+from layout.contract import (
     TemplateNotFoundError,
     available_templates,
     default_template_dir,

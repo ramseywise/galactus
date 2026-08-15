@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from galactus.guardrails.fallback import (
+from guardrails.fallback import (
     FILLER_WORD,
     fallback,
     fallback_report,

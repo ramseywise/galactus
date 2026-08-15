@@ -34,7 +34,7 @@ from evals.run import (
     summarize_table,
 )
 
-from galactus.models import Fact
+from models import Fact
 
 
 def _result(
