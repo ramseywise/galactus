@@ -218,9 +218,26 @@ log_transition() {
   local observer=""
   [ -n "$observed" ] && observer=',"observer":1'
 
-  printf '{"ts":"%s",%s,"track":"%s","epistemic":"%s"%s%s}\n' \
+  # `backfill` marks an edge walked to reconcile the doc with work already done,
+  # not an edge the pipeline actually traversed at that moment. Set
+  # `GALACTUS_BACKFILL=1` for the duration of the reconciliation.
+  #
+  # It exists because the alternative is worse in both directions. Leaving a
+  # merged work item stranded mid-state makes `runs_completed` under-report;
+  # walking the edges unmarked makes the ledger claim four same-minute
+  # transitions for work spread over days, and that ledger is the sole input to
+  # the loop-back rate D10 turns on. A marked edge lets the reader keep the doc
+  # honest and the measurement honest at once.
+  #
+  # Appended outside `record` for the same reason as `observed`: the dedup key
+  # must stay edge-scoped, or the same edge logged once backfilled and once live
+  # would stop collapsing.
+  local backfill=""
+  [ -n "${GALACTUS_BACKFILL:-}" ] && backfill=',"backfill":true'
+
+  printf '{"ts":"%s",%s,"track":"%s","epistemic":"%s"%s%s%s}\n' \
     "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$record" "$track" "$epistemic" "$observed" "$observer" \
-    >> "$target" || true
+    "$backfill" >> "$target" || true
 }
 
 # Mark that a recorder was alive in this session — galactus#20 fix direction 2.

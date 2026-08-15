@@ -308,8 +308,8 @@ spec, so `/proto-design` starts from answers rather than re-asking:
 Anything the design left as `Deferred(<trigger>)` stays deferred — carry the trigger
 across rather than forcing an answer at spec time.
 
-Scaffolding is not a step here. Galactus's POCs are subdirectories under `pocs/ai/` and
-`pocs/ml/`; if this design targets a new standalone repo, that is
+Scaffolding is not a step here. Galactus's POCs are subdirectories under `runs/ai/` and
+`runs/ml/`; if this design targets a new standalone repo, that is
 `ai-project-template`'s copier stage, outside this pipeline.
 
 ---

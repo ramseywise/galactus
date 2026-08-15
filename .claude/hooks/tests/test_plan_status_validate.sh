@@ -468,6 +468,44 @@ assert_blocked "illegal edge still rejected under a session id"
   && pass "a blocked write records no marker — the doc never landed" \
   || fail "a blocked write records no marker"
 
+# --- The backfill marker ------------------------------------------------------
+# Reconciling a stranded doc with work already merged walks real edges. They are
+# edits, not cycles, and the ledger they land in is the sole input to the
+# loop-back rate — so the writer says which kind it wrote and the reader
+# (review/transitions.py) excludes the reconciliation ones from every count.
+#
+# Two properties, and the second is the one that would silently break: the flag
+# must not become part of the dedup key, or the same edge written once
+# backfilled and once live would stop collapsing and re-open the double-count
+# bug the tail -1 guard exists to prevent.
+
+: > "$GALACTUS_TRANSITION_LOG"
+
+write_doc "b-fill.md" "Status: EXECUTED\nFrom: IN_PROGRESS\nReview: pending\n"
+GALACTUS_BACKFILL=1 run "$PLANS/b-fill.md"
+assert_exit0 "a backfilled edge is still validated like any other"
+[ "$(grep -c '"backfill":true' "$GALACTUS_TRANSITION_LOG" 2>/dev/null || true)" -eq 1 ] \
+  && pass "GALACTUS_BACKFILL marks the edge it wrote" \
+  || fail "GALACTUS_BACKFILL marks the edge it wrote"
+
+: > "$GALACTUS_TRANSITION_LOG"
+write_doc "b-live.md" "Status: EXECUTED\nFrom: IN_PROGRESS\nReview: pending\n"
+run "$PLANS/b-live.md"
+[ "$(grep -c '"backfill"' "$GALACTUS_TRANSITION_LOG" 2>/dev/null || true)" -eq 0 ] \
+  && pass "an unflagged edge carries no backfill key — absence means live" \
+  || fail "an unflagged edge carries no backfill key"
+
+# The dedup guard is edge-scoped, so the merged-settings double-fire collapses
+# whether or not the flag is set. Simulated here by running the hook twice on
+# one doc, which is what two registered copies of it do on a single Write.
+: > "$GALACTUS_TRANSITION_LOG"
+write_doc "b-dedup.md" "Status: EXECUTED\nFrom: IN_PROGRESS\nReview: pending\n"
+GALACTUS_BACKFILL=1 run "$PLANS/b-dedup.md"
+GALACTUS_BACKFILL=1 run "$PLANS/b-dedup.md"
+[ "$(wc -l < "$GALACTUS_TRANSITION_LOG")" -eq 1 ] \
+  && pass "the backfill flag stays out of the dedup key" \
+  || fail "the backfill flag stays out of the dedup key ($(wc -l < "$GALACTUS_TRANSITION_LOG") records)"
+
 echo
 echo "RESULT: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

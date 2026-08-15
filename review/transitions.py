@@ -233,6 +233,43 @@ def _observation_status(records: list[dict]) -> dict[str, object]:
     }
 
 
+def _backfill_status(backfilled: list[dict]) -> dict[str, object]:
+    """Report the reconciliation edges that every other count above excludes.
+
+    An edge carrying `backfill: true` was walked to bring a plan doc's state line
+    into line with work already merged — the writer said so at write time
+    (`GALACTUS_BACKFILL`, `lib.sh:log_transition`). It is a real edit to a real
+    doc, so it belongs in an append-only ledger; it is not a cycle the pipeline
+    traversed, so it must not enter the loop-back rate. Four edges walked in one
+    minute to close out a work item finished days earlier would move
+    `loop_backs_per_run` without anything having looped.
+
+    Excluded from the metrics and reported here rather than dropped in `_parse`.
+    A record filtered out before anyone sees it is a hand-edit of the ledger with
+    extra steps, and the reason for marking rather than editing was to keep the
+    audit trail intact.
+
+    Same discipline as `observed`: absence means live. Every edge written before
+    this key existed has no `backfill` field and is counted as a real traversal,
+    which is what it was.
+    """
+    if not backfilled:
+        return {
+            "count": 0,
+            "reason": "no reconciliation edges; every count above is a live traversal",
+        }
+    edges = Counter((r["from"], r["to"]) for r in backfilled)
+    return {
+        "count": len(backfilled),
+        "docs": sorted({r.get("doc", "") for r in backfilled if r.get("doc")}),
+        "edges": {f"{f} -> {t}": n for (f, t), n in sorted(edges.items(), key=lambda kv: -kv[1])},
+        "reason": (
+            f"{len(backfilled)} edge(s) walked to reconcile a doc with work already "
+            "done. Excluded from every count above — they are edits, not cycles"
+        ),
+    }
+
+
 def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
     """Compute the D10 metrics from the transition ledger.
 
@@ -255,9 +292,15 @@ def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
             "unavailable": _UNAVAILABLE,
         }
 
-    records, markers, malformed = _parse(
+    all_records, markers, malformed = _parse(
         ledger.read_text(encoding="utf-8", errors="replace").splitlines()
     )
+
+    # Reconciliation edges are separated before anything is counted. See
+    # `_backfill_status` — they are edits to a doc, not cycles of the pipeline,
+    # and the loop-back rate is the number they would distort.
+    backfilled = [r for r in all_records if r.get("backfill") is True]
+    records = [r for r in all_records if r.get("backfill") is not True]
 
     edges = Counter((r["from"], r["to"]) for r in records)
     docs = sorted({r.get("doc", "") for r in records if r.get("doc")})
@@ -282,6 +325,7 @@ def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
         "path": str(path),
         "recorder": _recorder_status(markers, len(records)),
         "observation": _observation_status(records),
+        "backfill": _backfill_status(backfilled),
         "transitions": len(records),
         "runs_started": len(docs),
         "runs_completed": len(completed),

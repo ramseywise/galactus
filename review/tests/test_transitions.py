@@ -367,3 +367,65 @@ def test_observer_vintages_are_listed_for_retraction(tmp_path: Path) -> None:
         ],
     )
     assert read_ledger(path)["observation"]["observer_vintages"] == [1, 2]
+
+
+# --- backfill: edits to a doc, not cycles of the pipeline --------------------
+
+
+def test_backfill_edges_do_not_enter_the_loop_back_count(tmp_path: Path) -> None:
+    """The reason the marker exists. Reconciling a doc with merged work walks
+    real edges; counting them as traversals moves the rate D10 turns on."""
+    frm, to = LOOP_BACK_EDGE
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("a.md", frm, to),
+            edge("b.md", frm, to, backfill=True),
+        ],
+    )
+    result = read_ledger(path)
+    assert result["loop_backs"] == 1
+    assert result["transitions"] == 1
+    assert result["backfill"]["count"] == 1
+
+
+def test_backfill_edges_are_reported_not_dropped(tmp_path: Path) -> None:
+    """Filtering in `_parse` would be a hand-edit with extra steps — the point
+    of marking rather than editing is that the audit trail survives."""
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("a.md", "REFINED", "READY", backfill=True),
+            edge("a.md", "READY", "IN_PROGRESS", backfill=True),
+        ],
+    )
+    bf = read_ledger(path)["backfill"]
+    assert bf["count"] == 2
+    assert bf["docs"] == ["a.md"]
+    assert bf["edges"] == {"REFINED -> READY": 1, "READY -> IN_PROGRESS": 1}
+
+
+def test_absent_backfill_key_means_live(tmp_path: Path) -> None:
+    """Every edge predating the marker has no such key and was a real traversal.
+    Same rule as `observed`: a record is read as what it was when written."""
+    path = write_ledger(tmp_path, [edge("a.md", "READY", "IN_PROGRESS")])
+    result = read_ledger(path)
+    assert result["transitions"] == 1
+    assert result["backfill"]["count"] == 0
+    assert "live traversal" in str(result["backfill"]["reason"])
+
+
+def test_a_wholly_backfilled_doc_is_not_a_run(tmp_path: Path) -> None:
+    """`runs_started` counts docs the pipeline moved through, so a doc whose only
+    edges are reconciliation must not inflate the denominator of the rate."""
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("live.md", "READY", "IN_PROGRESS"),
+            edge("closed-out.md", "EXECUTED", "COMPLETE", backfill=True),
+        ],
+    )
+    result = read_ledger(path)
+    assert result["docs"] == ["live.md"]
+    assert result["runs_started"] == 1
+    assert result["runs_completed"] == 0, "a backfilled terminal edge is not a completed run"
