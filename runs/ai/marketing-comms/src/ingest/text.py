@@ -88,7 +88,7 @@ def _facts_from_page(page_text: str, page_number: int) -> list[Fact]:
 
     for start, end in _sentence_spans(page_text):
         raw = page_text[start:end]
-        normalized = _normalize(raw)
+        normalized = normalize_ws(raw)
 
         if len(normalized.split()) < MIN_FACT_WORDS:
             continue
@@ -129,11 +129,15 @@ def _sentence_spans(page_text: str) -> list[tuple[int, int]]:
     return spans
 
 
-def _normalize(text: str) -> str:
+def normalize_ws(text: str) -> str:
     """Collapse the line breaks PDF extraction leaves mid-sentence.
 
     A sentence wrapped across two lines in the source arrives with a newline in
     the middle. Left alone it reaches the prompt as a broken line, and word
     counts still work but the model copies the break into the draft.
+
+    Public because it is the one definition of "normalized text" the ingest
+    package has: `facts.verify_facts` compares spans through it, so a second
+    copy that drifted would silently break span verification.
     """
     return _WHITESPACE_RE.sub(" ", text).strip()

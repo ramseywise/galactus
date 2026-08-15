@@ -3,12 +3,14 @@
 Two tables, SQLite. The schema is deliberately document-shaped — a row is an id
 plus a JSON blob plus a couple of indexed scalars — because the production
 target is Firestore, and a store built around joins would not survive the
-migration. Swapping the backend means reimplementing this module's six
-functions, not rewriting the callers.
+migration. Swapping the backend means reimplementing this module's functions,
+not rewriting the callers.
 
 Job state is the reason this exists at all. The generation endpoint returns 202
 immediately and does the work in the background, so the result has to live
-somewhere the polling endpoint can find it.
+somewhere the polling endpoint can find it. `dedup_key` carries the idempotency
+guarantee from the cloud design: the datastore, not the queue, is what makes a
+redelivered or double-submitted request one billed generation instead of two.
 """
 
 from __future__ import annotations
@@ -23,13 +25,23 @@ from typing import Any, Literal
 
 JobStatus = Literal["queued", "running", "succeeded", "failed"]
 
+BUSY_TIMEOUT_MS = 5000
+"""How long a connection waits on a locked database before raising.
+
+The API polls jobs from a sync route (worker thread) while the background task
+commits updates from the event loop thread — without a busy handler that
+contention surfaces as an immediate `database is locked` 500 instead of a
+few-millisecond wait.
+"""
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pdfs (
     pdf_id     TEXT PRIMARY KEY,
     company_id TEXT NOT NULL,
     role       TEXT NOT NULL,
     filename   TEXT NOT NULL,
-    content    BLOB NOT NULL
+    content    BLOB NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_pdfs_company ON pdfs (company_id);
@@ -38,14 +50,20 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_id     TEXT PRIMARY KEY,
     company_id TEXT NOT NULL,
     status     TEXT NOT NULL,
-    payload    TEXT NOT NULL
+    dedup_key  TEXT,
+    payload    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs (company_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs (dedup_key);
 """
 """`payload` holds the whole job document as JSON.
 
 Result shape changes with the template, so columns would mean a migration every
 time a designer adds a field. The scalars that are promoted to real columns are
-exactly the ones queried on.
+exactly the ones queried on: `company_id` for listings, `dedup_key` for the
+idempotency lookup, `created_at` so a future cleanup job can age rows out.
 """
 
 
@@ -58,14 +76,14 @@ class Store:
     the concurrency this API is built for.
     """
 
-    def __init__(self, path: str | Path = ":memory:") -> None:
+    def __init__(self, path: str | Path | None = ":memory:") -> None:
         # A bare ":memory:" database is private to its connection, so the
         # per-operation connections below would each get an empty one. The
         # shared-cache URI form gives every connection the same database while
         # keeping them per-thread, which is what SQLite requires: FastAPI runs
         # sync handlers in a worker pool, and a connection reused across
         # threads raises.
-        self._in_memory = str(path) == ":memory:"
+        self._in_memory = path is None or str(path) == ":memory:"
         if self._in_memory:
             self.path = f"file:galactus-{uuid.uuid4().hex}?mode=memory&cache=shared"
         else:
@@ -80,6 +98,11 @@ class Store:
     def _new_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, uri=self._in_memory)
         conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
+        if not self._in_memory:
+            # WAL lets the polling reads proceed while a job update commits.
+            # Not applicable to shared-cache in-memory databases.
+            conn.execute("PRAGMA journal_mode = WAL")
         return conn
 
     @contextmanager
@@ -126,17 +149,63 @@ class Store:
 
         return [dict(row) for row in rows]
 
+    def list_pdfs(self, company_id: str) -> list[dict[str, Any]]:
+        """PDF metadata for a company — no content BLOBs.
+
+        The listing endpoint exists so a bad upload can be found and deleted
+        instead of silently poisoning every later generation; shipping the
+        full document bytes back for that would be absurd.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT pdf_id, company_id, role, filename, length(content) AS size_bytes, "
+                "created_at FROM pdfs WHERE company_id = ?",
+                (company_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def delete_pdf(self, company_id: str, pdf_id: str) -> bool:
+        """Delete one PDF. Returns False if it did not exist for this company.
+
+        Scoped by company as well as id so a caller cannot delete another
+        company's context by guessing ids.
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "DELETE FROM pdfs WHERE company_id = ? AND pdf_id = ?",
+                (company_id, pdf_id),
+            )
+            return cursor.rowcount > 0
+
     # -- Jobs ---------------------------------------------------------------
 
-    def create_job(self, company_id: str, payload: dict[str, Any]) -> str:
+    def create_job(
+        self, company_id: str, payload: dict[str, Any], dedup_key: str | None = None
+    ) -> str:
         """Record a queued job and return its id."""
         job_id = str(uuid.uuid4())
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO jobs (job_id, company_id, status, payload) VALUES (?, ?, ?, ?)",
-                (job_id, company_id, "queued", json.dumps(payload)),
+                "INSERT INTO jobs (job_id, company_id, status, dedup_key, payload) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (job_id, company_id, "queued", dedup_key, json.dumps(payload)),
             )
         return job_id
+
+    def find_active_job(self, dedup_key: str) -> dict[str, Any] | None:
+        """The newest non-failed job for this dedup key, or None.
+
+        Failed jobs do not count as duplicates on purpose: resubmitting a
+        request whose last attempt died should generate, not replay the error.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM jobs WHERE dedup_key = ? AND status != 'failed' "
+                "ORDER BY created_at DESC LIMIT 1",
+                (dedup_key,),
+            ).fetchone()
+
+        return self._job_document(row)
 
     def update_job(self, job_id: str, status: JobStatus, **fields: Any) -> None:
         """Set a job's status, merging `fields` into its payload."""
@@ -158,12 +227,38 @@ class Store:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
 
+        return self._job_document(row)
+
+    def fail_stale_jobs(self) -> int:
+        """Mark every queued/running job as failed. Returns how many were.
+
+        Called at process startup: `BackgroundTasks` dies with the process, so
+        a job still non-terminal at boot is one whose worker no longer exists.
+        Failing it loudly turns "the client polls forever" into an explicit
+        error the client can act on.
+        """
+        message = "process restarted before this job finished; resubmit the request"
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT job_id, payload FROM jobs WHERE status IN ('queued', 'running')"
+            ).fetchall()
+            for row in rows:
+                payload = json.loads(row["payload"])
+                payload["error"] = message
+                conn.execute(
+                    "UPDATE jobs SET status = 'failed', payload = ? WHERE job_id = ?",
+                    (json.dumps(payload), row["job_id"]),
+                )
+        return len(rows)
+
+    @staticmethod
+    def _job_document(row: sqlite3.Row | None) -> dict[str, Any] | None:
         if row is None:
             return None
-
         return {
             "job_id": row["job_id"],
             "company_id": row["company_id"],
             "status": row["status"],
+            "created_at": row["created_at"],
             **json.loads(row["payload"]),
         }

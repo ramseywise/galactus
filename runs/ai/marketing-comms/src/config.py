@@ -31,6 +31,13 @@ class Settings:
     model: str
     max_repairs: int
     log_level: str
+    db_path: str | None = None
+    """SQLite file for the store. None keeps the in-memory default —
+    fine for tests and throwaway demos, but uploads and results then die with
+    the process, and multiple workers each get a private database."""
+    api_key: str | None = None
+    """Shared secret for the HTTP surface (`X-API-Key`). None leaves the API
+    open — acceptable on localhost, never behind a public listener."""
 
     @classmethod
     def load(cls, *, use_dotenv: bool = True) -> Settings:
@@ -44,11 +51,17 @@ class Settings:
         if use_dotenv:
             load_dotenv(override=False)
 
+        max_repairs = _int_env("GALACTUS_MAX_REPAIRS", DEFAULT_MAX_REPAIRS)
+        if max_repairs < 0:
+            raise ConfigError(f"GALACTUS_MAX_REPAIRS must be >= 0, got {max_repairs}")
+
         return cls(
             anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY") or None,
             model=os.environ.get("GALACTUS_MODEL", DEFAULT_MODEL),
-            max_repairs=_int_env("GALACTUS_MAX_REPAIRS", DEFAULT_MAX_REPAIRS),
+            max_repairs=max_repairs,
             log_level=os.environ.get("GALACTUS_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper(),
+            db_path=os.environ.get("GALACTUS_DB_PATH") or None,
+            api_key=os.environ.get("GALACTUS_API_KEY") or None,
         )
 
     def require_api_key(self) -> str:

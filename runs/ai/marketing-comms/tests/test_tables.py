@@ -124,11 +124,65 @@ def test_none_cells_are_tolerated() -> None:
     assert facts[0].text == "Corridor Chicago-Dallas: On-time 96.2%."
 
 
+def _table_fact(cells: list[str], span: str = "p2:0-10") -> Fact:
+    return Fact(text="rendered row.", source_span=span, page=2, origin="table", cells=cells)
+
+
 def test_row_span_contains_cells_rejects_a_missing_value() -> None:
     source = "Chicago-Dallas 184,000 96.2%"
 
-    assert row_span_contains_cells(source, "Corridor Chicago-Dallas: Volume 184,000.")
-    assert not row_span_contains_cells(source, "Corridor Chicago-Dallas: Volume 999,999.")
+    assert row_span_contains_cells(source, _table_fact(["Chicago-Dallas", "184,000"]))
+    assert not row_span_contains_cells(source, _table_fact(["Chicago-Dallas", "999,999"]))
+
+
+def test_multi_word_cells_are_verified_whole() -> None:
+    """The last-token regression: 'North East' must not verify on 'East' alone."""
+    source = "Far East 184,000"
+
+    assert not row_span_contains_cells(source, _table_fact(["North East", "184,000"]))
+    assert row_span_contains_cells("North East 184,000", _table_fact(["North East", "184,000"]))
+
+
+def test_colon_bearing_cell_values_are_verified_whole() -> None:
+    """A ratio like 3:1 must be checked as 3:1, not truncated at the colon."""
+    page = "Header Ratio\nOdds 3:1\n"
+    rows: list[list[str | None]] = [["Header", "Ratio"], ["Odds", "3:1"]]
+
+    facts = facts_from_table(rows, page, 1)
+
+    assert facts[0].cells == ["Odds", "3:1"]
+    assert not row_span_contains_cells("Odds 3:99", facts[0])
+
+
+def test_a_table_fact_without_cells_fails_verification() -> None:
+    """Fails closed: every extracted fact carries cells, so one without is fabricated."""
+    fabricated = Fact(
+        text="Corridor Chicago-Dallas: Volume 184,000.",
+        source_span=f"p2:0-{len(CORRIDOR_PAGE)}",
+        page=2,
+        origin="table",
+    )
+
+    assert verify_facts([fabricated], ["", CORRIDOR_PAGE]) == []
+
+
+def test_row_span_prefers_the_tight_table_region_over_an_earlier_mention() -> None:
+    """A subject repeated in prose above the table must not widen the span."""
+    page = (
+        "Our Chicago-Dallas service keeps growing this quarter.\n"
+        "Corridor\nVolume\n"
+        "Chicago-Dallas\n184,000\n"
+    )
+    rows: list[list[str | None]] = [["Corridor", "Volume"], ["Chicago-Dallas", "184,000"]]
+
+    facts = facts_from_table(rows, page, 1)
+
+    assert len(facts) == 1
+    _, _, offsets = facts[0].source_span.partition(":")
+    start, _, end = offsets.partition("-")
+    source = page[int(start) : int(end)]
+    assert source.startswith("Chicago-Dallas")
+    assert "keeps growing" not in source
 
 
 def test_table_origin_does_not_bypass_span_resolution() -> None:

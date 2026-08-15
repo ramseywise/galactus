@@ -48,7 +48,7 @@ Word floors matter as much as ceilings: a 12-word column in a slot sized for 95
 leaves a hole in the page, which is a layout failure just as much as overflow.
 
 Three kinds cover the shipped template, and the validator dispatches on kind
-([src/galactus/layout/validator.py](../src/galactus/layout/validator.py)) — so
+([src/guardrails/validator.py](../src/guardrails/validator.py)) — so
 a fourth kind is a new enum arm plus a check function, not a redesign. That
 matters for the standing assumption below.
 
@@ -100,24 +100,33 @@ names below are the actual module and function names.
 
 **1. Upload context** — `POST /companies/meridian/context` with a PDF and
 `role=sender`. `upload_context` validates the role against `{sender, receiver}`,
-rejects an empty body, and stores the bytes via `Store.put_pdf`. Returns 201
-with a `pdf_id`. Ingest does **not** happen here: the vision path costs money,
-and a PDF uploaded but never used in a brief should not incur it.
+rejects an empty body, an upload over the 25 MB cap (**413**), and bytes that do
+not start with the PDF magic (**422** — a mislabelled JPEG accepted today is a
+failed generation job tomorrow, discovered by the wrong person). Then it stores
+the bytes via `Store.put_pdf` and returns 201 with a `pdf_id`. Ingest does
+**not** happen here: the vision path costs money, and a PDF uploaded but never
+used in a brief should not incur it. `GET`/`DELETE` on the same path list and
+remove uploads — the recovery route for a bad one.
 
 **2. Request collateral** — `POST /collateral` with
 `{sender_company_id, receiver_company_id, prompt, template_id}`.
-`request_collateral` does two precondition checks, both synchronous, both
+`request_collateral` does three precondition checks, all synchronous, all
 before any job exists:
 
-- `load_template_cached(template_id)` — unknown template ⇒ **404**.
-- `Store.get_pdfs(sender_company_id, role="sender")` — no sender context ⇒
-  **404**.
+- `load_template_cached(template_id)` — unknown template ⇒ **404**. Template
+  ids are gated to bare `[a-z0-9_]+` names first, because the id reaches a
+  filesystem path and would otherwise be a traversal vector.
+- `Store.get_pdfs(company_id, role=...)` for **both** sides — missing context
+  on either ⇒ **404** naming the side. A partnership brief grounded on one
+  company is not a degraded success; it is a request that cannot be served,
+  and the caller should hear that now rather than infer it from a hollow
+  draft later.
 
-Receiver context is deliberately *not* required. Collateral about one company
-addressed to a prospect we know nothing about is a legitimate request; the
-grounding block simply omits the receiver section.
-
-Then `Store.create_job` writes a `queued` row, `BackgroundTasks` schedules
+Then the request's dedup key — `sha256(sender, receiver, template, prompt)` —
+is checked against the store: an identical request with a queued, running, or
+succeeded job returns *that* job instead of billing a second generation, the
+same conditional-write idempotency the cloud design puts on the job document.
+Otherwise `Store.create_job` writes a `queued` row, `BackgroundTasks` schedules
 `run_job`, and the endpoint returns **202** with the `job_id`.
 
 The 202 is not only a latency accommodation. A synchronous endpoint would push
@@ -147,11 +156,21 @@ brief names — text, images, and tables:
   the header. See below; tables need their own path because the text path
   actively destroys them.
 - **Vision path** — only for pages with fewer than `MIN_PAGE_TEXT_CHARS = 200`
-  characters of extractable text, i.e. scans and image-heavy slides. Facts from
-  this path carry `VISION_CONFIDENCE = 0.7` and no verifiable span.
+  characters of extractable text, i.e. scans and image-heavy slides. The
+  text-sparse pages are rendered once per document and the PNGs travel through
+  the port's `images` channel, so the model actually receives the page it is
+  asked to read. Facts from this path carry `VISION_CONFIDENCE = 0.7` and no
+  verifiable span.
 
 The gate is a cost decision as much as a quality one: vision is charged per
 page, and running it over pages that already yielded clean text buys nothing.
+Ingest is concurrent where nothing orders it: sender and receiver PDFs in
+parallel, vision pages gathered per document, and the pymupdf parse pushed off
+the event loop so a large upload does not stall every other client's poll.
+
+If either side produces **zero** facts — scans with no vision credential, a
+decorative deck — the job fails with an error naming the side. Generating
+anyway would produce an ungrounded brief presented as a grounded one.
 
 #### Why tables are not just text
 
@@ -180,16 +199,20 @@ meaning.
 
 Rewriting the row means it can no longer equal its source span, so table facts
 declare `origin="table"` and are verified by a different rule: the span must
-*contain* every value the row asserts. A fact whose span drifts onto a
+*contain* every **full cell value** the row asserts, carried on `Fact.cells`
+rather than re-parsed from the rendered sentence — parsing back would verify
+only the last word of a multi-word cell. A fact whose span drifts onto a
 neighbouring row fails that check
-(`test_a_row_fact_citing_another_rows_span_is_dropped`). The exact-match rule is
-relaxed for this origin only, not loosened globally.
+(`test_a_row_fact_citing_another_rows_span_is_dropped`), and a table fact
+without cells fails closed. The exact-match rule is relaxed for this origin
+only, not loosened globally.
 
-Once a page's rows are recovered structurally, that page's text is withheld from
-the sentence splitter — otherwise the prompt would carry the ambiguous run-on
-alongside the precise rows. `find_tables` is heuristic, so a page whose tables
-fail to parse keeps its text facts and logs the reason rather than failing the
-upload.
+Once a page's rows are recovered structurally, the text facts whose spans
+overlap those rows' regions are dropped — otherwise the prompt would carry the
+ambiguous run-on alongside the precise rows. Only the overlapping region is
+superseded: prose sharing a page with a table keeps its facts. `find_tables`
+is heuristic, so a page whose tables fail to parse keeps its text facts and
+logs the reason rather than failing the upload.
 
 **4. Ground** — `verify_facts` drops any fact whose claimed span does not
 resolve in the source text. This is a **block, not a warning**. A fact that
@@ -233,17 +256,26 @@ a mechanical repair:
 | `image_placeholder` | replace with `{{field_name}}` |
 | `color_ref` | replace with the first theme color |
 
-This path cannot fail — `validate(fallback(d, t), t)` is empty for any input
-`d`, which is what makes the contract unconditional rather than best-effort.
-The padding filler is deliberately semantically empty ("and"): the alternative
-is inventing content to reach a word floor, which is a grounding violation
-dressed up as a repair.
+This path cannot fail *for a satisfiable template* — `validate(fallback(d, t),
+t)` is empty for any input `d` — and satisfiability is not left to luck: a
+template whose word floor cannot fit inside its character ceiling is rejected
+when it loads, so a designer typo fails the deploy rather than the one request
+that exhausted its repair budget. The fallback's output is still re-validated
+before the job is marked `succeeded`; if the backstop ever fires, the job fails
+loudly instead of shipping an invalid draft labelled "degraded". The padding
+filler is deliberately semantically empty ("and"): the alternative is inventing
+content to reach a word floor, which is a grounding violation dressed up as a
+repair.
 
 **9. Store** — `Store.update_job` writes the terminal state: `status`, `draft`,
-`used_fallback`, `repair_attempts`, `fact_count`. Every exception is caught and
-recorded as a `failed` job rather than raised — a background task that raises
-loses the error entirely and leaves the client polling a job stuck in
-`running` forever.
+`used_fallback`, `fallback_fields` (which fields the fallback touched — a
+one-field truncation and a wholesale rewrite are different degradations),
+`repair_attempts`, `fact_count`. Every exception is caught and recorded as a
+`failed` job rather than raised — a background task that raises loses the error
+entirely and leaves the client polling a job stuck in `running` forever. The
+bookkeeping writes themselves are guarded the same way, and at startup any job
+still `queued`/`running` is failed with an explicit "process restarted" error
+rather than left for the client to poll forever.
 
 **10. Poll** — `GET /jobs/{job_id}` returns status and, once terminal, the
 draft. `used_fallback: true` means the draft fits but was mechanically
@@ -301,12 +333,17 @@ that come back. Two consequences drive design decisions:
 
 ## Storage
 
-SQLite, two tables ([src/galactus/store.py](../src/galactus/store.py)):
+SQLite, two tables ([src/store.py](../src/store.py)):
 
-- **`pdfs`** — `(pdf_id, company_id, role, filename, content)`. Queryable by
-  company and role.
-- **`jobs`** — `(job_id, company_id, status, payload_json)`. The payload is a
-  JSON blob merged on update.
+- **`pdfs`** — `(pdf_id, company_id, role, filename, content, created_at)`.
+  Queryable by company and role.
+- **`jobs`** — `(job_id, company_id, status, dedup_key, payload_json,
+  created_at)`. The payload is a JSON blob merged on update; `dedup_key` backs
+  the idempotency lookup.
+
+`GALACTUS_DB_PATH` points the store at a file (WAL mode, 5s busy timeout) so
+uploads and results survive a restart; unset, it runs in memory — fine for
+tests, wrong for anything with two workers or a deploy.
 
 Document-shaped on purpose. The job row is already a document with a status
 field and a JSON body, so the Firestore migration in the cloud design is a
@@ -347,10 +384,11 @@ short because they should be.
 - **No Kubernetes** — the workload is a stateless HTTP service with background
   tasks. Cloud Run and Lambda both run that with no cluster to operate.
 - **Not orchestration-agnostic** — the LLM *port* is provider-agnostic
-  (`complete_structured(prompt, schema)`, one Anthropic adapter behind it),
-  because swapping providers is a real requirement. Abstracting the *pipeline*
-  behind a second interface would be building for a migration nobody has asked
-  for.
+  (`complete_structured(prompt, schema, images=...)`, one Anthropic adapter
+  behind it; images travel as raw PNG bytes and each adapter does its own
+  encoding), because swapping providers is a real requirement. Abstracting the
+  *pipeline* behind a second interface would be building for a migration nobody
+  has asked for.
 
 The pattern: each omission is declined against *this* problem at *this* scale,
 not in general.
@@ -390,12 +428,14 @@ In priority order, and honestly:
    columns), but `cta` and `headline` are independent, and a narrower repair
    would be cheaper and less likely to disturb fields that already fit.
 3. **A real job queue.** `BackgroundTasks` dies with the process — an in-flight
-   job is lost on deploy, with no retry. The cloud design addresses this
-   (Pub/Sub with dead-letter topics); the local prototype does not, and that is
-   a genuine gap rather than a simplification.
-4. **Idempotency in the local API.** `(sender, receiver, prompt_hash)` dedup is
-   specified in the cloud design and **not implemented here** — resubmitting an
-   identical request today generates and bills twice.
+   job is lost on deploy, with no retry. The startup reconciliation now fails
+   such jobs loudly instead of leaving the client polling, but that is
+   detection, not recovery; the cloud design's Pub/Sub with dead-letter topics
+   is the actual fix.
+4. **Real identity.** The `X-API-Key` gate is a shared secret, not tenancy —
+   every keyholder can read every company's context and generate against it.
+   A production deployment needs per-tenant auth binding companies to callers,
+   which the cloud design delegates to the platform's identity layer.
 5. **More templates.** One template is enough to prove the contract mechanism
    and not enough to prove it generalizes. A single-column layout and a
    social-card layout would test whether the constraint kinds are actually the

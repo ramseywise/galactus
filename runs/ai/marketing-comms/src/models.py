@@ -133,6 +133,15 @@ class Fact(BaseModel):
     impossible); `vision` has no span to check. See `ingest.facts.verify_facts`.
     """
 
+    cells: list[str] | None = None
+    """The full cell values a table fact asserts, verbatim from the grid.
+
+    Carried on the fact rather than re-parsed out of its rendered text, because
+    the rendered sentence is lossy: parsing it recovers at best the last token
+    of a multi-word cell, which is a far weaker claim than the row made. Only
+    `origin="table"` facts set this; verification fails closed without it.
+    """
+
 
 class PipelineState(BaseModel):
     """State threaded through the pipeline for one collateral request."""
@@ -147,6 +156,12 @@ class PipelineState(BaseModel):
     violations: list[Violation] = Field(default_factory=list)
     repair_attempts: int = 0
     used_fallback: bool = False
+    fallback_fields: list[str] = Field(default_factory=list)
+    """Which fields the deterministic fallback changed, when it ran.
+
+    Surfaced to the API response so a consumer can tell a one-field truncation
+    from a wholesale rewrite — `used_fallback` alone flattens that distinction.
+    """
     first_pass_valid: bool | None = None
     """Whether the very first generation satisfied the contract.
 

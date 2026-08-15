@@ -20,13 +20,14 @@ asserted, not proven, and the distinction survives into the prompt.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import structlog
 
 from ingest.tables import facts_from_table, row_span_contains_cells
-from ingest.text import facts_from_pages, resolve_span
-from ingest.vision import image_to_message, render_page_png
+from ingest.text import SPAN_RE, facts_from_pages, normalize_ws, resolve_span
+from ingest.vision import render_pages
 from model.gateway import LLM, LLMError
 from models import Fact
 from observability import OP_VISION, span
@@ -73,7 +74,11 @@ _VISION_SCHEMA = {
 
 
 async def ingest_pdf(
-    pdf_path: str | Path, llm: LLM | None = None, *, force_vision: bool = False
+    pdf_path: str | Path,
+    llm: LLM | None = None,
+    *,
+    force_vision: bool = False,
+    model: str = "unknown",
 ) -> list[Fact]:
     """Extract verified facts from a PDF using both ingest paths.
 
@@ -85,32 +90,34 @@ async def ingest_pdf(
             credential.
         force_vision: Render every page, not just the text-sparse ones. For
             fixtures and evals where the vision path must be exercised.
+        model: Model name recorded on vision spans. Passed in rather than read
+            off the port, which is deliberately narrow enough not to expose it.
 
     Returns:
         Verified text facts followed by vision facts, in page order.
     """
-    import pymupdf
-
-    with pymupdf.open(pdf_path) as doc:
-        pages, table_facts = _read_pages(doc)
-
-    return await _ingest(pdf_path, pages, llm, table_facts=table_facts, force_vision=force_vision)
+    pages, table_facts = await asyncio.to_thread(_parse_path, pdf_path)
+    return await _ingest(
+        pdf_path, pages, llm, table_facts=table_facts, force_vision=force_vision, model=model
+    )
 
 
 async def ingest_pdf_bytes(
-    data: bytes, llm: LLM | None = None, *, force_vision: bool = False
+    data: bytes,
+    llm: LLM | None = None,
+    *,
+    force_vision: bool = False,
+    model: str = "unknown",
 ) -> list[Fact]:
     """Ingest a PDF held in memory.
 
     The API layer receives uploads as bytes and has nowhere to put them but a
     temp file; pymupdf can open a byte stream directly, so it does not have to.
     """
-    import pymupdf
-
-    with pymupdf.open(stream=data, filetype="pdf") as doc:
-        pages, table_facts = _read_pages(doc)
-
-    return await _ingest(data, pages, llm, table_facts=table_facts, force_vision=force_vision)
+    pages, table_facts = await asyncio.to_thread(_parse_bytes, data)
+    return await _ingest(
+        data, pages, llm, table_facts=table_facts, force_vision=force_vision, model=model
+    )
 
 
 def verify_facts(facts: list[Fact], pages: list[str]) -> list[Fact]:
@@ -133,14 +140,14 @@ def verify_facts(facts: list[Fact], pages: list[str]) -> list[Fact]:
 
         if fact.origin == "table":
             # A table row is rephrased to keep its subject attached, so it can
-            # never equal its own span. The values it asserts still have to be
-            # in there — see `tables.row_span_contains_cells`.
-            if not row_span_contains_cells(_normalize(source), fact.text):
+            # never equal its own span. The full cell values it asserts still
+            # have to be in there — see `tables.row_span_contains_cells`.
+            if not row_span_contains_cells(normalize_ws(source), fact):
                 continue
             verified.append(fact)
             continue
 
-        if _normalize(source) != _normalize(fact.text):
+        if normalize_ws(source) != normalize_ws(fact.text):
             continue
 
         verified.append(fact)
@@ -156,32 +163,28 @@ def pages_needing_vision(pages: list[str], *, force: bool = False) -> list[int]:
 
 
 async def extract_vision_facts(
-    pdf_source: str | Path | bytes, page_number: int, llm: LLM
+    image: bytes, page_number: int, llm: LLM, *, model: str = "unknown"
 ) -> list[Fact]:
     """Ask the model to read one rendered page.
+
+    The rendered PNG travels through the port's `images` channel — the whole
+    point of this call is the page the text layer could not read, so the call
+    is meaningless without it.
 
     A failed vision call returns no facts rather than propagating. The text
     path has already produced what it can, and losing a table is a worse
     outcome than losing the whole document.
     """
     try:
-        image = render_page_png(pdf_source, page_number)
-    except (IndexError, ValueError):
-        return []
-
-    message = image_to_message(image, VISION_PROMPT)
-    prompt = message["content"][-1]["text"]
-
-    try:
-        with span(OP_VISION, "unknown", stage="vision", page=page_number):
-            result = await llm.complete_structured(prompt, _VISION_SCHEMA)
+        with span(OP_VISION, model, stage="vision", page=page_number):
+            result = await llm.complete_structured(VISION_PROMPT, _VISION_SCHEMA, images=[image])
     except LLMError:
         return []
 
     claims = result.get("facts") or []
     return [
         Fact(
-            text=_normalize(str(claim)),
+            text=normalize_ws(str(claim)),
             source_span=f"p{page_number}:vision",
             page=page_number,
             confidence=VISION_CONFIDENCE,
@@ -190,6 +193,22 @@ async def extract_vision_facts(
         for claim in claims
         if str(claim).strip()
     ]
+
+
+def _parse_path(pdf_path: str | Path) -> tuple[list[str], list[Fact]]:
+    """Open a PDF from disk and read pages + table facts. Sync — run off-loop."""
+    import pymupdf
+
+    with pymupdf.open(pdf_path) as doc:
+        return _read_pages(doc)
+
+
+def _parse_bytes(data: bytes) -> tuple[list[str], list[Fact]]:
+    """Open an in-memory PDF and read pages + table facts. Sync — run off-loop."""
+    import pymupdf
+
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        return _read_pages(doc)
 
 
 def _read_pages(doc: object) -> tuple[list[str], list[Fact]]:
@@ -232,21 +251,39 @@ def _read_pages(doc: object) -> tuple[list[str], list[Fact]]:
     return pages, table_facts
 
 
-def _ingest_pages_without_tables(pages: list[str], table_facts: list[Fact]) -> list[str]:
-    """Blank out pages whose tables were recovered structurally.
+def _drop_table_overlaps(text_facts: list[Fact], table_facts: list[Fact]) -> list[Fact]:
+    """Drop text facts whose span overlaps a recovered table's span.
 
     The sentence splitter turns a grid into one run-on fact holding every value
     in the table with no row structure — exactly the misattribution the table
-    path removes. Leaving both in means the prompt carries the ambiguous version
-    alongside the precise one, so the page's text is withheld from the sentence
-    splitter once its rows are covered.
-
-    Only the pages that produced table facts are blanked, and only for fact
-    extraction: the `pages` list used for span verification is untouched, so
-    table spans still resolve against the real page text.
+    path removes. But a page is not all grid: prose paragraphs sharing a page
+    with a table carry claims of their own, and they stay. Only the text facts
+    that overlap the region a table fact covers are superseded.
     """
-    covered = {fact.page for fact in table_facts}
-    return ["" if number in covered else text for number, text in enumerate(pages, 1)]
+    spans_by_page: dict[int, list[tuple[int, int]]] = {}
+    for fact in table_facts:
+        offsets = _span_offsets(fact.source_span)
+        if offsets is not None and fact.page is not None:
+            spans_by_page.setdefault(fact.page, []).append(offsets)
+
+    kept: list[Fact] = []
+    for fact in text_facts:
+        offsets = _span_offsets(fact.source_span)
+        table_spans = spans_by_page.get(fact.page or 0, [])
+        overlaps = offsets is not None and any(
+            offsets[0] < t_end and offsets[1] > t_start for t_start, t_end in table_spans
+        )
+        if not overlaps:
+            kept.append(fact)
+
+    return kept
+
+
+def _span_offsets(source_span: str) -> tuple[int, int] | None:
+    match = SPAN_RE.match(source_span)
+    if match is None:
+        return None
+    return int(match.group(2)), int(match.group(3))
 
 
 async def _ingest(
@@ -256,20 +293,28 @@ async def _ingest(
     *,
     table_facts: list[Fact] | None = None,
     force_vision: bool,
+    model: str = "unknown",
 ) -> list[Fact]:
     table_facts = table_facts or []
 
-    text_source = _ingest_pages_without_tables(pages, table_facts)
-    facts = verify_facts(facts_from_pages(text_source) + table_facts, pages)
+    text_facts = _drop_table_overlaps(facts_from_pages(pages), table_facts)
+    facts = verify_facts(text_facts + table_facts, pages)
 
     if llm is None:
         return facts
 
-    for page_number in pages_needing_vision(pages, force=force_vision):
-        facts.extend(await extract_vision_facts(pdf_source, page_number, llm))
+    needed = pages_needing_vision(pages, force=force_vision)
+    if not needed:
+        return facts
+
+    images = await asyncio.to_thread(render_pages, pdf_source, needed)
+    batches = await asyncio.gather(
+        *(
+            extract_vision_facts(image, page_number, llm, model=model)
+            for page_number, image in sorted(images.items())
+        )
+    )
+    for batch in batches:
+        facts.extend(batch)
 
     return facts
-
-
-def _normalize(text: str) -> str:
-    return " ".join(text.split())

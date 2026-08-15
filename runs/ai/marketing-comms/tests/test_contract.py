@@ -64,6 +64,31 @@ def test_missing_template_raises():
         load_template("no_such_template")
 
 
+@pytest.mark.parametrize(
+    "hostile",
+    ["../secrets", "/tmp/evil", "..", "two_column_brief/../../x", "Two-Column", "a b"],
+)
+def test_path_shaped_template_ids_are_rejected(hostile):
+    """template_id reaches a filesystem path — anything but a bare name is refused."""
+    with pytest.raises(TemplateNotFoundError, match="invalid template id"):
+        load_template(hostile)
+
+
+def test_unsatisfiable_template_fails_at_load(tmp_path):
+    """A floor that cannot fit its ceiling is a template no draft could satisfy."""
+    (tmp_path / "tight.json").write_text(
+        json.dumps(
+            {
+                "template_id": "tight",
+                "fields": [{"name": "a", "min_words": 5, "max_chars": 6}],
+                "theme_colors": {"primary": "#000"},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="unsatisfiable"):
+        load_template("tight", template_dir=tmp_path)
+
+
 def test_template_id_mismatch_raises(tmp_path):
     (tmp_path / "claimed_id.json").write_text(
         json.dumps(

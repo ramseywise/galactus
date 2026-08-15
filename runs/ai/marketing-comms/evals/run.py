@@ -34,10 +34,10 @@ from typing import Any, ClassVar
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from config import Settings
+from config import DEFAULT_MAX_REPAIRS, Settings
 from generate import generate_collateral
 from guardrails.validator import is_valid
-from layout.contract import load_template_cached
+from layout.contract import DEFAULT_TEMPLATE_ID, load_template_cached
 from model.gateway import LLM
 from models import Fact, LayoutTemplate, PipelineState
 from observability import configure_structlog
@@ -118,7 +118,7 @@ class EvalCase:
         return cls(
             case_id=raw["case_id"],
             prompt=raw.get("prompt", ""),
-            template_id=raw.get("template_id", "two_column_brief"),
+            template_id=raw.get("template_id", DEFAULT_TEMPLATE_ID),
             sender_facts=[Fact(**f) for f in raw.get("sender_facts", [])],
             receiver_facts=[Fact(**f) for f in raw.get("receiver_facts", [])],
             difficulty=raw.get("difficulty", "medium"),
@@ -204,9 +204,19 @@ class ScriptedEvalLLM:
         self.stress_fields = stress_fields
         self.bad_color = bad_color
         self.calls = 0
+        self._vocabulary: list[str] | None = None
 
-    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+    async def complete_structured(
+        self, prompt: str, schema: dict[str, Any], *, images: Any = ()
+    ) -> dict[str, Any]:
         self.calls += 1
+
+        # Draw vocabulary from the prompt's fenced facts, like a model that
+        # actually read them. Generating from a fixed word list would leave the
+        # grounding metric measuring fixture vocabulary overlap — a regression
+        # that stopped passing facts into the prompt would go unnoticed.
+        if self._vocabulary is None:
+            self._vocabulary = self._fact_vocabulary(prompt)
 
         # A repair prompt is the second call onward; the first is generation.
         repairing = self.calls > 1
@@ -217,6 +227,17 @@ class ScriptedEvalLLM:
             for field in self.template.fields
         }
 
+    @staticmethod
+    def _fact_vocabulary(prompt: str) -> list[str]:
+        """Distinct words from the prompt's <source_facts> block, in order."""
+        _, _, tail = prompt.partition("<source_facts>")
+        block, _, _ = tail.partition("</source_facts>")
+        seen: dict[str, None] = {}
+        for token in _TOKEN_RE.findall(block.lower()):
+            if token not in _STOPWORDS and len(token) > 2:
+                seen.setdefault(token, None)
+        return list(seen)
+
     def _value_for(self, field: Any, *, breaching: bool) -> str:
         if field.kind == "image_placeholder":
             return f"{{{{{field.name}}}}}"
@@ -225,13 +246,21 @@ class ScriptedEvalLLM:
             return "#ff2d55" if breaching and self.bad_color else "accent"
 
         over = breaching and (self.stress_fields is None or field.name in self.stress_fields)
+        # Shortest dozen fact tokens: still unmistakably drawn from the facts,
+        # but short enough that a floor-length column also fits its char
+        # ceiling without dropping below the word floor.
+        vocabulary = (
+            sorted(self._vocabulary, key=lambda t: (len(t), t))[:12]
+            if self._vocabulary
+            else self.LOREM
+        )
 
         # Aim just inside the word ceiling, or past it when overshooting.
         ceiling = field.max_words or 20
         floor = field.min_words or 1
         count = ceiling + 6 if over else max(floor, ceiling - 1)
 
-        words = [self.LOREM[i % len(self.LOREM)] for i in range(count)]
+        words = [vocabulary[i % len(vocabulary)] for i in range(count)]
         text = " ".join(words).capitalize()
 
         # Respect max_chars on the non-overshooting path by dropping whole
@@ -257,6 +286,28 @@ run would report the same twelve violations four times over — which would say
 nothing about whether the repair loop handles a color reference differently
 from a word count.
 """
+
+
+def validate_stress_profiles(cases: list[EvalCase]) -> None:
+    """Fail loudly when STRESS_PROFILES and cases.jsonl drift apart.
+
+    The table is keyed by literal case ids; without this check a renamed case
+    silently falls back to the default profile — every field overshoots
+    identically — and the run stops saying anything about how repair handles
+    distinct violation kinds, while still printing plausible numbers.
+    """
+    case_ids = {case.case_id for case in cases}
+    unknown = sorted(set(STRESS_PROFILES) - case_ids)
+    if unknown:
+        raise ValueError(f"STRESS_PROFILES names unknown case ids: {unknown}")
+
+    unprofiled = sorted(
+        case.case_id
+        for case in cases
+        if case.difficulty == "hard" and case.case_id not in STRESS_PROFILES
+    )
+    if unprofiled:
+        raise ValueError(f"hard cases without a stress profile: {unprofiled}")
 
 
 def _scripted_llm(case: EvalCase, template: LayoutTemplate) -> ScriptedEvalLLM:
@@ -296,8 +347,19 @@ class CaseResult:
     error: str | None = None
 
 
-async def run_case(case: EvalCase, llm: LLM | None = None, *, model: str = "dry-run") -> CaseResult:
-    """Run one case end to end and score it."""
+async def run_case(
+    case: EvalCase,
+    llm: LLM | None = None,
+    *,
+    model: str = "dry-run",
+    max_repairs: int = DEFAULT_MAX_REPAIRS,
+) -> CaseResult:
+    """Run one case end to end and score it.
+
+    `max_repairs` is threaded from the caller's settings so the harness
+    measures the budget production actually runs — an operator's
+    GALACTUS_MAX_REPAIRS override must move these numbers, not just the API's.
+    """
     template = load_template_cached(case.template_id)
     provider = llm if llm is not None else _scripted_llm(case, template)
 
@@ -309,7 +371,9 @@ async def run_case(case: EvalCase, llm: LLM | None = None, *, model: str = "dry-
     )
 
     try:
-        draft, used_fallback = await generate_collateral(state, template, provider, model=model)
+        draft, used_fallback = await generate_collateral(
+            state, template, provider, max_repairs=max_repairs, model=model
+        )
     except Exception as exc:  # noqa: BLE001 - one dead case must not end the run
         return CaseResult(
             case_id=case.case_id,
@@ -336,14 +400,18 @@ async def run_case(case: EvalCase, llm: LLM | None = None, *, model: str = "dry-
 
 
 async def run_all(
-    cases: list[EvalCase], llm: LLM | None = None, *, model: str = "dry-run"
+    cases: list[EvalCase],
+    llm: LLM | None = None,
+    *,
+    model: str = "dry-run",
+    max_repairs: int = DEFAULT_MAX_REPAIRS,
 ) -> list[CaseResult]:
     """Run every case in order.
 
     Sequential rather than gathered: the live path costs money, and a serial run
     keeps the spend legible and the rate limits comfortable.
     """
-    return [await run_case(case, llm, model=model) for case in cases]
+    return [await run_case(case, llm, model=model, max_repairs=max_repairs) for case in cases]
 
 
 # ---------------------------------------------------------------------------
@@ -501,24 +569,25 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     cases = load_cases(args.cases)
+    validate_stress_profiles(cases)
 
+    settings = Settings.load()
     if args.dry_run:
         llm: LLM | None = None
         model = "dry-run"
         # Spans are logged on both paths, so the dry run configures logging too
         # — otherwise structlog's default console renderer would emit a
         # different shape than production, and the format would go untested.
-        configure_structlog(Settings.load().log_level)
+        configure_structlog(settings.log_level)
     else:
         from model.gateway import AnthropicAdapter
 
-        settings = Settings.load()
         settings.require_api_key()
         configure_structlog(settings.log_level)
         llm = AnthropicAdapter(settings)
         model = settings.model
 
-    results = asyncio.run(run_all(cases, llm, model=model))
+    results = asyncio.run(run_all(cases, llm, model=model, max_repairs=settings.max_repairs))
     metrics = compute_metrics(results)
 
     if args.json:

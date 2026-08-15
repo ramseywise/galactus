@@ -109,7 +109,7 @@ looks, so they are not invocable.
   `spike/{slug}`.
 - **Runs under `runs/` are working code, not frozen exhibits.** Refactor, fix, and bring
   them to convention like anything else here. `runs/ai/marketing-comms/` is the reference
-  implementation, so changes to it should be deliberate and keep its 277 tests green —
+  implementation, so changes to it should be deliberate and keep its 318 tests green —
   but "it is the case study" is not a reason to leave drift in place.
 - **A new test directory under `runs/` must be added to `testpaths` in `pyproject.toml`.**
   Omitting it does not fail; it collects zero tests, which reads exactly like passing.
