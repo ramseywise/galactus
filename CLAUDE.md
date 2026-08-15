@@ -60,9 +60,13 @@ has a spec skips FRAME entirely.
 
 Scaffolding is not a band here. A run of the pipeline is a subdirectory under `runs/ai/`
 or `runs/ml/`, not a generated repo; `ai-project-template` owns the copier stage.
-`runs/_index/` is reserved for the execution registry (issue #4 Phase 1) — one record per
-training execution, which is a different grain from the run directory that produced it and
-is why the name is prefixed: `_index` can never collide with a run.
+`runs/_index/` is reserved for run records — one per training execution, a different grain
+from the run directory that produced it, which is why the name is prefixed: `_index` can
+never collide with a run. **galactus does not define the record shape.** The registry is
+`ai-project-template`'s `experiments/` module (`record`, `provenance`, `fingerprint`, with a
+`NotApplicable` sentinel so a missing metric never reads as `0.0`); galactus consumes it.
+Nothing writes here yet — a run's result currently lives as a `summary.json` under its own
+`docs/`, which is why the lending baseline could be overturned but not reproduced.
 
 **BUILD runs in order**, with the plan doc in `.claude/docs/plans/` as the bus between
 phases. `Status:` is a state machine, not a label — a hook rejects values outside
