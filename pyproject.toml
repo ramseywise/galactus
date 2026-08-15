@@ -20,11 +20,21 @@ dependencies = [
 [dependency-groups]
 dev = [
     "httpx>=0.27",
+    "ipykernel>=7.3.0",
+    "jupyterlab>=4.6.3",
     "numpy>=2.5.2",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "pytest-cov>=7.1.0",
     "ruff>=0.8",
+    "seaborn>=0.13.2",
+]
+ml = [
+    "catboost>=1.2.10",
+    "matplotlib>=3.11.1",
+    "pandas>=3.0.5",
+    "scikit-learn>=1.9.0",
+    "statsmodels>=0.14.6",
 ]
 # `runs/ml/customer segmentation/` imports these directly. They already resolved
 # transitively, which meant the POC's imports worked by accident; declaring them makes
@@ -48,7 +58,9 @@ line-length = 100
 target-version = "py312"
 # .claude/ ships vendored skills and specs (see CLAUDE.md "Vendoring exception") —
 # rendered payload whose canon lives upstream, not code this project lints.
-extend-exclude = [".claude"]
+# `ml/` is the same case: vendored from ai-project-template's ML payload. Fix lint
+# findings upstream and re-vendor, rather than diverging the copy here.
+extend-exclude = [".claude", "ml"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "BLE"]

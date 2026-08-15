@@ -1,0 +1,89 @@
+# A/B bridge — evals ↔ ml
+
+Deployment (Phase 3) promotes a build only when a canary is **statistically**
+no worse than control. Two toolkits already in this repo do the two halves of
+that decision, and this doc is the bridge — no new machinery, just the wiring.
+
+- **`evals/`** scores *interaction quality* (does the agent resolve
+  intent, avoid friction, escalate correctly, …) on a set of interactions.
+- **`ml/stats_testing/`** decides whether a difference *between two sets of
+  those scores* is real or sampling noise: power analysis, proportion CIs,
+  Mann-Whitney U, bootstrap Cliff's delta.
+
+The A/B question — "is the canary's quality significantly different from
+control's?" — is answered by feeding eval scores into the stats toolkit.
+
+## The pipeline
+
+```
+control traffic ─┐
+                 ├─► evals/ grading ─► per-interaction metric scores ─► ml/stats_testing ─► promote / rollback
+canary traffic ──┘
+```
+
+### 1. Before the test — size it
+
+Don't start a canary you can't read. `required_sample_size` tells you the
+per-group N needed to detect a meaningful effect:
+
+```python
+from ml.stats_testing.ab_test import required_sample_size
+
+n = required_sample_size(effect_size=0.2)  # Cohen's d; each arm needs >= n interactions
+```
+
+That N sets DEPLOYMENT.md's **bake window** — run the canary until both arms
+clear it, not for a fixed wall-clock time.
+
+### 2. During — grade both arms with the SAME suite
+
+Run the eval pipeline over control and canary interactions separately, pulling
+the metric you're guarding on. The interaction metrics live in
+`evals/metrics/`:
+- No interaction metrics are scaffolded yet — add one with
+  `/add-capability` (`/add-eval-metric`), then guard your canary on it. Rate
+  metrics use `proportion_ci`; continuous ones use Mann-Whitney + Cliff's delta.
+
+### 3. After — decide
+
+`bootstrap_cliffs_delta` gives a point effect size *and* a 95% CI. Promote only
+when the CI excludes meaningful harm; roll back when it confirms real harm.
+
+```python
+import numpy as np
+from ml.stats_testing.ab_test import mann_whitney_test, bootstrap_cliffs_delta
+
+control = np.array([...])  # per-interaction metric scores, control arm
+canary = np.array([...])  # same metric, canary arm
+
+sig = mann_whitney_test(control, canary)  # is there any difference at all?
+eff = bootstrap_cliffs_delta(control, canary)  # how big, and which direction, with a CI
+
+# Promote when the effect is non-negative (canary >= control on a good metric,
+# <= control on a harm metric) AND the CI excludes meaningful harm.
+promote = (not sig.significant) or (eff.ci_low >= 0)  # sign depends on the metric's direction
+```
+
+`cliffs_delta_strength(eff.delta)` labels the magnitude (negligible / small /
+medium / large) for the rollout log.
+
+## Direction matters
+
+Metrics are not all "higher is better". Pin the direction per metric so the
+promote/rollback comparison has the right sign:
+
+| Metric | Better when | Canary is worse when |
+|---|---|---|
+
+## Invariants (不易) vs. knobs (变易)
+
+- **不易**: promotion is gated on a *measured*, *sized* comparison — never on a
+  timer or a glance at a dashboard.
+- **变易**: effect-size threshold, alpha/power, which metric guards the gate,
+  `n_resamples`. Tune per release; record the values you used in the rollout log.
+
+---
+
+**See also:** `../DEPLOYMENT.md` (the rollout stages this feeds),
+`stats_testing/ab_test.py` (the functions above), `evals/README.md`
+(the grading side).
