@@ -43,10 +43,13 @@ RUNNING IT
     message saying so, rather than a bare ImportError.
 
     `--dry-run` exercises the identical path — guards, grouped split, fit, calibration,
-    threshold, report, summary — on the seeded synthetic twin: no `data/` read, no
-    network, seconds, with the report routed to a temp directory so the tracked real
-    report is never touched. It still needs `ML_PACKAGE_ROOT`: dry means no data, not
-    no toolkit.
+    threshold, report, summary, record — on the seeded synthetic twin: no `data/` read,
+    no network, seconds, with the report and record routed to a temp directory so the
+    tracked real report and `runs/_index/` are never touched. It still needs
+    `ML_PACKAGE_ROOT`: dry means no data, not no toolkit.
+
+    Real runs write their `RunRecord` to `runs/_index/` via `experiments.io` — see
+    `runs/_index/README.md` for the grain and how to read a record diff.
 """
 
 from __future__ import annotations

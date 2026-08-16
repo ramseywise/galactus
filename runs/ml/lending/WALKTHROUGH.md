@@ -26,7 +26,7 @@ The fourth does not exist.
 | Data cleaning | Works | 45,224 → 39,770 rows; 47 columns dropped, 39 post-outcome |
 | Model selection | Works | registry served logistic / lightgbm / random_forest on identical folds |
 | Training | **Was broken — now works** | `ml.workflows` and `ml.reporting` did not exist; both written |
-| Experiment tracking | **Absent** | no run registry anywhere; see "The remaining gap" |
+| Experiment tracking | **Was absent — now exists** | closed 2026-08-16 (GAL-32): records via `experiments/io.py` → `runs/_index/`; see "The remaining gap" |
 
 The headline number: **LightGBM beats the logistic baseline by 0.0924 PR-AUC**
 (0.4351 vs 0.3427) on the leakage-free frame, at a 20.56% prevalence floor.
@@ -198,6 +198,17 @@ recorded the code state, the seed, or the fold assignment that produced them, so
 they could not be checked. A comparison table with no provenance is a screenshot.
 
 This is out of scope for issue #67 and needs its own.
+
+**Closed 2026-08-16 (galactus#32).** Every execution of `src/run.py` now assembles a
+`RunRecord` (ai-project-template's `experiments/` registry) and writes it through
+`experiments/io.py`: real runs to `runs/_index/{utc_timestamp}-{frame_hash[:8]}.json`
+(committed), dry-runs to a temp path. The record carries the galactus SHA, the toolkit
+tree's state, the fitted-frame hash, the resolved config including every module
+constant, and a fold-plan description. The reproduce check is asserted in
+`tests/test_reproduce.py`: same seed, same frame → byte-identical `metrics`;
+`read_record` reconstructs the frozen dataclasses so validation re-fires on load. The
+report-overwrite hazard is also gone for dry-runs, which never touch
+`docs/report.html`.
 
 ## Verdict on the one-hour claim
 

@@ -12,9 +12,10 @@ Questions #2) and [`README.md`](../README.md) (the domain framing, untouched her
 
 The lending run produced the repo's most load-bearing ML finding — *no candidate model
 beats the logistic baseline* — and cannot reproduce it. Its metrics live in prose
-([`DESIGN.md § Step 15 result`](DESIGN.md)) and a gitignored `report.html`; the harness
-([`src/run.py`](../src/run.py)) has no tests, is absent from `testpaths`, requires
-gitignored real data to execute at all, and writes no run record. `runs/_index/` is
+([`DESIGN.md § Step 15 result`](DESIGN.md)) and a tracked `report.html`; the harness
+([`src/run.py`](../src/run.py)) — as of this design's writing (2026-08-15, since
+closed by GAL-32) — had no tests, was absent from `testpaths`, required
+gitignored real data to execute at all, and wrote no run record. `runs/_index/` is
 reserved for exactly this and nothing writes it. The leakage evidence — the run's whole
 reason to exist — is a document, not a check the run performs.
 
@@ -30,7 +31,7 @@ real CSV present, a full run writes a record under `runs/_index/` such that a re
 the same git SHA and `frame_hash` reproduces identical metrics, or the record diff names
 which input changed.
 
-**Naive baseline:** the status quo — `summary.json`-style prose plus a gitignored HTML
+**Naive baseline:** the status quo — `summary.json`-style prose plus a tracked HTML
 report. What the work must beat: a second person can *refute or reproduce* the
 "nothing beats the baseline" finding from the record alone, without archaeology through
 plan docs. If a re-run can't be compared to the recorded run mechanically, this work

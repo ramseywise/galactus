@@ -145,9 +145,26 @@ ML_PACKAGE_ROOT=<tree> uv run python runs/ml/lending/src/run.py
 
 Tests split along the same line: `uv run pytest runs/ml/lending/tests -q` runs the
 toolkit-free tests (frame, guards, synthetic twins) in any checkout; the
-toolkit-coupled tests (dry-run, record) **skip with a reason naming
+toolkit-coupled tests (dry-run, record, reproduce) **skip with a reason naming
 `ML_PACKAGE_ROOT`** when it is unset. A bare checkout is green *with visible skips* —
 if the skips do not appear in the output, something is silently not collecting.
+
+## Run records
+
+Every execution writes a `RunRecord` through the registry's own serializer
+(`experiments/io.py`): real runs to
+[`runs/_index/`](../../_index/README.md)`{utc_timestamp}-{frame_hash[:8]}.json`
+(committed — aggregates only), dry-runs to a temp path, never the index. The record
+carries the galactus SHA, the toolkit tree's SHA (or a reasoned `NotApplicable`), the
+fitted-frame hash, the resolved config including every `frame.py` constant, and a
+fold-*plan* description — never indices.
+
+**To reproduce the real run:** same galactus SHA + same `data.frame_hash` ⇒ the
+`metrics` block must come out identical (`--n-splits`, seed, and all constants ride in
+the record). **To read a diff between two records:** a diff showing only
+`code.versions` or `resolved_config.toolkit` changed is the system *working* — it
+names which input moved before any number did. A metrics change with no recorded
+input change is the alarm.
 
 ## Layout
 
