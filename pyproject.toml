@@ -75,18 +75,27 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003", "N803", "N806"]
 # The marketing-comms modules are flat under its `src/`, not under a `galactus`
 # package — an abandoned package move left `src/galactus/` as empty directories
 # and the tests importing through them until 2026-08-15.
+# The lending run's modules (frame, splits, summary, guards, synthetic, run_record)
+# are flat under `runs/ml/lending/src/` the same way — tests import them as
+# top-level names via a conftest sys.path insert.
 known-first-party = [
     "api",
     "config",
+    "frame",
     "generate",
     "guardrails",
+    "guards",
     "ingest",
     "layout",
     "model",
     "models",
     "observability",
     "review",
+    "run_record",
+    "splits",
     "store",
+    "summary",
+    "synthetic",
 ]
 
 [tool.pytest.ini_options]
@@ -99,6 +108,7 @@ testpaths = [
     "review/tests",
     "runs/ml/customer segmentation/tests",
     "runs/ml/fraud/tests",
+    "runs/ml/lending/tests",
 ]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root

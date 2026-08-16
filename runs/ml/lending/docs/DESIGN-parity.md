@@ -97,7 +97,10 @@ file per training execution. galactus consumes the record shape; it never define
   numbers, not improve them.
 - The other `runs/ml/` runs, `LTV.ipynb`, `credit/`. One run to the bar first.
 - Domain progress on the six client unknowns (README) — untouched.
-- An HTML/report redesign; `report.html` stays as-is, still gitignored.
+- An HTML/report redesign; `report.html` stays as-is — tracked and ratified 2026-08-15
+  (it is fraud's ground-truth toolkit fixture, `runs/ml/fraud/tests/conftest.py`; the
+  earlier claim here that it remained ignored was wrong — the ignore rule died in the
+  `ml-lending/` → `runs/ml/lending/` rename).
 - Backfilling records for past runs. The prose Step 15 numbers stay prose; the first
   record is the next execution.
 

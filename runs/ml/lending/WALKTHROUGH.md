@@ -42,8 +42,8 @@ The chain was documented as complete and was not. `ml-lending/ml/run.py` imports
 two modules that had never been written:
 
 ```python
-from ml.reporting.html import write_report          # ml/reporting/ — absent
-from ml.workflows.classification import run_classification   # ml/workflows/ — absent
+from ml.reporting.html import write_report  # ml/reporting/ — absent
+from ml.workflows.classification import run_classification  # ml/workflows/ — absent
 ```
 
 `grep -rn 'run_classification'` returned zero definitions repo-wide. Every
