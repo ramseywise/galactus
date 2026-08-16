@@ -1,8 +1,13 @@
 """One accept, one reject per mechanism, and the reject reasons are tagged.
 
-Fixtures are anchored on `runs/ai/marketing-comms/src/model/gateway.py:111`, which
+Fixtures are anchored on `runs/ai/marketing-comms/src/model/gateway.py:125`, which
 really does read `import anthropic` — the `quoted_span` check is only meaningful
 against real source.
+
+That coupling is the point and also the maintenance cost: when the anchor line
+moves, these tests fail by design. `test_anchor_line_is_the_expected_source`
+below fails *first* and says so, so the next drift reads as "the anchor moved",
+not as "the validator broke".
 """
 
 from __future__ import annotations
@@ -18,8 +23,31 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+ANCHOR_PATH = "runs/ai/marketing-comms/src/model/gateway.py"
+ANCHOR_LINE = 125
+ANCHOR_TEXT = "import anthropic"
+
+
 def load(name: str) -> dict:
     return json.loads((FIXTURES / f"{name}.json").read_text())
+
+
+def test_anchor_line_is_the_expected_source():
+    """Fail loudly when the anchor drifts, before the validator tests do.
+
+    Every positive fixture quotes `import anthropic` at the anchor. If that line
+    moves, the quoted_span check correctly rejects them — and six tests fail
+    pointing at the validator instead of at the anchor. This test names the real
+    cause: repoint the fixtures, never loosen the check.
+    """
+    lines = (REPO_ROOT / ANCHOR_PATH).read_text().splitlines()
+    assert len(lines) >= ANCHOR_LINE, f"{ANCHOR_PATH} is shorter than line {ANCHOR_LINE}"
+    actual = lines[ANCHOR_LINE - 1].strip()
+    assert actual == ANCHOR_TEXT, (
+        f"fixture anchor drifted: {ANCHOR_PATH}:{ANCHOR_LINE} reads {actual!r}, "
+        f"expected {ANCHOR_TEXT!r}. Repoint the fixtures' start_line/end_line to "
+        f"wherever {ANCHOR_TEXT!r} now lives; do not weaken the quoted_span check."
+    )
 
 
 def test_valid_finding_accepted():
