@@ -8,9 +8,8 @@ the loop exists.
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
+from fakes import ScriptedLLM as FakeLLM
 
 from generate import (
     build_prompt,
@@ -20,31 +19,6 @@ from generate import (
 )
 from guardrails.validator import is_valid, validate
 from models import Fact, PipelineState
-
-
-class FakeLLM:
-    """Returns scripted drafts in order, recording the prompts it was given.
-
-    Satisfies `port.LLM` structurally — no inheritance, which is the point of
-    the Protocol. The last scripted response repeats if the loop asks for more
-    than were provided, so a test that scripts one bad draft gets a loop that
-    keeps failing rather than an IndexError.
-    """
-
-    def __init__(self, responses: list[dict[str, Any]]) -> None:
-        self.responses = responses
-        self.prompts: list[str] = []
-        self.schemas: list[dict[str, Any]] = []
-
-    @property
-    def call_count(self) -> int:
-        return len(self.prompts)
-
-    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
-        self.prompts.append(prompt)
-        self.schemas.append(schema)
-        index = min(len(self.prompts) - 1, len(self.responses) - 1)
-        return dict(self.responses[index])
 
 
 @pytest.fixture
@@ -147,6 +121,28 @@ async def test_repair_prompt_carries_the_violation_hints(state, template, clean_
     repair_prompt = llm.prompts[1]
     assert "headline" in repair_prompt
     assert "at most 9 words" in repair_prompt
+
+
+async def test_fallback_reports_which_fields_it_changed(state, template, clean_draft):
+    """`used_fallback` alone cannot distinguish one truncated field from a rewrite."""
+    llm = FakeLLM([_too_long(clean_draft)])
+
+    await generate_collateral(state, template, llm, max_repairs=1)
+
+    assert state.used_fallback is True
+    assert state.fallback_fields == ["headline"]
+
+
+async def test_non_string_draft_values_become_repairable_not_crashes(state, template, clean_draft):
+    """A model returning 42 or a nested object must reach the validator, not a traceback."""
+    weird = {**clean_draft, "headline": 42, "cta": {"text": "Call now"}}
+    llm = FakeLLM([weird, clean_draft])
+
+    draft, used_fallback = await generate_collateral(state, template, llm)
+
+    assert used_fallback is False
+    assert draft == clean_draft
+    assert state.repair_attempts == 1
 
 
 async def test_late_success_still_reports_no_fallback(state, template, clean_draft):

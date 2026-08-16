@@ -14,17 +14,15 @@ from ingest.facts import ingest_pdf, ingest_pdf_bytes
 from ingest.text import extract_text_facts
 from ingest.vision import (
     encode_image_base64,
-    image_to_message,
-    page_images,
     render_page_png,
+    render_pages,
 )
 
 __all__ = [
     "encode_image_base64",
     "extract_text_facts",
-    "image_to_message",
     "ingest_pdf",
     "ingest_pdf_bytes",
-    "page_images",
     "render_page_png",
+    "render_pages",
 ]

@@ -37,6 +37,34 @@ anything would catch it.
 A test that cannot fail is worse than a missing test: it reports coverage it does
 not provide. Assertions that only check "no exception" are the common shape.
 
+### Seam conformance (fakes and the real adapter)
+
+A fake that conforms to a broken seam certifies the break. Evidence base:
+`bug/marketing-comms-review-fixes` — the vision path rendered PNGs and threw them
+away because the `LLM` port had no `images` parameter, and every fake matched the
+broken port exactly, so 300 green tests could not see it. Check:
+
+- **One shared fake per port, not per-module fakes.** N hand-rolled fakes of the
+  same Protocol are N places a port change is silently missed — a port change
+  should break one fake loudly, not three quietly. Flag duplicated fakes.
+- **The fake records the full signature**, including optional channels
+  (`images=`, extra kwargs). A fake narrower than the Protocol it stands in for
+  is a finding even when tests pass.
+- **A contract test pins the real adapter's wire shape** independently of the
+  fake: decode what the adapter actually sends (base64 back to bytes, block
+  order, media type) and assert identity with the input. A fake's recording is
+  only meaningful if something else proves what the real adapter does with the
+  same argument.
+- **Caller-side identity assertions close the loop**: what the caller hands
+  across the seam equals the real artifact (byte-exact where possible), asserted
+  at unit and end-to-end level.
+- **Fake error modes raise the real error types**, imported from the production
+  module — not stand-in exceptions.
+- **Green for the wrong reason**: tests whose preconditions only pass because a
+  validation is missing, or whose two runs are collapsed into one by idempotency
+  so an assertion compares a value to itself. When the diff adds a check, ask
+  which existing tests were relying on its absence.
+
 ### Duplex / streaming (only when the design has no turn boundary)
 
 Skip for request/response code. See

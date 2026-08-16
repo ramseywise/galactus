@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
-from typing import Any
+
+import structlog
+
+log = structlog.get_logger(__name__)
 
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 """Provider ceiling on a single image."""
@@ -42,8 +45,6 @@ RENDER_DPI = 150
 target, so `render_page_png` scales down slightly rather than up — upscaling a
 72 DPI render would add pixels without adding legibility.
 """
-
-_PNG_MIME = "image/png"
 
 
 def _open(pdf_source: str | Path | bytes):
@@ -68,34 +69,60 @@ def render_page_png(pdf_source: str | Path | bytes, page_number: int) -> bytes:
         IndexError: If `page_number` is outside the document.
         ValueError: If the rendered image exceeds the provider's size limit.
     """
-    import pymupdf
-
     with _open(pdf_source) as doc:
         if not 1 <= page_number <= doc.page_count:
             raise IndexError(
                 f"page {page_number} out of range for a {doc.page_count}-page document"
             )
+        data = _render(doc, page_number)
 
-        page = doc[page_number - 1]
-        zoom = _zoom_for(page.rect.width, page.rect.height)
-        pixmap = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
-        data: bytes = pixmap.tobytes("png")
-
-    if len(data) > MAX_IMAGE_BYTES:
-        raise ValueError(
-            f"rendered page {page_number} is {len(data) / 1024 / 1024:.1f} MB — "
-            f"exceeds the {MAX_IMAGE_BYTES / 1024 / 1024:.0f} MB limit"
-        )
-
+    _check_image_size(data, f"rendered page {page_number}")
     return data
 
 
-def page_images(pdf_source: str | Path | bytes) -> list[bytes]:
-    """Render every page of a PDF to PNG bytes."""
-    with _open(pdf_source) as doc:
-        page_count = doc.page_count
+def render_pages(pdf_source: str | Path | bytes, page_numbers: list[int]) -> dict[int, bytes]:
+    """Render several pages with one document open, skipping pages that fail.
 
-    return [render_page_png(pdf_source, n) for n in range(1, page_count + 1)]
+    The single open matters: opening a PDF re-parses its cross-reference table,
+    and the vision path renders every text-sparse page of a document in one
+    ingest run. A page that is out of range or renders oversized is logged and
+    dropped rather than failing the batch — the text path has already produced
+    what it can, and losing one page beats losing the document.
+    """
+    images: dict[int, bytes] = {}
+
+    with _open(pdf_source) as doc:
+        for page_number in page_numbers:
+            if not 1 <= page_number <= doc.page_count:
+                log.warning("vision_page_out_of_range", page=page_number, pages=doc.page_count)
+                continue
+            data = _render(doc, page_number)
+            try:
+                _check_image_size(data, f"rendered page {page_number}")
+            except ValueError as exc:
+                log.warning("vision_page_oversized", page=page_number, error=str(exc))
+                continue
+            images[page_number] = data
+
+    return images
+
+
+def _render(doc, page_number: int) -> bytes:
+    import pymupdf
+
+    page = doc[page_number - 1]
+    zoom = _zoom_for(page.rect.width, page.rect.height)
+    pixmap = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom))
+    data: bytes = pixmap.tobytes("png")
+    return data
+
+
+def _check_image_size(data: bytes, label: str) -> None:
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError(
+            f"{label} is {len(data) / 1024 / 1024:.1f} MB — "
+            f"exceeds the {MAX_IMAGE_BYTES / 1024 / 1024:.0f} MB limit"
+        )
 
 
 def encode_image_base64(data: bytes) -> str:
@@ -104,35 +131,8 @@ def encode_image_base64(data: bytes) -> str:
     Raises:
         ValueError: If the image exceeds the provider's size limit.
     """
-    if len(data) > MAX_IMAGE_BYTES:
-        raise ValueError(
-            f"image is {len(data) / 1024 / 1024:.1f} MB — "
-            f"exceeds the {MAX_IMAGE_BYTES / 1024 / 1024:.0f} MB limit"
-        )
+    _check_image_size(data, "image")
     return base64.standard_b64encode(data).decode("utf-8")
-
-
-def image_to_message(data: bytes, prompt: str) -> dict[str, Any]:
-    """Format PNG bytes plus a prompt as an Anthropic multimodal user turn.
-
-    Anthropic-shaped rather than provider-branched. The provider seam in this
-    codebase is `llm.port`, and putting a second one here would mean two places
-    to change for one swap.
-    """
-    return {
-        "role": "user",
-        "content": [
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": _PNG_MIME,
-                    "data": encode_image_base64(data),
-                },
-            },
-            {"type": "text", "text": prompt},
-        ],
-    }
 
 
 def _zoom_for(width_pt: float, height_pt: float) -> float:

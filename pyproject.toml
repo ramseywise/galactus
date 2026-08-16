@@ -28,6 +28,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.8",
     "seaborn>=0.13.2",
+    "uvicorn>=0.30",
 ]
 # `runs/ml/customer segmentation/` and `tests/unit/ml` import these directly. They
 # already resolved transitively, which meant the POC's imports worked by accident;

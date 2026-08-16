@@ -21,6 +21,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from evals.run import (
+    STRESS_PROFILES,
     CaseResult,
     EvalCase,
     ScriptedEvalLLM,
@@ -32,6 +33,7 @@ from evals.run import (
     run_all,
     run_case,
     summarize_table,
+    validate_stress_profiles,
 )
 
 from models import Fact
@@ -111,6 +113,40 @@ def test_from_dict_fills_defaults():
     assert case.template_id == "two_column_brief"
     assert case.difficulty == "medium"
     assert case.sender_facts == []
+
+
+def test_stress_profiles_match_the_shipped_case_file():
+    validate_stress_profiles(load_cases())
+
+
+def test_a_renamed_case_breaks_the_profile_table_loudly():
+    """A key pointing at nothing must fail the run, not fall back silently."""
+    cases = [
+        EvalCase(case_id=case_id, prompt="x", template_id="two_column_brief", difficulty="hard")
+        for case_id in STRESS_PROFILES
+    ]
+    renamed = [
+        *cases[:-1],
+        EvalCase(case_id="renamed", prompt="x", template_id="two_column_brief", difficulty="hard"),
+    ]
+
+    with pytest.raises(ValueError, match="unknown case ids"):
+        validate_stress_profiles(renamed)
+
+
+def test_a_hard_case_without_a_profile_is_rejected():
+    cases = [
+        *(
+            EvalCase(case_id=case_id, prompt="x", template_id="two_column_brief", difficulty="hard")
+            for case_id in STRESS_PROFILES
+        ),
+        EvalCase(
+            case_id="new-hard-case", prompt="x", template_id="two_column_brief", difficulty="hard"
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="without a stress profile"):
+        validate_stress_profiles(cases)
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +369,43 @@ def test_stress_fields_breach_only_the_named_fields(template):
     draft = {f.name: llm._value_for(f, breaching=True) for f in template.fields}
 
     assert {v.field for v in validate(draft, template)} == {"headline"}
+
+
+async def test_scripted_llm_writes_from_the_prompted_facts(template):
+    """The grounding metric must measure fact use, not fixture vocabulary.
+
+    The scripted model draws its words from the prompt's fenced facts — so a
+    regression that stopped rendering facts into the prompt would collapse the
+    dry-run grounding rate instead of leaving it green.
+    """
+    case = EvalCase(
+        case_id="grounded",
+        prompt="Announce it.",
+        template_id="two_column_brief",
+        sender_facts=[
+            _fact("Zephyrium accelerated quantization benchmarks dramatically overnight.")
+        ],
+    )
+    llm = ScriptedEvalLLM(load_template_for(case), overshoot=False, stubborn=False)
+
+    result = await run_case(case, llm)
+
+    assert result.grounded
+
+
+def load_template_for(case: EvalCase):
+    from layout.contract import load_template_cached
+
+    return load_template_cached(case.template_id)
+
+
+async def test_without_facts_the_scripted_llm_is_ungrounded(template):
+    case = EvalCase(case_id="bare", prompt="Announce it.", template_id="two_column_brief")
+    llm = ScriptedEvalLLM(load_template_for(case), overshoot=False, stubborn=False)
+
+    result = await run_case(case, llm)
+
+    assert not result.grounded
 
 
 def test_bad_color_emits_a_hex_literal(template):

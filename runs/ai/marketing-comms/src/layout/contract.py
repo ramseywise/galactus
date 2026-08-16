@@ -9,12 +9,30 @@ generation time.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
+from guardrails.fallback import template_satisfiability_errors
 from models import LayoutTemplate
 
 TEMPLATE_DIR_NAME = "templates"
+
+DEFAULT_TEMPLATE_ID = "two_column_brief"
+"""The template a request gets when it names none.
+
+Declared here — beside the loader that resolves it — so the API layer and the
+eval harness agree on one value instead of each hardcoding their own.
+"""
+
+TEMPLATE_ID_RE = re.compile(r"^[a-z0-9_]+$")
+"""Template ids are bare names, never paths.
+
+`load_template` interpolates the id into a filesystem path, and the API passes
+the client-supplied value straight through — without this gate,
+`template_id="../../secrets"` walks out of the template directory and turns the
+endpoint into a filesystem probe.
+"""
 
 
 class TemplateNotFoundError(FileNotFoundError):
@@ -37,22 +55,38 @@ def default_template_dir() -> Path:
 
 
 def load_template_file(path: str | Path) -> LayoutTemplate:
-    """Load and validate a single template JSON file."""
+    """Load and validate a single template JSON file.
+
+    Validation covers satisfiability, not just shape: a template whose word
+    floor cannot fit inside its character ceiling is one no draft — including
+    the fallback's — could ever satisfy, so it fails here rather than on the
+    first request that exhausts its repair budget.
+    """
     p = Path(path)
     if not p.is_file():
         raise TemplateNotFoundError(f"template file not found: {p}")
     with p.open(encoding="utf-8") as fh:
-        return LayoutTemplate.model_validate(json.load(fh))
+        template = LayoutTemplate.model_validate(json.load(fh))
+
+    errors = template_satisfiability_errors(template)
+    if errors:
+        raise ValueError(f"template {template.template_id!r} is unsatisfiable: {'; '.join(errors)}")
+    return template
 
 
 def load_template(template_id: str, template_dir: str | Path | None = None) -> LayoutTemplate:
     """Load a template by id from `template_dir` (default: repo `templates/`).
 
     Raises:
-        TemplateNotFoundError: If no `{template_id}.json` exists.
-        ValueError: If the file exists but violates the template schema, or if
-            its `template_id` field disagrees with the requested id.
+        TemplateNotFoundError: If the id is not a bare `[a-z0-9_]+` name, or no
+            `{template_id}.json` exists.
+        ValueError: If the file exists but violates the template schema, is
+            unsatisfiable, or its `template_id` field disagrees with the
+            requested id.
     """
+    if not TEMPLATE_ID_RE.match(template_id):
+        raise TemplateNotFoundError(f"invalid template id: {template_id!r}")
+
     directory = Path(template_dir) if template_dir is not None else default_template_dir()
     template = load_template_file(directory / f"{template_id}.json")
     if template.template_id != template_id:
