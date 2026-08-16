@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 from experiments.fingerprint import fingerprint_frame
+from experiments.io import _NOT_APPLICABLE_KEY
 from experiments.provenance import capture_code_state
 from experiments.record import ExecutionConfig, NotApplicable, RunRecord
 
@@ -42,6 +43,16 @@ GALACTUS_ROOT = Path(__file__).resolve().parents[4]
 _METRIC_FIELDS = (("pr_auc", "average_precision"), ("roc_auc", "roc_auc"), ("brier", "brier_score"))
 
 
+def _tagged(value: str | NotApplicable) -> object:
+    """`resolved_config` is a plain-JSON pass-through in `experiments.io` — a raw
+    `NotApplicable` instance nested inside it would fail `write_record` (which coerces
+    nothing, by design). Encode it here in the registry's own tagged form so the
+    toolkit entry round-trips like every top-level optional field does."""
+    if isinstance(value, NotApplicable):
+        return {_NOT_APPLICABLE_KEY: {"reason": value.reason}}
+    return value
+
+
 def _toolkit_code_state() -> dict[str, object]:
     """The What-Breaks-First mitigation (F7): a second `capture_code_state` call pointed
     at the toolkit tree, so the record carries what fraud had to write by hand in prose.
@@ -50,12 +61,14 @@ def _toolkit_code_state() -> dict[str, object]:
     toolkit_root = os.environ.get("ML_PACKAGE_ROOT")
     if toolkit_root:
         state = capture_code_state(repo=Path(toolkit_root))
-        return {"root": toolkit_root, "git_sha": state.git_sha, "dirty": state.dirty}
+        return {"root": toolkit_root, "git_sha": _tagged(state.git_sha), "dirty": state.dirty}
     return {
         "root": None,
-        "git_sha": NotApplicable(
-            "ML_PACKAGE_ROOT unset — the toolkit reached sys.path by other means "
-            "(e.g. PYTHONPATH in a test env), so there is no tree to fingerprint"
+        "git_sha": _tagged(
+            NotApplicable(
+                "ML_PACKAGE_ROOT unset — the toolkit reached sys.path by other means "
+                "(e.g. PYTHONPATH in a test env), so there is no tree to fingerprint"
+            )
         ),
         "dirty": False,
     }

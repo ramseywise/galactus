@@ -57,11 +57,14 @@ import logging
 import os
 import sys
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 POC_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA = POC_ROOT / "data" / "lending_club_2015Q4.csv"
 DEFAULT_REPORT = POC_ROOT / "docs" / "report.html"
+#: runs/_index/ — the committed record index, one file per training execution.
+INDEX_ROOT = POC_ROOT.parents[1] / "_index"
 
 # --- toolkit import ---------------------------------------------------------------
 # Done before the `ml.*` imports so the failure is a sentence, not a stack trace.
@@ -71,6 +74,7 @@ if _ml_root:
 
 try:
     import experiments.record  # noqa: F401 — proves the rendered tree includes experiments/
+    from experiments.io import write_record
 
     from ml.reporting.html import write_report
     from ml.workflows.classification import run_classification
@@ -103,6 +107,16 @@ logger = logging.getLogger("ml_lending.run")
 
 #: The dry-run's model set: venv-available only (no lightgbm in galactus's `ml` group).
 DRY_RUN_MODELS = ["logistic"]
+
+
+def record_destination(*, dry_run: bool, frame_hash: str, now: datetime, report_path: Path) -> Path:
+    """Where a run's record lands: `runs/_index/{utc_timestamp}-{frame_hash[:8]}.json`
+    for real runs (committed, Key Decision 7); the identical format beside the temp
+    report for dry-runs, which never write into the index (Key Decision 5)."""
+    name = f"{now:%Y%m%dT%H%M%SZ}-{frame_hash[:8]}.json"
+    if dry_run:
+        return report_path.parent / name
+    return INDEX_ROOT / name
 
 
 def run_pipeline(
@@ -204,8 +218,8 @@ def main() -> int:
         summary_json=args.summary_json,
     )
 
-    # In-memory record assembly — construction re-fires the registry's own validation.
-    # Persistence to runs/_index/ is Step 7, blocked on AIT#83's `experiments/io.py`.
+    # Record assembly — construction re-fires the registry's own validation — then
+    # persistence via the registry's serializer (AIT#83), never a local writer.
     record = assemble_run_record(result, df.drop(columns=[GROUP_COL]), args)
     logger.info(
         "run record assembled: %s=%s (code %s, frame %s)",
@@ -214,6 +228,16 @@ def main() -> int:
         record.code.git_sha,
         record.data.frame_hash[:12],
     )
+    written = write_record(
+        record,
+        record_destination(
+            dry_run=args.dry_run,
+            frame_hash=record.data.frame_hash,
+            now=datetime.now(UTC),
+            report_path=report_path,
+        ),
+    )
+    logger.info("run record written: %s", written)
 
     print(json.dumps(summary, indent=1, default=str))
     return 0

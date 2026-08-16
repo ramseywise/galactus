@@ -70,14 +70,18 @@ def test_code_state_carries_a_real_sha(dry_run_record):
 
 @requires_toolkit
 def test_resolved_config_carries_the_toolkit_state(dry_run_record):
-    from experiments.record import NotApplicable
-
     toolkit = dry_run_record.execution.resolved_config["toolkit"]
     assert toolkit["root"], "the toolkit root must be recorded when ML_PACKAGE_ROOT is set"
     # A rendered tree inside a git repo records its SHA; a tree outside version control
-    # records a reasoned NotApplicable. Either is a recordable answer; None never is.
-    assert _is_real_sha(toolkit["git_sha"]) or isinstance(toolkit["git_sha"], NotApplicable)
-    assert toolkit["git_sha"] is not None
+    # records a reasoned tagged NotApplicable (JSON-native, since resolved_config is a
+    # plain pass-through for `experiments.io`). Either is a recordable answer; None
+    # never is.
+    sha = toolkit["git_sha"]
+    is_tagged_na = (
+        isinstance(sha, dict) and set(sha) == {"not_applicable"} and sha["not_applicable"]["reason"]
+    )
+    assert _is_real_sha(sha) or is_tagged_na
+    assert sha is not None
 
 
 @requires_toolkit
