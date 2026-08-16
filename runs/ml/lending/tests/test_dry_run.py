@@ -30,10 +30,23 @@ TOOLKIT_SKIP_REASON = (
 
 
 def _toolkit_available() -> bool:
+    """Gate on the env var FIRST, then prove the imports.
+
+    The bare-import probe fraud's tests use is not enough here: galactus vendors a
+    partial `ml/` copy at the repo root, and running alongside `review/tests` (a
+    package chain) puts the repo root on `sys.path` — the probe would then find the
+    vendored copy, un-skip these tests, and run them against a tree with no
+    `experiments/`. The plan's posture is explicit: skip when `ML_PACKAGE_ROOT` is
+    unset, full stop.
+    """
     root = os.environ.get("ML_PACKAGE_ROOT")
-    if root and root not in sys.path:
+    if not root:
+        return False
+    if root not in sys.path:
         sys.path.insert(0, root)
     try:
+        import experiments.record  # noqa: F401
+
         import ml.workflows.classification  # noqa: F401
     except Exception:  # noqa: BLE001 — any import failure means "cannot test", not "crash"
         return False
