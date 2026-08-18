@@ -38,9 +38,14 @@ ml-lending/data/
 ml-lending/docs/report.html
 # Phase 2 poc frame: a copy of lebanese-blonde's sample. Real records; never committed.
 runs/ml/fraud/data/
+# Credit poc — same PII rationale as lending/fraud above.
+runs/ml/credit/data/
+!runs/ml/credit/data/.gitkeep
 # Generated report embeds distributional detail derived from those records — same
 # rationale as the ml-lending report.html line above.
 runs/ml/fraud/docs/report.html
+# Third-party recruiting brief — verbatim copyrighted content, framing restated in code.
+runs/ml/customer segmentation/Trade Republic_Data Science Challenge.pdf
 # Segment centroids and cluster sizes over 29,096 real customers — aggregates derived
 # from real records are still real records, same rationale as the fraud report above.
 # The raw CSVs need no rule here: `*.csv` below already covers them.
