@@ -1,7 +1,7 @@
 # credit — tabular ML prototype
 
 Reference POC for the **ML branch** of `/prototype-genesis`, the way
-`pocs/ai/marketing-comms/` is the reference for the AI branch.
+`runs/ai/marketing-comms/` is the reference for the AI branch.
 
 Binary classification: predict credit default from aggregated account history.
 
@@ -12,7 +12,7 @@ will not have it. Restore it with:
 
 ```bash
 cp ~/workspace/lebanese-blonde/src/data/dataset.csv \
-   pocs/ml/credit/data/credit_default.csv
+   runs/ml/credit/data/credit_default.csv
 ```
 
 Semicolon-delimited. 800 rows × 43 columns, target `default`.
@@ -29,28 +29,39 @@ fold, fold-to-fold variance dwarfs any plausible model difference. This sample d
 the mechanics honestly; it does not produce a trustworthy model. The full extract (the
 original README cites 90k customers, 1.4% default) is what a real run needs.
 
+**The headline result here is an anti-finding.** Making *that* reproducible is cheap and
+worth doing; making a *model metric* reproducible is not, because no metric computed on
+this frame is trustworthy. Unlike [`../fraud/`](../fraud), this is recorded as prose only
+— fraud earns a machine-readable `refusal` block in its `summary.json`, backed by a
+tested `sufficiency.py` guard. Credit has no harness to hang one on yet. Deferred, not
+declined.
+
+The 800-row CSV is a **stand-in**, not this run's intended frame. Frame sourcing (Kaggle
+or synthetic) is unresolved across every ML run here — see the reunification plan doc's
+Open Questions.
+
 ## Layout
 
 ```
-notebooks/01-eda.ipynb   EDA narrative — thin cells that call src/eda.py and show
+notebooks/01-eda.ipynb   EDA narrative — thin cells that call notebooks/eda.py and show
                          the output inline; bivariate-first, templated from the
                          operator's own 2020 lebanese-blonde exploration notebook
-src/eda.py               the EDA functions themselves — load / analyze / plot
+notebooks/eda.py         the EDA functions themselves — load / analyze / plot
 src/run.py               run script (gate 3 output)
 data/                    gitignored
 ```
 
 **The notebook holds narrative, not logic.** A markdown cell says what a step is for,
-a code cell makes one call into `src/eda.py`, and the output renders under it. The
+a code cell makes one call into `notebooks/eda.py`, and the output renders under it. The
 analysis lives in the module where it is diffable, importable, and testable — a
 notebook that carries its own logic can only be reviewed by re-running it.
 
-`src/eda.py:column_plan` wraps `ml.transform.columns.infer_column_types` rather than
+`notebooks/eda.py:column_plan` wraps `ml.transform.columns.infer_column_types` rather than
 re-deriving dtypes, so the notebook's view of the columns and `run.py`'s view come
 from one implementation and cannot drift apart.
 
 ```bash
-cd pocs/ml/credit/notebooks && uv run jupyter lab   # then open 01-eda.ipynb
+cd runs/ml/credit/notebooks && uv run jupyter lab   # then open 01-eda.ipynb
 ```
 
 Shipped with outputs stripped. Re-running it top to bottom is the check that it still
@@ -84,5 +95,5 @@ shorter with a logged warning. `uv add --group ml catboost lightgbm` to enable t
 notebooks, Flask endpoint, Docker, Elastic Beanstalk. The 2020 notebooks are in HEAD, with
 a richer set in commit `4391492` (including separate LabelEncoding / OrdinalEncoding
 annexes). Its EDA structure is what `01-eda.ipynb` is templated from — three API changes were
-ported forward into `src/eda.py` (`np.object`/`np.bool`, `sns.distplot`, a single-column
+ported forward into `notebooks/eda.py` (`np.object`/`np.bool`, `sns.distplot`, a single-column
 `get_dummies` that silently mangled its assignment).

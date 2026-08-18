@@ -17,11 +17,14 @@ Gate-1a config (confirmed with the operator):
 
 Still open, and deliberately not defaulted:
 
-    label horizon   `default` has no stated window. BLOCKING for the threshold.
+    label horizon   PROVISIONAL 2026-08-18: 90 days past due (a Basel-style
+                    convention, NOT derived from this extract). Still BLOCKING for
+                    any shipped threshold — a sourced frame's own label definition
+                    supersedes this. Nothing consumes it yet.
     splitter        gate 1b — needs the EDA answer on recurrence/time structure
     cost ratio      a *direction* was given, not a ratio; see COST_FN/COST_FP
 
-Run:  uv run python pocs/ml/credit/src/run.py [--models logistic,catboost]
+Run:  uv run python runs/ml/credit/src/run.py [--models logistic,catboost]
 """
 
 from __future__ import annotations
@@ -38,12 +41,12 @@ import pandas as pd
 # (marketing-comms/evals/run.py, ml/lending/src/run.py): prepend the root.
 #
 # The `remove` is load-bearing, not tidying. Python puts the script's own directory
-# on sys.path first, and `pocs/ml/` — having no __init__.py — is a *namespace*
+# on sys.path first, and `runs/ml/` — having no __init__.py — is a *namespace*
 # package named `ml`. It therefore satisfies `import ml` while containing none of
 # the real modules, so `ml.evaluation` fails with a ModuleNotFoundError that reads
 # like a missing dependency rather than a shadowed package.
 # parents[4], not [3]: src → credit → ml → pocs → <root>. Getting this wrong lands on
-# `pocs/`, whose `ml/` subdirectory then satisfies `import ml` as a namespace package
+# `runs/`, whose `ml/` subdirectory then satisfies `import ml` as a namespace package
 # while containing none of the real modules.
 _ROOT = Path(__file__).resolve().parents[4]
 if not (_ROOT / "ml" / "__init__.py").exists():
@@ -100,7 +103,7 @@ def load(path: Path = DATA) -> pd.DataFrame:
         raise FileNotFoundError(
             f"{path} not found — it is gitignored (*.csv). Restore it with:\n"
             "  cp ~/workspace/lebanese-blonde/src/data/dataset.csv "
-            "pocs/ml/credit/data/credit_default.csv"
+            "runs/ml/credit/data/credit_default.csv"
         )
 
     df = pd.read_csv(path, sep=SEP)

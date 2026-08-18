@@ -24,13 +24,13 @@ This skill picks the branch first, then walks it.
 ## Usage
 
 ```bash
-/prototype-genesis [--branch ai|ml] [--poc pocs/<branch>/<slug>] [--execute]
+/prototype-genesis [--branch ai|ml] [--run runs/<branch>/<slug>] [--execute]
 ```
 
 | Arg | Default | Description |
 |-----|---------|-------------|
 | `--branch` | ask at gate 0 | Skip the routing question when you already know |
-| `--poc` | derived from the problem name | Where the prototype lands |
+| `--run` | derived from the problem name | Where the run lands, under `runs/<branch>/` |
 | `--execute` | off — **dry-run** | Without it, every gate proposes and waits |
 
 **Dry-run is the default and it is not a formality.** Without `--execute`, this skill
@@ -84,7 +84,7 @@ interleave badly and the specs contradict each other on purpose.
 | Specs loaded | `.claude/specs/agent-*.md` (start `agent-architecture`), plus `agent-uncertainty` | `python.md` only; **no `agent-*` spec is read** |
 | Design skill | `/scope-poc` → `/project-genesis` | this skill's gates 1–7 |
 | Payload | `src/` agents, evals, guardrails | `ml/` — vendored at repo root, 33 modules |
-| Reference POC | `pocs/ai/marketing-comms/` (277 tests) | `pocs/ml/credit/` |
+| Reference run | `runs/ai/marketing-comms/` (277 tests) | `runs/ml/credit/` |
 | Dominant risk | ungrounded generation, silent contract breach | **leakage**, imbalance, uncalibrated scores |
 
 **Say which specs you are skipping and why.** "ML branch — I am not loading the ten
@@ -242,10 +242,10 @@ This is the gate that makes the hour work, and it is deliberately two things at 
 the candidate list from gate 2. Nothing is invented: the workflow already handles per-fold
 fitting, out-of-fold prediction, calibration, and threshold choice.
 
-**The operator opens the notebook** — `pocs/ml/credit/notebooks/01-eda.ipynb`, templated
+**The operator opens the notebook** — `runs/ml/credit/notebooks/01-eda.ipynb`, templated
 from the operator's own 2020 EDA. Bivariate-first by design: every section compares a
 feature against the target rather than cataloguing columns. Its cells are thin calls into
-`pocs/ml/credit/src/eda.py`, which is where the analysis actually lives.
+`runs/ml/credit/notebooks/eda.py`, which is where the analysis actually lives.
 
 Say both halves out loud when the gate opens, and say where to look:
 
@@ -338,8 +338,8 @@ Then **write it back**, in the right place:
 | Gap | Lands in |
 |---|---|
 | A question asked badly, or missing | this file's gate |
-| A missing notebook cell | `pocs/ml/credit/notebooks/01-eda.ipynb` (narrative) |
-| A missing EDA function | `pocs/ml/credit/src/eda.py` (logic) |
+| A missing notebook cell | `runs/ml/credit/notebooks/01-eda.ipynb` (narrative) |
+| A missing EDA function | `runs/ml/credit/notebooks/eda.py` (logic) |
 | A missing pipeline capability | `ml/` — and upstream in `ai-project-template` |
 | Something the template's ML branch needs | `.claude/docs/plans/` — the ML-branch spec |
 | A convention that should be enforced, not asked | a hook, a linter rule, or a test |

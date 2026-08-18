@@ -34,7 +34,7 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure
 
-# Same sys.path dance as `run.py`, and load-bearing for the same reason: `pocs/ml/`
+# Same sys.path dance as `run.py`, and load-bearing for the same reason: `runs/ml/`
 # has no __init__.py, so it is a *namespace* package named `ml` that satisfies
 # `import ml` while containing none of the real modules. Prepending the repo root
 # without removing this directory's parent gets a ModuleNotFoundError on
@@ -89,7 +89,7 @@ def load(path: Path = DATA, sep: str = SEP, target: str = TARGET) -> pd.DataFram
         raise FileNotFoundError(
             f"{path} not found — it is gitignored (*.csv). Restore it with:\n"
             "  cp ~/workspace/lebanese-blonde/src/data/dataset.csv "
-            "pocs/ml/credit/data/credit_default.csv"
+            "runs/ml/credit/data/credit_default.csv"
         )
 
     df = pd.read_csv(path, sep=sep)

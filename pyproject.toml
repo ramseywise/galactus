@@ -109,6 +109,7 @@ testpaths = [
     "runs/ml/customer segmentation/tests",
     "runs/ml/fraud/tests",
     "runs/ml/lending/tests",
+    "experiments/tests",
 ]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root
