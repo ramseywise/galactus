@@ -41,6 +41,8 @@ runs/ml/fraud/data/
 # Generated report embeds distributional detail derived from those records — class
 # balances, reliability bins, threshold sweeps. Derived from real data is still real data.
 runs/ml/fraud/docs/report.html
+# Third-party recruiting brief — verbatim copyrighted content, framing restated in code.
+runs/ml/customer segmentation/Trade Republic_Data Science Challenge.pdf
 # Segment centroids and cluster sizes over 29,096 real customers — aggregates derived
 # from real records are still real records, same rationale as the fraud report above.
 # The raw CSVs need no rule here: `*.csv` below already covers them.
