@@ -62,15 +62,14 @@ def _toolkit_code_state() -> dict[str, object]:
     if toolkit_root:
         state = capture_code_state(repo=Path(toolkit_root))
         return {"root": toolkit_root, "git_sha": _tagged(state.git_sha), "dirty": state.dirty}
+    # ml/ and experiments/ are first-party packages at the repo root — fingerprint
+    # the repo itself rather than returning None (which test_record.py:74 rightly
+    # rejects: a record must always name a fingerprintable tree).
+    state = capture_code_state(repo=GALACTUS_ROOT)
     return {
-        "root": None,
-        "git_sha": _tagged(
-            NotApplicable(
-                "ML_PACKAGE_ROOT unset — the toolkit reached sys.path by other means "
-                "(e.g. PYTHONPATH in a test env), so there is no tree to fingerprint"
-            )
-        ),
-        "dirty": False,
+        "root": str(GALACTUS_ROOT / "ml"),
+        "git_sha": _tagged(state.git_sha),
+        "dirty": state.dirty,
     }
 
 

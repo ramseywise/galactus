@@ -43,8 +43,8 @@ def _toolkit_available() -> bool:
 requires_toolkit = pytest.mark.skipif(
     not _toolkit_available(),
     reason=(
-        "the ML toolkit has no source in this checkout (ml/ holds only stale __pycache__) "
-        "and ML_PACKAGE_ROOT is unset, so run.py cannot be imported"
+        "ml.workflows.classification is not importable — ml/ is a first-party "
+        "package at the repo root (36 tracked .py files)"
     ),
 )
 

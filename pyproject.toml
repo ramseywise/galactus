@@ -110,9 +110,10 @@ testpaths = [
     "runs/ml/fraud/tests",
     "runs/ml/lending/tests",
     "experiments/tests",
+    "runs/_shared/tests",
 ]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root
 # has to be declared here. `runs/ai/marketing-comms/` is on the path too: `evals/` is a
 # script directory imported as `evals.run` by the case study's `tests/test_evals.py`.
-pythonpath = ["runs/ai/marketing-comms/src", "runs/ai/marketing-comms"]
+pythonpath = [".", "runs/ai/marketing-comms/src", "runs/ai/marketing-comms"]
