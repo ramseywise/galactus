@@ -75,9 +75,11 @@ fi
 # --- Tests (only if a test runner exists and changed files touch src/) ---
 if echo "$changed_py" | grep -qE '^(src/|core/|app/)'; then
   if [ -f "pyproject.toml" ] && grep -q "pytest" pyproject.toml 2>/dev/null; then
-    # Prefer tests/unit/ to avoid e2e tests that need running servers
+    # Skip e2e tests that need running servers; prefer tests/unit/ where it exists
     if [ -d "tests/unit" ]; then
       test_output=$(uv run pytest tests/unit/ --tb=short -q --no-header -x 2>&1 | tail -10 || true)
+    elif [ -d "tests/e2e" ]; then
+      test_output=$(uv run pytest tests/ --ignore=tests/e2e --tb=short -q --no-header -x 2>&1 | tail -10 || true)
     else
       test_output=$(uv run pytest --tb=short -q --no-header -x 2>&1 | tail -10 || true)
     fi

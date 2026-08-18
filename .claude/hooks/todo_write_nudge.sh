@@ -15,6 +15,7 @@ printf '%s' "$count" > "$count_file"
 
 if [ "$count" -eq 100 ]; then
   warn "HEAVY SESSION: 100 Bash calls this session — consider TaskCreate/TodoWrite to track progress, or compact if past a phase boundary."
+  log_event "todo_write_nudge" 0 "heavy-session:100-bash-calls"
 fi
 
 exit 0

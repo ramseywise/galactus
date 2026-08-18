@@ -135,6 +135,6 @@ for; here, editing `.claude/hooks/` changes nothing at runtime.
 
 This is the root of galactus#20: the global copies were behind, and the repo-local ones
 everybody was editing were never invoked. **Fix a hook in `~/.claude/hooks/` first, then
-re-vendor, and keep the two byte-identical.** `plan_status_validate.sh`,
-`plan_transition_validate.sh`, and both test suites are in sync as of 2026-08-15; `cmp`
-is the check.
+re-vendor, and keep the two byte-identical.** Parity is enforced by
+`hook_parity_check.sh` (fires once per session on `UserPromptSubmit`), which iterates
+the vendored set and warns on any `cmp` mismatch or missing global counterpart.
