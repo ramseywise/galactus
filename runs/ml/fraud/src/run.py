@@ -62,6 +62,7 @@ if _ml_root:
     sys.path.insert(0, _ml_root)
 
 try:
+    import numpy as np
     import pandas as pd
     from ml.evaluation.splitting import make_splitter
     from ml.workflows.classification import run_classification
@@ -82,6 +83,12 @@ logger = logging.getLogger("ml_fraud.run")
 
 SEED = 42
 TARGET = "default"
+
+# Synthetic dry-run defaults — two shapes, testing both guard branches.
+DRY_RUN_ROWS_REFUSE = 800
+DRY_RUN_POSITIVES_REFUSE = 14  # too few per fold → guard refuses
+DRY_RUN_ROWS_PASS = 2000
+DRY_RUN_POSITIVES_PASS = 200  # enough per fold → guard passes
 
 # --- decisions from the plan's research phase --------------------------------------
 # Each constant below is a finding recorded in the plan doc, not a runtime inference.
@@ -116,6 +123,29 @@ AGE_FAIRNESS_NOTE = (
 # extract of the same frame arrives and the guard passes.
 COST_FP = 1.0
 COST_FN = 10.0
+
+
+def build_synthetic_frame(
+    n_rows: int = DRY_RUN_ROWS_REFUSE,
+    n_positives: int = DRY_RUN_POSITIVES_REFUSE,
+    seed: int = SEED,
+) -> pd.DataFrame:
+    """A synthetic frame matching the real column contract for dry-run testing.
+
+    Includes a `uuid` column so the identifier-drop path is exercised, and the
+    `default` target with the requested positive count.
+    """
+    rng = np.random.default_rng(seed)
+    n_features = 10
+    data = rng.standard_normal((n_rows, n_features))
+    columns = [f"feat_{i}" for i in range(n_features)]
+    df = pd.DataFrame(data, columns=columns)
+    df["uuid"] = [f"synth-{i:06d}" for i in range(n_rows)]
+    target = np.zeros(n_rows, dtype=int)
+    target[:n_positives] = 1
+    rng.shuffle(target)
+    df[TARGET] = target
+    return df
 
 
 def build_frame(csv_path: Path) -> pd.DataFrame:
@@ -248,11 +278,22 @@ def main() -> int:
         default=None,
         help="write the aggregate summary here (metrics only, no row data)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="use a synthetic frame instead of real data; never writes to runs/_index/",
+    )
+    parser.add_argument("--n-rows", type=int, default=DRY_RUN_ROWS_REFUSE)
+    parser.add_argument("--n-positives", type=int, default=DRY_RUN_POSITIVES_REFUSE)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
-    df = build_frame(args.data)
+    if args.dry_run:
+        df = build_synthetic_frame(n_rows=args.n_rows, n_positives=args.n_positives, seed=SEED)
+        logger.info("dry-run: synthetic frame %d rows, %d positives", args.n_rows, args.n_positives)
+    else:
+        df = build_frame(args.data)
     split_plan = make_splitter(n_splits=args.n_splits, random_state=SEED)
     y = df[TARGET].to_numpy()
 

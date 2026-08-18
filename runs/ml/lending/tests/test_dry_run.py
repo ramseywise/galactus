@@ -24,25 +24,20 @@ _POC = Path(__file__).resolve().parents[1]
 _SRC = _POC / "src"
 
 TOOLKIT_SKIP_REASON = (
-    "dry-run tests need ML_PACKAGE_ROOT pointing at a rendered ai-project-template "
-    "tree with an importable `ml` package; it is unset or not importable here"
+    "ml.workflows.classification or experiments.record is not importable — "
+    "both are first-party packages at the repo root"
 )
 
 
 def _toolkit_available() -> bool:
-    """Gate on the env var FIRST, then prove the imports.
+    """Gate on whether the imports actually succeed, not on an env var.
 
-    The bare-import probe fraud's tests use is not enough here: galactus vendors a
-    partial `ml/` copy at the repo root, and running alongside `review/tests` (a
-    package chain) puts the repo root on `sys.path` — the probe would then find the
-    vendored copy, un-skip these tests, and run them against a tree with no
-    `experiments/`. The plan's posture is explicit: skip when `ML_PACKAGE_ROOT` is
-    unset, full stop.
+    Both `ml/` and `experiments/` are first-party packages tracked at the repo root
+    (git ls-files ml → 36 files; experiments/ → 10 files). ML_PACKAGE_ROOT, when set,
+    adds an additional path — but its absence no longer gates the skip.
     """
     root = os.environ.get("ML_PACKAGE_ROOT")
-    if not root:
-        return False
-    if root not in sys.path:
+    if root and root not in sys.path:
         sys.path.insert(0, root)
     try:
         import experiments.record  # noqa: F401

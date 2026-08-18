@@ -77,7 +77,8 @@ if _ml_root:
 
 try:
     import experiments.record  # noqa: F401 — proves the rendered tree includes experiments/
-    from experiments.io import write_record
+
+    from runs._shared.parity import persist
 
     from ml.reporting.html import write_report
     from ml.workflows.classification import run_classification
@@ -231,9 +232,10 @@ def main() -> int:
         record.code.git_sha,
         record.data.frame_hash[:12],
     )
-    written = write_record(
+    written = persist(
         record,
-        record_destination(
+        dry_run=args.dry_run,
+        target=record_destination(
             dry_run=args.dry_run,
             frame_hash=record.data.frame_hash,
             now=datetime.now(UTC),

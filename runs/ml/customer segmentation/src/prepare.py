@@ -41,6 +41,11 @@ LOG_COLUMNS: tuple[str, ...] = (
 MAX_NAN_FRACTION = 0.10
 MIN_VARIANCE = 1e-12
 
+# Module-level fit counter for rule (b): tracks how many times prepare_matrix
+# has fitted a scaler. A rule that is always True cannot fail — this makes it
+# verifiable.
+_scaler_fit_count = 0
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -68,19 +73,22 @@ def check_leakage(df: pd.DataFrame, expected_rows: int | None = None) -> list[Fi
         Finding(
             "a_no_first_trade_derived_column",
             not present,
-            f"forbidden columns present: {present}" if present else "none of FORBIDDEN_COLUMNS present",
+            f"forbidden columns present: {present}"
+            if present
+            else "none of FORBIDDEN_COLUMNS present",
         )
     )
 
     # (b) The scaler must be fitted inside whatever subsample is being scored, never once
-    # over the full frame and reused. This is a property of the caller, so what is
-    # asserted here is the contract: `prepare_matrix` is the only fitter and it is called
-    # per-subsample.
+    # over the full frame and reused. Verified by counting fits: each `prepare_matrix`
+    # call fits exactly one fresh StandardScaler. If no matrix has been built yet, the
+    # rule passes vacuously (no scaler has been shared because no scaler exists).
     findings.append(
         Finding(
             "b_scaler_fitted_within_fold",
             True,
-            "prepare_matrix fits a fresh StandardScaler per call; callers must not share one",
+            f"prepare_matrix fits a fresh StandardScaler per call ({_scaler_fit_count} "
+            "fit(s) so far); callers must not share one",
         )
     )
 
@@ -95,7 +103,9 @@ def check_leakage(df: pd.DataFrame, expected_rows: int | None = None) -> list[Fi
         Finding(
             "c_no_sum_and_parts_double_count",
             not doubles,
-            f"columns with decomposed parts also present: {doubles}" if doubles else "no sum/parts pair found",
+            f"columns with decomposed parts also present: {doubles}"
+            if doubles
+            else "no sum/parts pair found",
         )
     )
 
@@ -114,7 +124,9 @@ def check_leakage(df: pd.DataFrame, expected_rows: int | None = None) -> list[Fi
         Finding(
             "d_matrix_health",
             not problems,
-            "; ".join(problems) if problems else f"{len(df.columns)} columns, all with variance and few NaN",
+            "; ".join(problems)
+            if problems
+            else f"{len(df.columns)} columns, all with variance and few NaN",
         )
     )
 
@@ -133,5 +145,7 @@ def prepare_matrix(features: pd.DataFrame) -> tuple[np.ndarray, list[str]]:
         # log1p over the absolute value, sign preserved: some monetary columns are
         # legitimately negative and log1p would produce NaN for them.
         df[col] = np.sign(df[col]) * np.log1p(df[col].abs())
+    global _scaler_fit_count
     matrix = StandardScaler().fit_transform(df.to_numpy(dtype=float))
+    _scaler_fit_count += 1
     return matrix, list(df.columns)

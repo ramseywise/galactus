@@ -21,7 +21,7 @@ Still open, and deliberately not defaulted:
     splitter        gate 1b — needs the EDA answer on recurrence/time structure
     cost ratio      a *direction* was given, not a ratio; see COST_FN/COST_FP
 
-Run:  uv run python pocs/ml/credit/src/run.py [--models logistic,catboost]
+Run:  uv run python runs/ml/credit/src/run.py [--models logistic,catboost]
 """
 
 from __future__ import annotations
@@ -34,16 +34,16 @@ from pathlib import Path
 import pandas as pd
 
 # `pythonpath` in pyproject.toml is pytest-only, so a plain `python run.py` cannot see
-# `ml/` at the repo root. Same convention as the other POCs here
+# `ml/` at the repo root. Same convention as the other runs here
 # (marketing-comms/evals/run.py, ml/lending/src/run.py): prepend the root.
 #
 # The `remove` is load-bearing, not tidying. Python puts the script's own directory
-# on sys.path first, and `pocs/ml/` — having no __init__.py — is a *namespace*
+# on sys.path first, and `runs/ml/` — having no __init__.py — is a *namespace*
 # package named `ml`. It therefore satisfies `import ml` while containing none of
 # the real modules, so `ml.evaluation` fails with a ModuleNotFoundError that reads
 # like a missing dependency rather than a shadowed package.
-# parents[4], not [3]: src → credit → ml → pocs → <root>. Getting this wrong lands on
-# `pocs/`, whose `ml/` subdirectory then satisfies `import ml` as a namespace package
+# parents[4], not [3]: src → credit → ml → runs → <root>. Getting this wrong lands on
+# `runs/`, whose `ml/` subdirectory then satisfies `import ml` as a namespace package
 # while containing none of the real modules.
 _ROOT = Path(__file__).resolve().parents[4]
 if not (_ROOT / "ml" / "__init__.py").exists():
@@ -60,14 +60,27 @@ from ml.workflows.classification import run_classification  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(levelname)-8s %(message)s")
 logger = logging.getLogger("credit")
 
-DATA = Path(__file__).resolve().parents[1] / "data" / "credit_default.csv"
-SEP = ";"
+DATA = Path(__file__).resolve().parents[1] / "data" / "uci_default_of_credit_card_clients.csv"
+SEP = ","
 TARGET = "default"
 
-# Identifier, not a feature. A subject key is usually a near-perfect predictor
-# of its own rows, so it never enters the frame — and if recurrence turns out to
-# matter (gate 1b), it becomes the *group* column rather than an input.
-ID_COLS = ["uuid"]
+# UCI header is `ID, X1..X23, Y` — renamed at load to match the variables table.
+# The real column names from UCI's variables table, used after renaming.
+UCI_COLUMN_MAP = {
+    "ID": "ID", "X1": "LIMIT_BAL", "X2": "SEX", "X3": "EDUCATION", "X4": "MARRIAGE",
+    "X5": "AGE", "X6": "PAY_0", "X7": "PAY_2", "X8": "PAY_3", "X9": "PAY_4",
+    "X10": "PAY_5", "X11": "PAY_6", "X12": "BILL_AMT1", "X13": "BILL_AMT2",
+    "X14": "BILL_AMT3", "X15": "BILL_AMT4", "X16": "BILL_AMT5", "X17": "BILL_AMT6",
+    "X18": "PAY_AMT1", "X19": "PAY_AMT2", "X20": "PAY_AMT3", "X21": "PAY_AMT4",
+    "X22": "PAY_AMT5", "X23": "PAY_AMT6", "Y": "default",
+}
+
+# Identifier, not a feature. UCI's `ID` is a sequential integer.
+ID_COLS = ["ID"]
+
+# Leakage exclusion list — September 2005 payment/billing columns are the leak
+# candidates against an October label. Authored fresh for UCI's schema.
+LEAKAGE_CANDIDATES = ["BILL_AMT1", "PAY_AMT1", "PAY_0"]
 
 MODELS = ["logistic", "random_forest", "catboost"]
 
@@ -91,19 +104,33 @@ COST_FN: float | None = None
 
 
 def load(path: Path = DATA) -> pd.DataFrame:
-    """Read the frame and drop unlabelled rows.
+    """Read the UCI frame, rename columns, drop ID and unlabelled rows.
 
-    An unlabelled row is not a training example. Imputing the target would
-    invent outcomes, so these are dropped and the count is logged.
+    The UCI file uses `X1..X23, Y` as headers — renamed to the real names from
+    the variables table so downstream code reads `LIMIT_BAL`, not `X1`.
     """
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} not found — it is gitignored (*.csv). Restore it with:\n"
-            "  cp ~/workspace/lebanese-blonde/src/data/dataset.csv "
-            "pocs/ml/credit/data/credit_default.csv"
+            f"{path} not found — it is gitignored (*.csv). Download from:\n"
+            "  https://archive.ics.uci.edu/static/public/350/data.csv\n"
+            "  and save as runs/ml/credit/data/uci_default_of_credit_card_clients.csv"
         )
 
     df = pd.read_csv(path, sep=SEP)
+
+    # Rename UCI's cryptic headers to real column names
+    rename = {k: v for k, v in UCI_COLUMN_MAP.items() if k in df.columns and k != v}
+    if rename:
+        df = df.rename(columns=rename)
+        logger.info("renamed %d UCI columns to real names", len(rename))
+
+    # Drop duplicates (35 known in UCI frame)
+    n_before = len(df)
+    df = df.drop_duplicates(subset=[c for c in df.columns if c not in ID_COLS])
+    n_dupes = n_before - len(df)
+    if n_dupes:
+        logger.info("dropped %d duplicate row(s)", n_dupes)
+
     labelled = df[~df[TARGET].isna()].copy()
     dropped = len(df) - len(labelled)
     if dropped:
@@ -213,7 +240,7 @@ def report(result) -> None:
     if COST_FP is None or COST_FN is None:
         print("threshold:     NOT REPORTED — cost ratio unknown; direction is FN > FP.")
         print("               A 0.5 cutoff is a convention, not a decision.")
-    print("label horizon: UNDEFINED — blocking for any shipped decision rule.")
+    print("label horizon: ONE MONTH (UCI variables table: 'default payment next month')")
 
 
 if __name__ == "__main__":

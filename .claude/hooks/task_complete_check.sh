@@ -44,7 +44,7 @@ if [ -n "$changed_py" ]; then
   # it, a repo that excludes vendored/reference trees (examples/, third_party/)
   # still gets them linted here and blocks on code it does not own.
   set +e
-  lint_output=$(echo "$changed_py" | xargs uvx ruff check --no-fix --force-exclude 2>&1)
+  lint_output=$(printf '%s\n' "$changed_py" | tr '\n' '\0' | xargs -0 uvx ruff check --no-fix --force-exclude 2>&1)
   lint_status=$?
   set -e
   if [ $lint_status -ne 0 ]; then
@@ -54,7 +54,7 @@ if [ -n "$changed_py" ]; then
   # Format check — same exit-status rule (ruff exits 1 when files need
   # reformatting), so this no longer depends on matching output wording.
   set +e
-  format_output=$(echo "$changed_py" | xargs uvx ruff format --check --force-exclude 2>&1)
+  format_output=$(printf '%s\n' "$changed_py" | tr '\n' '\0' | xargs -0 uvx ruff format --check --force-exclude 2>&1)
   format_status=$?
   set -e
   if [ $format_status -ne 0 ]; then

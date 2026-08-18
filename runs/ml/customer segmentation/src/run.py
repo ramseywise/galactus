@@ -57,24 +57,61 @@ def _hash(path: Path) -> str:
     return h.hexdigest()[:16]
 
 
+def _build_synthetic_features(n_customers: int = 500, seed: int = 0) -> pd.DataFrame:
+    """A synthetic feature frame for dry-run testing. Matches the real column contract."""
+    import numpy as np
+
+    rng = np.random.default_rng(seed)
+    data = {}
+    for col in FEATURE_COLUMNS:
+        data[col] = rng.standard_normal(n_customers).astype(float)
+    # Make the skewed columns positive so log1p works
+    from prepare import LOG_COLUMNS
+
+    for col in LOG_COLUMNS:
+        data[col] = np.abs(data[col]) + 0.1
+    return pd.DataFrame(data)
+
+
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0] if __doc__ else "")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="use synthetic features instead of real CSVs; never writes to runs/_index/",
+    )
+    args = parser.parse_args()
+
     DOCS.mkdir(exist_ok=True)
     started = datetime.now(UTC)
     run_id = started.strftime("%Y%m%dT%H%M%SZ")
 
     print(f"run {run_id}")
-    print("loading")
-    trades, report = load_trades(CSV / "trades.csv")
-    instruments = load_instruments(CSV / "instruments.csv")
-    prices = load_prices(CSV / "prices.csv")
-    print(f"  trades {report.rows_in:,} -> {report.rows_out:,} "
-          f"({report.dropped_unparseable_time} unparseable timestamp dropped)")
-    print(f"  instruments {len(instruments):,} | prices {len(prices):,} "
-          f"({prices['date'].nunique()} distinct dates, {int(prices['date'].isna().sum())} NaT)")
 
-    print("building features")
-    features = build_customer_features(trades, instruments, prices)
-    print(f"  {len(features):,} customers x {len(FEATURE_COLUMNS)} features")
+    if args.dry_run:
+        from cluster import RANDOM_STATE
+
+        features = _build_synthetic_features(seed=RANDOM_STATE)
+        print(f"  dry-run: synthetic {len(features)} customers x {len(FEATURE_COLUMNS)} features")
+    else:
+        print("loading")
+        trades, report = load_trades(CSV / "trades.csv")
+        instruments = load_instruments(CSV / "instruments.csv")
+        prices = load_prices(CSV / "prices.csv")
+        print(
+            f"  trades {report.rows_in:,} -> {report.rows_out:,} "
+            f"({report.dropped_unparseable_time} unparseable timestamp dropped)"
+        )
+        print(
+            f"  instruments {len(instruments):,} | prices {len(prices):,} "
+            f"({prices['date'].nunique()} distinct dates, {int(prices['date'].isna().sum())} NaT)"
+        )
+
+        print("building features")
+        features = build_customer_features(trades, instruments, prices)
+        print(f"  {len(features):,} customers x {len(FEATURE_COLUMNS)} features")
 
     # The guard runs, and is printed, BEFORE any score exists. A leakage check written
     # after a good number is a check under pressure to pass.
@@ -82,28 +119,52 @@ def main() -> int:
     findings = check_leakage(features, expected_rows=len(features))
     for finding in findings:
         print(f"  {finding}")
-    clean = all(f.passed for f in findings)
+    # Leakage rules (a, b, c) are data integrity — a FAIL means the matrix is
+    # contaminated and no score from it can be trusted. Rule (d) is matrix health.
+    # A leakage FAIL aborts non-zero; a weak-structure or implausibility result
+    # refuses and exits 0 (a legitimate finding, not a failure).
+    leakage_rules = {
+        "a_no_first_trade_derived_column",
+        "b_scaler_fitted_within_fold",
+        "c_no_sum_and_parts_double_count",
+    }
+    leakage_failures = [f for f in findings if f.rule in leakage_rules and not f.passed]
+    health_failures = [f for f in findings if f.rule not in leakage_rules and not f.passed]
+    clean = not leakage_failures and not health_failures
+
+    if leakage_failures:
+        print("\nABORTING: leakage guard has a FAIL — the matrix is contaminated.")
+        for f in leakage_failures:
+            print(f"  {f}")
+        print("A leak makes every score meaningless. Exit non-zero.")
+        return 1
 
     matrix, columns = prepare_matrix(features)
 
     results = []
     winner = None
-    if not clean:
-        print("\nREFUSING to report a winning k: the leakage guard has at least one FAIL.")
+    if health_failures:
+        print("\nREFUSING to report a winning k: matrix health check failed.")
+        for f in health_failures:
+            print(f"  {f}")
         print("This run exits 0 and reports the refusal — that is the successful outcome here.")
     else:
         print("\nsweeping k")
         results = sweep(matrix, k_range=range(2, 11))
         for r in results:
             flag = "  <- beats both baselines" if r.beats_baselines else ""
-            print(f"  k={r.k:2d}  silhouette={r.silhouette:.4f}  "
-                  f"db={r.davies_bouldin:.3f}  random={r.baseline_random:.4f}  "
-                  f"k2={r.baseline_k2:.4f}{flag}")
+            print(
+                f"  k={r.k:2d}  silhouette={r.silhouette:.4f}  "
+                f"db={r.davies_bouldin:.3f}  random={r.baseline_random:.4f}  "
+                f"k2={r.baseline_k2:.4f}{flag}"
+            )
         winner = best(results)
         print(f"\nchosen k={winner.k} (silhouette {winner.silhouette:.4f})")
         if winner.implausible:
-            print("  SUSPECTED LEAK: silhouette above the implausibility threshold. "
-                  "Treat as a finding, not a result.")
+            print(
+                "  SUSPECTED LEAK: silhouette above the implausibility threshold. "
+                "Treat as a finding, not a result."
+            )
         if not winner.beats_baselines:
             print("  WARNING: no k beat both baselines — the structure here is weak.")
 
@@ -141,15 +202,19 @@ def main() -> int:
 def _write_report(features, columns, findings, results, winner, payload) -> None:
     lines: list[str] = []
     lines.append("# Customer segmentation — results\n")
-    lines.append(f"Run `{payload['run_id']}` · {payload['n_customers']:,} customers · "
-                 f"{len(payload['feature_columns'])} features · "
-                 f"valued at {payload['valuation_date']}\n")
+    lines.append(
+        f"Run `{payload['run_id']}` · {payload['n_customers']:,} customers · "
+        f"{len(payload['feature_columns'])} features · "
+        f"valued at {payload['valuation_date']}\n"
+    )
 
     # Leakage first, deliberately: it is printed before any score in the console and it
     # reads before any score here.
     lines.append("## Leakage check\n")
-    lines.append("Reported before the scores, because a check written after a good number "
-                 "is a check under pressure to pass.\n")
+    lines.append(
+        "Reported before the scores, because a check written after a good number "
+        "is a check under pressure to pass.\n"
+    )
     lines.append("| Rule | Verdict | Detail |")
     lines.append("|---|---|---|")
     for f in findings:
@@ -158,29 +223,41 @@ def _write_report(features, columns, findings, results, winner, payload) -> None
 
     if payload["refused"]:
         lines.append("## Refused\n")
-        lines.append("The guard reported a FAIL, so no winning k is named. "
-                     "The run completed successfully; it declined to report a result.\n")
+        lines.append(
+            "The guard reported a FAIL, so no winning k is named. "
+            "The run completed successfully; it declined to report a result.\n"
+        )
     else:
         lines.append("## The sweep\n")
-        lines.append("Every k is reported, not just the winner, and every score sits "
-                     "beside the two baselines it has to beat.\n")
-        lines.append("| k | silhouette | Davies–Bouldin | random baseline | k=2 baseline | beats both |")
+        lines.append(
+            "Every k is reported, not just the winner, and every score sits "
+            "beside the two baselines it has to beat.\n"
+        )
+        lines.append(
+            "| k | silhouette | Davies–Bouldin | random baseline | k=2 baseline | beats both |"
+        )
         lines.append("|---|---|---|---|---|---|")
         for r in results:
-            lines.append(f"| {r.k} | {r.silhouette:.4f} | {r.davies_bouldin:.3f} | "
-                         f"{r.baseline_random:.4f} | {r.baseline_k2:.4f} | "
-                         f"{'yes' if r.beats_baselines else 'no'} |")
+            lines.append(
+                f"| {r.k} | {r.silhouette:.4f} | {r.davies_bouldin:.3f} | "
+                f"{r.baseline_random:.4f} | {r.baseline_k2:.4f} | "
+                f"{'yes' if r.beats_baselines else 'no'} |"
+            )
         lines.append("")
 
         lines.append(f"## Chosen: k={winner.k}\n")
         if winner.implausible:
-            lines.append("> **Suspected leak.** The silhouette is above the implausibility "
-                         "threshold. On real behavioural data this usually means a column "
-                         "restated the answer. Treated as a finding, not a result.\n")
+            lines.append(
+                "> **Suspected leak.** The silhouette is above the implausibility "
+                "threshold. On real behavioural data this usually means a column "
+                "restated the answer. Treated as a finding, not a result.\n"
+            )
         if not winner.beats_baselines:
-            lines.append("> **Weak structure.** No k beat both baselines. The honest reading "
-                         "is that k-means over these features does not find strong "
-                         "separation — reported rather than hidden.\n")
+            lines.append(
+                "> **Weak structure.** No k beat both baselines. The honest reading "
+                "is that k-means over these features does not find strong "
+                "separation — reported rather than hidden.\n"
+            )
 
         labels = pd.Series(winner.labels, index=features.index, name="segment")
         profile = features.join(labels).groupby("segment").agg(["median"])
@@ -195,9 +272,18 @@ def _write_report(features, columns, findings, results, winner, payload) -> None
         lines.append("")
 
         lines.append("### Median profile per segment\n")
-        keep = ["n_trades", "total_volume", "mean_trade_size", "realized_pnl",
-                "virtual_pnl", "n_instruments", "n_sectors", "sector_coverage",
-                "days_since_last_trade", "tenure_days"]
+        keep = [
+            "n_trades",
+            "total_volume",
+            "mean_trade_size",
+            "realized_pnl",
+            "virtual_pnl",
+            "n_instruments",
+            "n_sectors",
+            "sector_coverage",
+            "days_since_last_trade",
+            "tenure_days",
+        ]
         lines.append("| Segment | " + " | ".join(keep) + " |")
         lines.append("|---" * (len(keep) + 1) + "|")
         for seg in profile.index:

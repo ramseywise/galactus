@@ -59,6 +59,22 @@ runs/ml/fraud/
 └── tests/                  Unit tests for the sufficiency guard
 ```
 
+## Abort vs. refuse — the taxonomy
+
+The parity bar admits two guard outcomes, and they route differently:
+
+| Outcome | Exit code | When | Example |
+|---|---|---|---|
+| **Abort** | non-zero | The matrix is contaminated — a leak makes every score meaningless | Leakage guard FAIL: an identifier column was encoded against the target |
+| **Refuse** | 0 | The matrix is clean but the evidence is insufficient — the run completed and declined to claim what the evidence cannot support | Sufficiency guard: 2–3 positives per fold, threshold arithmetic is not evidence |
+
+This poc demonstrates the **refuse** path. The sufficiency guard (`src/sufficiency.py`)
+never raises, never fits a model, and never does I/O — it returns a verdict. A refusing
+run is a successful run that writes its own limitation into the record.
+
+See also: [`runs/ml/lending/docs/DESIGN-parity.md`](../lending/docs/DESIGN-parity.md)
+Key Decision 6, which states the abort half of this taxonomy.
+
 ## Data handling
 
 The data is a sample of real transaction-level records. It does not get committed, and it
