@@ -1,18 +1,18 @@
 # credit — tabular ML prototype
 
 Reference POC for the **ML branch** of `/prototype-genesis`, the way
-`pocs/ai/marketing-comms/` is the reference for the AI branch.
+`runs/ai/marketing-comms/` is the reference for the AI branch.
 
 Binary classification: predict credit default from aggregated account history.
 
 ## Data
 
-`data/credit_default.csv` is **gitignored** (`.gitignore:39 — *.csv`), so a fresh clone
+`data/credit_default.csv` is **gitignored** (`.gitignore` — `*.csv`), so a fresh clone
 will not have it. Restore it with:
 
 ```bash
 cp ~/workspace/lebanese-blonde/src/data/dataset.csv \
-   pocs/ml/credit/data/credit_default.csv
+   runs/ml/credit/data/credit_default.csv
 ```
 
 Semicolon-delimited. 800 rows × 43 columns, target `default`.
@@ -32,10 +32,10 @@ original README cites 90k customers, 1.4% default) is what a real run needs.
 ## Layout
 
 ```
-notebooks/01-eda.ipynb   EDA narrative — thin cells that call src/eda.py and show
+notebooks/01-eda.ipynb   EDA narrative — thin cells that call eda.py and show
                          the output inline; bivariate-first, templated from the
                          operator's own 2020 lebanese-blonde exploration notebook
-src/eda.py               the EDA functions themselves — load / analyze / plot
+notebooks/eda.py         the EDA functions themselves — load / analyze / plot
 src/run.py               run script (gate 3 output)
 data/                    gitignored
 ```
@@ -45,12 +45,12 @@ a code cell makes one call into `src/eda.py`, and the output renders under it. T
 analysis lives in the module where it is diffable, importable, and testable — a
 notebook that carries its own logic can only be reviewed by re-running it.
 
-`src/eda.py:column_plan` wraps `ml.transform.columns.infer_column_types` rather than
+`notebooks/eda.py:column_plan` wraps `ml.transform.columns.infer_column_types` rather than
 re-deriving dtypes, so the notebook's view of the columns and `run.py`'s view come
 from one implementation and cannot drift apart.
 
 ```bash
-cd pocs/ml/credit/notebooks && uv run jupyter lab   # then open 01-eda.ipynb
+cd runs/ml/credit/notebooks && uv run jupyter lab   # then open 01-eda.ipynb
 ```
 
 Shipped with outputs stripped. Re-running it top to bottom is the check that it still
