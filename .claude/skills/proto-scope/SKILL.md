@@ -41,6 +41,28 @@ twice, second time without the keyword.
 
 ---
 
+## Propose-and-confirm (band 1 budget)
+
+Band 1's 5–10 min budget does not survive 14 blind prompts. Most questions below
+should carry a **proposed answer** the operator confirms or overrides — a
+confirmation costs seconds; an open question costs minutes.
+
+**The routing rule**: a default is safe to apply silently in proportion to how
+cheaply it can be reversed.
+
+| Reversibility | Form | Examples |
+|---|---|---|
+| Trivially reversible (rerun, delete, edit a line) | **Propose-and-confirm**: present a proposed answer, ask "confirm or override?" | Stack choice, template id, data classification, deployment target |
+| Reversible but costly (schema migration, external API commitment) | **Ask with a proposed default**: present the default but require an explicit answer | Database choice, auth provider, multi-tenancy model |
+| **Irreversible** (external write, public commitment, data deletion) | **Always ask open**: no default, no shortcut | `human_approval`, scope commitment to an external stakeholder |
+
+> **Never derive `human_approval`.** A silent default there has an irreversible failure
+> mode — an autonomous agent making an external write nobody sanctioned. It is asked,
+> every time, regardless of budget.
+
+**Re-running after a propose-and-confirm pass is cheap and expected** — the skill reads
+the existing DESIGN.md, ratifies what is resolved, and interviews only the gaps.
+
 ## Interview conventions
 
 **"I don't know" is a first-class answer.** Any question below can be answered
@@ -275,6 +297,16 @@ like to a user (slow? wrong answer? error? silent staleness)? - How would you _n
 
 14. **What's explicitly OUT of scope for the POC?**
     (Name it explicitly — prevents scope creep during build.)
+
+### Step 5.5 — Write decision records
+
+After confirming the design but before writing DESIGN.md, emit a decision record to
+`.claude/docs/decisions/<run-slug>-decisions.md` per the shape in
+`.claude/specs/decision-record-shape.md`. Every decision settled in this interview gets a row
+with its proposed default, outcome (confirmed/overridden), and reversibility class.
+
+This is what makes Step 3's propose-and-confirm routing auditable: the record carries
+the claim that a question was cheap to reverse, and a reviewer can dispute it.
 
 ### Step 6 — Confirm and write DESIGN.md
 

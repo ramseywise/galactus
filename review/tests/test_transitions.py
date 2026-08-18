@@ -12,7 +12,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from review.transitions import LOOP_BACK_EDGE, read_ledger
+from review.transitions import (
+    LOOP_BACK_EDGE,
+    STATUS_TO_BAND,
+    band_summary,
+    classify_edge,
+    read_ledger,
+)
 
 
 def write_ledger(tmp_path: Path, records: list[dict]) -> str:
@@ -429,3 +435,84 @@ def test_a_wholly_backfilled_doc_is_not_a_run(tmp_path: Path) -> None:
     assert result["docs"] == ["live.md"]
     assert result["runs_started"] == 1
     assert result["runs_completed"] == 0, "a backfilled terminal edge is not a completed run"
+
+
+# --- band-aware classification (GAL-27 Step 6) --------------------------------
+
+
+def test_classify_forward() -> None:
+    """PLANNED → REFINED is band 1 → band 2 = forward."""
+    assert classify_edge("PLANNED", "REFINED") == "forward"
+
+
+def test_classify_backward() -> None:
+    """EXECUTED → PLANNED is band 3 → band 1 = backward (the loop-back D10 names)."""
+    assert classify_edge("EXECUTED", "PLANNED") == "backward"
+
+
+def test_classify_lateral() -> None:
+    """REFINED → READY is band 2 → band 2 = lateral."""
+    assert classify_edge("REFINED", "READY") == "lateral"
+
+
+def test_classify_escape_superseded() -> None:
+    """Any transition involving SUPERSEDED is an escape — no band."""
+    assert classify_edge("PLANNED", "SUPERSEDED") == "escape"
+    assert classify_edge("SUPERSEDED", "RESEARCH") == "escape"
+
+
+def test_classify_unknown_state() -> None:
+    """An unrecognized state is also an escape."""
+    assert classify_edge("PLANNED", "BOGUS") == "escape"
+
+
+def test_band_summary_missing_ledger(tmp_path: Path) -> None:
+    result = band_summary(str(tmp_path / "nope.jsonl"))
+    assert result["exists"] is False
+
+
+def test_band_summary_counts(tmp_path: Path) -> None:
+    """A ledger with a backward edge reports it as a loop-back."""
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("doc.md", "RESEARCH", "RESEARCHED"),
+            edge("doc.md", "RESEARCHED", "PLANNED"),
+            edge("doc.md", "PLANNED", "REFINED"),  # forward: band 1 → 2
+            edge("doc.md", "REFINED", "READY"),  # lateral: band 2 → 2
+            edge("doc.md", "READY", "IN_PROGRESS"),  # lateral: band 2 → 2
+            edge("doc.md", "IN_PROGRESS", "EXECUTED"),  # forward: band 2 → 3
+            edge("doc.md", "EXECUTED", "PLANNED"),  # backward: band 3 → 1
+            edge("doc.md", "PLANNED", "REFINED"),  # forward again
+        ],
+    )
+    result = band_summary(path)
+    assert result["exists"] is True
+    assert result["classifications"]["forward"] >= 2
+    assert result["classifications"]["backward"] == 1
+    assert result["classifications"]["lateral"] >= 2
+    assert result["loop_backs_total"] == 1
+    assert result["runs"] == 1
+    assert result["loop_backs_per_run"] == 1.0
+
+
+def test_band_summary_excludes_backfill(tmp_path: Path) -> None:
+    """Backfilled edges are excluded, same as read_ledger."""
+    path = write_ledger(
+        tmp_path,
+        [
+            edge("doc.md", "EXECUTED", "PLANNED", backfill=True),
+            edge("doc.md", "PLANNED", "REFINED"),
+        ],
+    )
+    result = band_summary(path)
+    assert result["loop_backs_total"] == 0, "backfilled backward edge should be excluded"
+    assert result["classifications"].get("backward", 0) == 0
+
+
+def test_status_to_band_covers_all_states() -> None:
+    """Every state in STATE_COMPLETED_PHASE maps to a band (or None for SUPERSEDED)."""
+    from review.models import STATE_COMPLETED_PHASE
+
+    for state in STATE_COMPLETED_PHASE:
+        assert state in STATUS_TO_BAND, f"{state} missing from STATUS_TO_BAND"

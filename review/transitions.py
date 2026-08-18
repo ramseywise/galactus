@@ -42,6 +42,20 @@ from review.models import STATE_COMPLETED_PHASE, TERMINAL_STATES
 
 DEFAULT_LEDGER = ".claude/logs/plan-transitions.jsonl"
 
+# Band contract: Status → band mapping. A band is a view over Status, not a state.
+# SUPERSEDED belongs to no band — it is an escape from the sequence.
+STATUS_TO_BAND: dict[str, int | None] = {
+    "RESEARCH": 1,
+    "RESEARCHED": 1,
+    "PLANNED": 1,
+    "REFINED": 2,
+    "READY": 2,
+    "IN_PROGRESS": 2,
+    "EXECUTED": 3,
+    "COMPLETE": 4,
+    "SUPERSEDED": None,
+}
+
 # The loop-back D10 names: review found blockers and the work item went back to
 # planning. Held as a constant because it is the one edge the graph decision
 # turns on, and a literal buried in a comprehension is not greppable.
@@ -338,4 +352,82 @@ def read_ledger(path: str = DEFAULT_LEDGER) -> dict[str, object]:
         "malformed": malformed,
         "unknown_states": unknown_states,
         "unavailable": _UNAVAILABLE,
+    }
+
+
+# --- Band-aware edge classification (GAL-27 Step 6) --------------------------
+
+
+def classify_edge(from_state: str, to_state: str) -> str:
+    """Classify a transition edge as forward, backward, lateral, or escape.
+
+    - **forward**: moves to a higher band (e.g. PLANNED → REFINED = band 1 → 2)
+    - **backward**: moves to a lower band (e.g. EXECUTED → PLANNED = band 3 → 1)
+    - **lateral**: stays within the same band (e.g. REFINED → READY = band 2 → 2)
+    - **escape**: involves SUPERSEDED (no band) or an unknown state
+    """
+    from_band = STATUS_TO_BAND.get(from_state)
+    to_band = STATUS_TO_BAND.get(to_state)
+
+    if from_band is None or to_band is None:
+        return "escape"
+    if to_band > from_band:
+        return "forward"
+    if to_band < from_band:
+        return "backward"
+    return "lateral"
+
+
+def band_summary(path: str = DEFAULT_LEDGER) -> dict[str, object]:
+    """Band-aware view over the transition ledger.
+
+    Classifies each edge as forward/backward/lateral/escape by band, counts
+    loop-backs per run, and reports per-band transition counts. Built over the
+    same ledger `read_ledger` uses — no new field, no new log, no hook change.
+    """
+    ledger = Path(path)
+    if not ledger.is_file():
+        return {"exists": False, "path": str(path)}
+
+    all_records, _markers, _malformed = _parse(
+        ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    )
+
+    # Exclude backfill edges, same as read_ledger
+    records = [r for r in all_records if r.get("backfill") is not True]
+
+    classifications: Counter[str] = Counter()
+    band_transitions: Counter[int] = Counter()
+    loop_backs_by_doc: Counter[str] = Counter()
+
+    for r in records:
+        from_s, to_s = r["from"], r["to"]
+        cls = classify_edge(from_s, to_s)
+        classifications[cls] += 1
+
+        from_band = STATUS_TO_BAND.get(from_s)
+        to_band = STATUS_TO_BAND.get(to_s)
+        if from_band is not None:
+            band_transitions[from_band] += 1
+        if to_band is not None and to_band != from_band:
+            band_transitions[to_band] += 1
+
+        if cls == "backward":
+            doc = r.get("doc", "")
+            if doc:
+                loop_backs_by_doc[doc] += 1
+
+    docs = sorted({r.get("doc", "") for r in records if r.get("doc")})
+
+    return {
+        "exists": True,
+        "path": str(path),
+        "classifications": dict(classifications),
+        "band_transitions": {f"band_{k}": v for k, v in sorted(band_transitions.items())},
+        "loop_backs_by_doc": dict(loop_backs_by_doc),
+        "loop_backs_total": classifications.get("backward", 0),
+        "loop_backs_per_run": (
+            round(classifications.get("backward", 0) / len(docs), 3) if docs else None
+        ),
+        "runs": len(docs),
     }
