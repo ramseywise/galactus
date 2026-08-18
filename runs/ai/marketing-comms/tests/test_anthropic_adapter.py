@@ -86,6 +86,30 @@ async def test_sends_the_schema_in_output_config(settings, clean_draft):
     assert call["messages"] == [{"role": "user", "content": "prompt"}]
 
 
+async def test_images_travel_as_content_blocks_before_the_prompt(settings, clean_draft):
+    """The vision regression: an image passed to the port must reach the request."""
+    import base64
+
+    adapter, client = _adapter(settings, _json_response(clean_draft))
+    png = b"\x89PNG\r\n\x1a\nfake"
+
+    await adapter.complete_structured("Read this page.", {"type": "object"}, images=[png])
+
+    content = client.messages.calls[0]["messages"][0]["content"]
+    assert content[0]["type"] == "image"
+    assert content[0]["source"]["media_type"] == "image/png"
+    assert base64.standard_b64decode(content[0]["source"]["data"]) == png
+    assert content[-1] == {"type": "text", "text": "Read this page."}
+
+
+async def test_no_images_keeps_plain_string_content(settings, clean_draft):
+    adapter, client = _adapter(settings, _json_response(clean_draft))
+
+    await adapter.complete_structured("prompt", {"type": "object"})
+
+    assert client.messages.calls[0]["messages"] == [{"role": "user", "content": "prompt"}]
+
+
 async def test_sends_no_sampling_parameters(settings, clean_draft):
     """Current models reject `temperature`/`top_p`/`top_k` with a 400."""
     adapter, client = _adapter(settings, _json_response(clean_draft))

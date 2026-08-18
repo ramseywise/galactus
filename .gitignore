@@ -31,18 +31,15 @@ build/
 
 # Case-study data — personal financial information about identifiable people.
 # Never commit. Synthetic fixtures only in tests and docs.
-ml-lending/data/
-!ml-lending/data/.gitkeep
-# Generated reports embed distributional detail derived from those records — class
-# balances, reliability bins, threshold sweeps. Derived from real data is still real data.
-ml-lending/docs/report.html
+runs/ml/lending/data/
+!runs/ml/lending/data/.gitkeep
+# runs/ml/lending/docs/report.html is TRACKED, ratified 2026-08-15: it is the only
+# real write_report output in the repo and fraud's tests pin markup against it
+# (runs/ml/fraud/tests/conftest.py). Private repo; history exposure accepted.
 # Phase 2 poc frame: a copy of lebanese-blonde's sample. Real records; never committed.
 runs/ml/fraud/data/
-# Credit poc — same PII rationale as lending/fraud above.
-runs/ml/credit/data/
-!runs/ml/credit/data/.gitkeep
-# Generated report embeds distributional detail derived from those records — same
-# rationale as the ml-lending report.html line above.
+# Generated report embeds distributional detail derived from those records — class
+# balances, reliability bins, threshold sweeps. Derived from real data is still real data.
 runs/ml/fraud/docs/report.html
 # Third-party recruiting brief — verbatim copyrighted content, framing restated in code.
 runs/ml/customer segmentation/Trade Republic_Data Science Challenge.pdf

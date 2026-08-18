@@ -127,12 +127,53 @@ once a calibrated propensity score exists and outcomes are being logged. It is t
 natural phase-three extension (contact-strategy allocation), listed here so the door is
 left open and not designed against.
 
+## Running it
+
+The harness needs the ML toolkit, which lives in `ai-project-template` and is not a
+dependency of galactus. **Precondition (stated, not inherited): a rendered template
+tree** — copier output whose root contains both `ml/` and `experiments/` as importable
+packages — **and `ML_PACKAGE_ROOT` pointing at it.** Verify once with
+`ML_PACKAGE_ROOT=<tree> python -c "import ml, experiments.record"`.
+
+```bash
+# full path on the synthetic twin — no data/, no network, seconds
+ML_PACKAGE_ROOT=<tree> uv run python runs/ml/lending/src/run.py --dry-run
+
+# the real run (needs data/lending_club_2015Q4.csv, see docs/DESIGN.md)
+ML_PACKAGE_ROOT=<tree> uv run python runs/ml/lending/src/run.py
+```
+
+Tests split along the same line: `uv run pytest runs/ml/lending/tests -q` runs the
+toolkit-free tests (frame, guards, synthetic twins) in any checkout; the
+toolkit-coupled tests (dry-run, record, reproduce) **skip with a reason naming
+`ML_PACKAGE_ROOT`** when it is unset. A bare checkout is green *with visible skips* —
+if the skips do not appear in the output, something is silently not collecting.
+
+## Run records
+
+Every execution writes a `RunRecord` through the registry's own serializer
+(`experiments/io.py`): real runs to
+[`runs/_index/`](../../_index/README.md)`{utc_timestamp}-{frame_hash[:8]}.json`
+(committed — aggregates only), dry-runs to a temp path, never the index. The record
+carries the galactus SHA, the toolkit tree's SHA (or a reasoned `NotApplicable`), the
+fitted-frame hash, the resolved config including every `frame.py` constant, and a
+fold-*plan* description — never indices.
+
+**To reproduce the real run:** same galactus SHA + same `data.frame_hash` ⇒ the
+`metrics` block must come out identical (`--n-splits`, seed, and all constants ride in
+the record). **To read a diff between two records:** a diff showing only
+`code.versions` or `resolved_config.toolkit` changed is the system *working* — it
+names which input moved before any number did. A metrics change with no recorded
+input change is the alarm.
+
 ## Layout
 
 ```
 runs/ml/lending/
 ├── README.md    This document — problem framing and standing assumptions
-├── docs/        DESIGN.md and analysis notes (written as the work proceeds)
+├── src/         run.py (composition) + frame/guards/synthetic/splits/summary modules
+├── tests/       Unit tests (toolkit-free) + dry-run tests (skip without the toolkit)
+├── docs/        DESIGN.md, DESIGN-parity.md and analysis notes
 └── data/        Gitignored. Real debtor data never enters this repo.
 ```
 

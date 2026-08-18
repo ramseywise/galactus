@@ -14,6 +14,7 @@ structlog. Tests live at `runs/ai/marketing-comms/tests/`, evals at `runs/ai/mar
 uv sync                              # install
 uv run pytest runs/ai/marketing-comms/tests -q           # tests
 uv run python runs/ai/marketing-comms/evals/run.py --dry-run   # evals, no API spend
+uv run uvicorn api:app --app-dir runs/ai/marketing-comms/src --port 8000   # serve the demo
 ```
 
 ## Specs
@@ -96,6 +97,7 @@ moment a load-bearing assumption shows up. `decide-shared` is their shared contr
 | `/ml-select` | `/proto-research` on `Track: ml` | The `(family, output)` pair + training config. Refuses to run before profiling |
 | `/new-agent` | `/proto-execute` | Scaffolds an ADK or LangGraph agent |
 | `/mcp-builder` | `/proto-execute` | Reference for writing an MCP server. Vendored; carries its own LICENSE |
+| `/proto-harden` | after `/proto-execute`, before `/proto-review`; or any run about to demo | Walks the marketing-comms hardening checklist against a run dir and fixes gaps in-session. Never touches `Status:` |
 | `/skill-creator` | any | Creates or edits a skill in this repo |
 
 Retired skills live in `.claude/skills/archived/`, one `ARCHIVED.md` each explaining what
@@ -109,7 +111,7 @@ looks, so they are not invocable.
   `spike/{slug}`.
 - **Runs under `runs/` are working code, not frozen exhibits.** Refactor, fix, and bring
   them to convention like anything else here. `runs/ai/marketing-comms/` is the reference
-  implementation, so changes to it should be deliberate and keep its 277 tests green —
+  implementation, so changes to it should be deliberate and keep its 318 tests green —
   but "it is the case study" is not a reason to leave drift in place.
 - **A new test directory under `runs/` must be added to `testpaths` in `pyproject.toml`.**
   Omitting it does not fail; it collects zero tests, which reads exactly like passing.

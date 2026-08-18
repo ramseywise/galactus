@@ -9,14 +9,15 @@ produces are the whole point and a mocked extractor would prove nothing.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import pymupdf
 import pytest
+from fakes import ScriptedLLM as FakeVisionLLM
 
 from ingest.facts import (
     MIN_PAGE_TEXT_CHARS,
     VISION_CONFIDENCE,
+    _drop_table_overlaps,
     extract_vision_facts,
     ingest_pdf,
     ingest_pdf_bytes,
@@ -32,31 +33,14 @@ from ingest.text import (
 from ingest.vision import (
     MAX_IMAGE_DIMENSION,
     encode_image_base64,
-    image_to_message,
-    page_images,
     render_page_png,
+    render_pages,
 )
-from model.gateway import LLMError
 from models import Fact
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 SENDER_PDF = FIXTURE_DIR / "sender.pdf"
 RECEIVER_PDF = FIXTURE_DIR / "receiver.pdf"
-
-
-class FakeVisionLLM:
-    """Returns a scripted list of claims for every vision call."""
-
-    def __init__(self, claims: list[str] | None = None, error: bool = False) -> None:
-        self.claims = claims if claims is not None else ["A table row states 96.2 percent."]
-        self.error = error
-        self.calls = 0
-
-    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
-        self.calls += 1
-        if self.error:
-            raise LLMError("provider down")
-        return {"facts": list(self.claims)}
 
 
 def _pages(path: Path) -> list[str]:
@@ -226,11 +210,21 @@ def test_render_rejects_an_out_of_range_page(fixture_pdf):
         render_page_png(fixture_pdf, 99)
 
 
-def test_page_images_covers_every_page(fixture_pdf):
+def test_render_pages_covers_every_requested_page(fixture_pdf):
     with pymupdf.open(fixture_pdf) as doc:
-        expected = doc.page_count
+        expected = list(range(1, doc.page_count + 1))
 
-    assert len(page_images(fixture_pdf)) == expected
+    images = render_pages(fixture_pdf, expected)
+
+    assert sorted(images) == expected
+    assert all(data.startswith(b"\x89PNG\r\n\x1a\n") for data in images.values())
+
+
+def test_render_pages_skips_out_of_range_pages(fixture_pdf):
+    images = render_pages(fixture_pdf, [1, 99])
+
+    assert list(images) == [1]
+    assert render_pages(fixture_pdf, [99]) == {}
 
 
 def test_rendering_accepts_bytes_as_well_as_a_path(fixture_pdf):
@@ -238,17 +232,30 @@ def test_rendering_accepts_bytes_as_well_as_a_path(fixture_pdf):
     data = fixture_pdf.read_bytes()
 
     assert render_page_png(data, 1) == render_page_png(fixture_pdf, 1)
-    assert len(page_images(data)) == len(page_images(fixture_pdf))
+    assert render_pages(data, [1]) == render_pages(fixture_pdf, [1])
 
 
 async def test_vision_ingest_from_bytes_reaches_the_table_page(fixture_pdf):
     """The path that failed in the API walk: bytes in, vision facts out."""
-    llm = FakeVisionLLM(["Chicago-Dallas moved 184,000 shipments."])
+    llm = FakeVisionLLM(vision_facts=["Chicago-Dallas moved 184,000 shipments."])
 
     facts = await ingest_pdf_bytes(fixture_pdf.read_bytes(), llm)
 
     assert llm.calls == 1
     assert [f.source_span for f in facts if f.origin == "vision"] == ["p2:vision"]
+
+
+async def test_vision_calls_attach_the_rendered_page(fixture_pdf):
+    """The port regression: the model must receive the page it is asked to read."""
+    llm = FakeVisionLLM()
+
+    await ingest_pdf(fixture_pdf, llm)
+
+    assert llm.calls == 1
+    (images,) = llm.images
+    assert len(images) == 1
+    assert images[0].startswith(b"\x89PNG\r\n\x1a\n")
+    assert images[0] == render_page_png(fixture_pdf, 2)
 
 
 def test_encode_produces_bare_base64():
@@ -258,23 +265,13 @@ def test_encode_produces_bare_base64():
     assert "\n" not in encoded
 
 
-def test_message_carries_image_then_text():
-    message = image_to_message(b"\x89PNG", "Read this page.")
-
-    assert message["role"] == "user"
-    image_block, text_block = message["content"]
-    assert image_block["type"] == "image"
-    assert image_block["source"]["media_type"] == "image/png"
-    assert text_block["text"] == "Read this page."
-
-
 # ---------------------------------------------------------------------------
 # End-to-end ingest
 # ---------------------------------------------------------------------------
 
 
 async def test_vision_facts_are_extracted_from_the_table_page(fixture_pdf):
-    llm = FakeVisionLLM(["Chicago-Dallas moved 184,000 shipments at 96.2 percent."])
+    llm = FakeVisionLLM(vision_facts=["Chicago-Dallas moved 184,000 shipments at 96.2 percent."])
 
     facts = await ingest_pdf(fixture_pdf, llm)
 
@@ -309,7 +306,7 @@ async def test_a_failed_vision_call_does_not_lose_the_text_facts(fixture_pdf):
 
 
 async def test_blank_vision_claims_are_discarded(fixture_pdf):
-    llm = FakeVisionLLM(["", "   "])
+    llm = FakeVisionLLM(vision_facts=["", "   "])
 
     facts = await ingest_pdf(fixture_pdf, llm)
 
@@ -323,8 +320,26 @@ async def test_ingest_from_bytes_matches_ingest_from_path(fixture_pdf):
     assert from_bytes == from_path
 
 
-async def test_extract_vision_facts_on_a_missing_page_returns_nothing(fixture_pdf):
-    llm = FakeVisionLLM()
+async def test_extract_vision_facts_tags_the_page_it_was_given(fixture_pdf):
+    llm = FakeVisionLLM(vision_facts=["A chart shows 42 percent growth."])
+    image = render_page_png(fixture_pdf, 2)
 
-    assert await extract_vision_facts(fixture_pdf, 99, llm) == []
-    assert llm.calls == 0
+    facts = await extract_vision_facts(image, 2, llm)
+
+    assert [f.source_span for f in facts] == ["p2:vision"]
+    assert facts[0].confidence == VISION_CONFIDENCE
+
+
+def test_prose_sharing_a_page_with_a_table_is_kept():
+    """Only the table's own region is superseded — the paragraph next to it stays."""
+    prose = Fact(text="A paragraph claim.", source_span="p1:0-18", page=1, origin="text")
+    run_on = Fact(text="Grid soup.", source_span="p1:40-80", page=1, origin="text")
+    table = Fact(
+        text="Corridor X: Volume 1.",
+        source_span="p1:50-70",
+        page=1,
+        origin="table",
+        cells=["X", "1"],
+    )
+
+    assert _drop_table_overlaps([prose, run_on], [table]) == [prose]

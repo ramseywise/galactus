@@ -31,10 +31,14 @@ shape, and the SDK's exception hierarchy. The pipeline sees only
 
 from __future__ import annotations
 
+import base64
 import json
+from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 from config import Settings
+
+PNG_MIME = "image/png"
 
 
 class LLMError(RuntimeError):
@@ -55,7 +59,13 @@ class LLM(Protocol):
     inheritance, no registration.
     """
 
-    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+    async def complete_structured(
+        self,
+        prompt: str,
+        schema: dict[str, Any],
+        *,
+        images: Sequence[bytes] = (),
+    ) -> dict[str, Any]:
         """Return a JSON object conforming to `schema`.
 
         Args:
@@ -64,6 +74,10 @@ class LLM(Protocol):
                 `generate.schema_for`), so the limits must be stated in prose
                 here too.
             schema: A JSON Schema describing the object to return.
+            images: PNG page renders the model must read alongside the prompt.
+                Raw bytes rather than provider content blocks, so the vision
+                path stays provider-agnostic — each adapter does its own
+                encoding. Empty for text-only calls.
 
         Raises:
             LLMError: If the provider call fails or returns unusable output.
@@ -113,7 +127,13 @@ class AnthropicAdapter:
             self._client = anthropic.AsyncAnthropic(api_key=self._settings.require_api_key())
         return self._client
 
-    async def complete_structured(self, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
+    async def complete_structured(
+        self,
+        prompt: str,
+        schema: dict[str, Any],
+        *,
+        images: Sequence[bytes] = (),
+    ) -> dict[str, Any]:
         """Return a JSON object conforming to `schema`. See `port.LLM`."""
         import anthropic
 
@@ -123,7 +143,7 @@ class AnthropicAdapter:
             response = await client.messages.create(
                 model=self._settings.model,
                 max_tokens=MAX_TOKENS,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": _to_content(prompt, images)}],
                 output_config={"format": {"type": "json_schema", "schema": schema}},
             )
         # Most specific first. Matching on exception classes rather than on
@@ -140,6 +160,30 @@ class AnthropicAdapter:
             raise LLMError("could not reach the Anthropic API") from exc
 
         return _extract_json(response)
+
+
+def _to_content(prompt: str, images: Sequence[bytes]) -> str | list[dict[str, Any]]:
+    """Anthropic content for a turn: a bare string, or image blocks + text.
+
+    Images precede the text block — the prompt refers to "this page", so the
+    page has to be on the table before the instruction that points at it.
+    """
+    if not images:
+        return prompt
+
+    blocks: list[dict[str, Any]] = [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": PNG_MIME,
+                "data": base64.standard_b64encode(image).decode("utf-8"),
+            },
+        }
+        for image in images
+    ]
+    blocks.append({"type": "text", "text": prompt})
+    return blocks
 
 
 def _extract_json(response: Any) -> dict[str, Any]:

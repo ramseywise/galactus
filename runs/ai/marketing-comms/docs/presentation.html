@@ -248,7 +248,8 @@
 
       <h3>Fallback cannot fail</h3>
       <p>Budget spent? Deterministic truncation, padding, and synthesis. Every violation
-      kind has a mechanical repair.</p>
+      kind has a mechanical repair — templates whose floors cannot fit their ceilings are
+      rejected at load, and the fallback's output is re-validated, never assumed.</p>
     </div>
   </div>
 
@@ -318,7 +319,12 @@ curl -X POST localhost:8000/collateral \
 curl localhost:8000/jobs/$JOB_ID
 # → 200 {"status": "succeeded",
 #        "draft": { ...nine fields, every one inside its limits... },
-#        "used_fallback": false, "repair_attempts": 0, "fact_count": 14}</pre>
+#        "used_fallback": false, "fallback_fields": [],
+#        "repair_attempts": 0, "fact_count": 14}
+
+# resubmitting the same request returns the SAME job — one billed generation
+curl -X POST localhost:8000/collateral -d '{ ...identical body... }'
+# → 202 {"job_id": "<same id>", "status": "succeeded"}</pre>
 
   <div class="note">
     If the live demo misbehaves, that is still a demo: the fallback path means even a bad
@@ -371,7 +377,8 @@ curl localhost:8000/jobs/$JOB_ID
       <h3>Idempotency</h3>
       <p>Dedup key <code>sha256(sender, receiver, template, prompt)</code>, enforced as a
       conditional write on the job document. Delivery is at-least-once — without it, a
-      redelivered message is a <em>second billed generation</em>.</p>
+      redelivered message is a <em>second billed generation</em>. The prototype already
+      enforces the same rule against its job table.</p>
       <h3>Two retry layers, not one</h3>
       <p>Queue retries are for <strong>infrastructure</strong> failure. The repair loop is
       for <strong>contract</strong> failure — and is not a retry at all, but a new prompt
@@ -435,12 +442,13 @@ curl localhost:8000/jobs/$JOB_ID
     missing measurement — and it is a day's work.</li>
 
     <li><strong>A real job queue.</strong> <code>BackgroundTasks</code> dies with the
-    process: an in-flight job is lost on deploy, with no retry. The cloud design solves
-    this; the prototype does not. A genuine gap, not a simplification.</li>
+    process: an in-flight job is lost on deploy, with no retry. Startup now fails
+    orphaned jobs loudly instead of letting clients poll forever — but that is
+    detection, not recovery. The queue in the cloud design is the fix.</li>
 
-    <li><strong>Idempotency locally.</strong> The dedup key is specified in the cloud
-    design and <em>not implemented</em> here. Resubmit an identical request today and it
-    generates — and bills — twice.</li>
+    <li><strong>Real identity.</strong> The <code>X-API-Key</code> gate is a shared
+    secret, not tenancy: every keyholder can read every company's context. Production
+    needs per-tenant auth binding companies to callers.</li>
 
     <li><strong>Per-field repair targeting.</strong> An over-long headline currently
     resends all nine fields. Right for coupled fields (the two columns), wasteful for

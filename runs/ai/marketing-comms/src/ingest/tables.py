@@ -30,6 +30,11 @@ therefore verified on a different rule, declared by `origin="table"`: the span
 covers the row's cells as they appear in the page text, and
 `row_span_contains_cells` checks that **every** cell value is present in it.
 
+The values checked are the full cells, carried on `Fact.cells` — not tokens
+re-parsed from the rendered sentence, which for a multi-word cell would verify
+only its last word. A table fact without `cells` fails verification outright:
+nothing in this codebase produces one, so one that appears is fabricated.
+
 That keeps the guarantee that matters — every number is traceable to the page —
 while allowing the row to be phrased so the subject survives. It is a real
 weakening of the exact-match rule, and it is scoped to this origin rather than
@@ -90,21 +95,28 @@ def facts_from_table(
                 page=page_number,
                 confidence=1.0,
                 origin="table",
+                cells=[cell for cell in cells if cell],
             )
         )
 
     return facts
 
 
-def row_span_contains_cells(source: str, fact_text: str) -> bool:
-    """Whether every value a table fact asserts appears in its source span.
+def row_span_contains_cells(source: str, fact: Fact) -> bool:
+    """Whether every cell value a table fact asserts appears in its source span.
 
     The verification rule for `origin="table"`, standing in for the exact-match
-    check that a rewritten row cannot pass. Values are read back out of the
-    rendered text rather than taken on trust, so this catches a fact whose span
-    drifted onto a different row — the misattribution the path exists to stop.
+    check that a rewritten row cannot pass. The full cell values come from
+    `fact.cells` — checking tokens parsed back out of the rendered sentence
+    would verify only the last word of a multi-word cell, letting a span that
+    drifted onto different content pass on a shared trailing token.
+
+    Fails closed on a fact with no cells: every fact this package produces
+    carries them, so their absence marks a fact nothing extracted.
     """
-    return all(value in source for value in _asserted_values(fact_text))
+    if not fact.cells:
+        return False
+    return all(value in source for value in fact.cells)
 
 
 def _render_row(header: list[str], cells: list[str]) -> str:
@@ -130,50 +142,42 @@ def _render_row(header: list[str], cells: list[str]) -> str:
     return f"{lead}: {'; '.join(pairs)}."
 
 
-def _asserted_values(fact_text: str) -> list[str]:
-    """The cell values a rendered row claims, recovered from its own text.
-
-    Mirrors `_render_row`: everything after the colon is `head value` pairs
-    joined by `;`, and the subject is the trailing token of the lead. Only the
-    values are returned — headers are page furniture and need no proving.
-    """
-    lead, _, remainder = fact_text.partition(":")
-
-    if not remainder:
-        return [lead.rstrip(".").split()[-1]] if lead.strip() else []
-
-    values = [lead.strip().split()[-1]] if lead.strip() else []
-    for pair in remainder.rstrip(".").split(";"):
-        tokens = pair.split()
-        if tokens:
-            values.append(tokens[-1])
-
-    return values
-
-
 def _row_span(cells: list[str], page_text: str, page_number: int) -> str | None:
     """Span covering this row's cells where they sit in the page text.
 
-    Located by walking the cells in order, so the offsets bound the real region
-    the row occupies. Returns None if any cell is missing — an unlocatable row
-    is one this module declines to make a claim about.
+    Every occurrence of the first cell is tried as an anchor, and the tightest
+    span that covers all cells in order wins. Anchoring on the first occurrence
+    alone would let a subject that also appears in a caption or a paragraph
+    above the table pull the span across unrelated text — an over-wide span
+    that contains the cells but does not correspond to the row.
+
+    Returns None if no anchor works — an unlocatable row is one this module
+    declines to make a claim about.
     """
     non_empty = [cell for cell in cells if cell]
     if not non_empty:
         return None
 
-    start = page_text.find(non_empty[0])
-    if start == -1:
+    best: tuple[int, int] | None = None
+    anchor = page_text.find(non_empty[0])
+
+    while anchor != -1:
+        cursor = anchor
+        for cell in non_empty:
+            found = page_text.find(cell, cursor)
+            if found == -1:
+                cursor = -1
+                break
+            cursor = found + len(cell)
+
+        if cursor != -1 and (best is None or cursor - anchor < best[1] - best[0]):
+            best = (anchor, cursor)
+
+        anchor = page_text.find(non_empty[0], anchor + 1)
+
+    if best is None:
         return None
-
-    cursor = start
-    for cell in non_empty:
-        found = page_text.find(cell, cursor)
-        if found == -1:
-            return None
-        cursor = found + len(cell)
-
-    return f"p{page_number}:{start}-{cursor}"
+    return f"p{page_number}:{best[0]}-{best[1]}"
 
 
 def _clean(cell: str | None) -> str:

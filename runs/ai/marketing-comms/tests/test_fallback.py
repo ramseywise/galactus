@@ -12,6 +12,7 @@ from guardrails.fallback import (
     FILLER_WORD,
     fallback,
     fallback_report,
+    template_satisfiability_errors,
     was_degraded,
 )
 from guardrails.validator import count_words, validate
@@ -270,13 +271,39 @@ def test_no_template_field_has_an_unsatisfiable_range(template):
     """min_words padding must fit under max_chars, or no output could be valid.
 
     Guards the one case `_pad_to_words` cannot repair: a floor that cannot be
-    reached without breaching the character ceiling.
+    reached without breaching the character ceiling. The same rule is enforced
+    for every template at load time — this pins the shipped one explicitly.
     """
-    for field in template.fields:
-        if field.min_words is None or field.max_chars is None:
-            continue
-        shortest = len(" ".join([FILLER_WORD] * field.min_words))
-        assert shortest <= field.max_chars, (
-            f"field {field.name!r}: min_words={field.min_words} cannot fit in "
-            f"max_chars={field.max_chars}"
-        )
+    assert template_satisfiability_errors(template) == []
+
+
+def test_satisfiability_errors_name_the_offending_field():
+    tight = LayoutTemplate(
+        template_id="tight",
+        fields=[FieldConstraint(name="squeezed", min_words=5, max_chars=6)],
+        theme_colors={"primary": "#000"},
+    )
+
+    errors = template_satisfiability_errors(tight)
+
+    assert len(errors) == 1
+    assert "squeezed" in errors[0]
+
+
+def test_tight_but_satisfiable_range_is_repaired_not_broken():
+    """The guarantee pass: when the char cut starves the word floor, content
+    words are dropped for filler until both limits hold."""
+    template = LayoutTemplate(
+        template_id="t",
+        fields=[FieldConstraint(name="a", min_words=3, max_chars=12)],
+        theme_colors={"primary": "#000"},
+    )
+
+    for hostile in (
+        "encyclopaedia extraordinary magnificence",
+        "supercalifragilistic word",
+        "one",
+        "",
+    ):
+        repaired = fallback({"a": hostile}, template)
+        assert validate(repaired, template) == [], hostile

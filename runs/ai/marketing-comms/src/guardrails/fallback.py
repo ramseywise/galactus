@@ -2,8 +2,13 @@
 
 When the repair loop exhausts its budget the endpoint must still return valid
 JSON. This module guarantees that — `validate(fallback(draft, template),
-template)` is empty for any input draft, which is what makes the API's contract
-unconditional rather than best-effort.
+template)` is empty for any input draft, **provided the template is
+satisfiable**: every word floor must be reachable within its character ceiling
+using the filler token. That precondition is not left to luck — it is enforced
+when a template loads (`template_satisfiability_errors`, called by
+`layout.contract`), so by the time a draft reaches this module the guarantee is
+unconditional. `generate.generate_collateral` still re-validates the output as
+a backstop and fails loudly rather than shipping an invalid draft as degraded.
 
 Truncation alone cannot deliver that guarantee: a draft can also be *under* a
 word floor, missing a field, or carrying a bad color reference. So each
@@ -28,7 +33,7 @@ from __future__ import annotations
 
 import re
 
-from guardrails.validator import count_words, validate
+from guardrails.validator import PLACEHOLDER_RE, count_words, validate
 from models import FieldConstraint, LayoutTemplate
 
 FILLER_WORD = "and"
@@ -96,6 +101,12 @@ def _fit_text(value: str, field: FieldConstraint) -> str:
     300-character word becomes one 70-character word, under a 3-word minimum).
     So when a floor exists, the character cut reserves room for the filler the
     padding step will need.
+
+    The reserve is an estimate (it counts survivors of a cut at the full
+    ceiling, then cuts at a smaller one), so a final guarantee pass drops
+    content words to make room for filler whenever padding still could not
+    reach the floor. Filler-only text always fits a satisfiable template, so
+    the pass terminates valid.
     """
     text = value.strip()
 
@@ -108,7 +119,34 @@ def _fit_text(value: str, field: FieldConstraint) -> str:
     if field.min_words is not None and count_words(text) < field.min_words:
         text = _pad_to_words(text, field.min_words, field)
 
+        words = text.split()
+        while words and count_words(text) < field.min_words:
+            words.pop()
+            text = _pad_to_words(" ".join(words), field.min_words, field)
+
     return text
+
+
+def template_satisfiability_errors(template: LayoutTemplate) -> list[str]:
+    """Every field whose word floor cannot be met inside its character ceiling.
+
+    The fallback's validity guarantee rests on this: `_pad_to_words` yields to
+    `max_chars`, so a floor that needs more filler than the ceiling admits is a
+    field no draft could ever satisfy after truncation. `layout.contract`
+    rejects such templates at load — a designer typo fails the deploy, not the
+    one request that happened to exhaust its repair budget.
+    """
+    errors: list[str] = []
+    for field in template.fields:
+        if field.kind != "text" or field.min_words is None or field.max_chars is None:
+            continue
+        shortest = len(" ".join([FILLER_WORD] * field.min_words))
+        if shortest > field.max_chars:
+            errors.append(
+                f"field {field.name!r}: min_words={field.min_words} needs at least "
+                f"{shortest} chars of filler but max_chars={field.max_chars}"
+            )
+    return errors
 
 
 def _padding_reserve(text: str, field: FieldConstraint) -> int:
@@ -214,8 +252,6 @@ def _synthesize(field: FieldConstraint, template: LayoutTemplate) -> str:
 
 
 def _fit_placeholder(value: str, field: FieldConstraint) -> str:
-    from guardrails.validator import PLACEHOLDER_RE
-
     if PLACEHOLDER_RE.match(value):
         return value
     return _placeholder_token(field.name)
