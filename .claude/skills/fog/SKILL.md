@@ -127,10 +127,13 @@ Now dispatch `fog-advisor` for the worst-plausible-case pass.
 **Resolve it first**, and read the exit code:
 
 ```bash
-uv run python -m review.cli resolve-capability fog
+uv run python -m review.cli --repo-root ~/workspace/galactus resolve-capability fog
 ```
 
-Exit 1 means the advisor did not load. **Do not run this stage inline instead** — an
+Exit 1 means the advisor did not load. The `--repo-root` flag is required: without it the
+command resolves relative to the session's CWD, which may differ from the galactus repo
+root. The payload's `repo_root_abs` field confirms which directory was checked — if it does
+not equal the galactus checkout path, the resolution is invalid (#39). **Do not run this stage inline instead** — an
 advisor's contract executed by the caller is not an independent advisor, and its findings
 must not be reported as though the isolated pass ran. Record the stage as
 `dispatch failed — <reason>` and say so in the output. A `/fog` run whose Stage 4 did not

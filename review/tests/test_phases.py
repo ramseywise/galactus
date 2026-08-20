@@ -481,6 +481,47 @@ def test_registered_agents_all_exist():
         assert result["resolved"], f"{capability.value}: {result['reason']}"
 
 
+def test_resolve_capability_includes_repo_root_in_payload(tmp_path):
+    """The returned dict must include `repo_root_abs` on every path — success and failure.
+
+    The field makes the topology of the check visible: callers that need to know
+    whether the session registry would see the same root can compare `repo_root_abs`
+    against their CWD rather than guessing (#39).
+    """
+    from pathlib import Path
+
+    # Failure path: tmp_path has no agents directory, so fog will not resolve.
+    result = resolve_capability_agent(Capability.FOG, repo_root=str(tmp_path))
+    assert "repo_root_abs" in result
+    assert result["repo_root_abs"] == str(Path(tmp_path).resolve())
+    assert isinstance(result["repo_root_abs"], str)
+    assert result["repo_root_abs"]  # non-empty
+
+
+def test_cli_resolve_capability_payload_includes_cwd_and_repo_root(capsys, tmp_path):
+    """The CLI JSON output must carry both `repo_root_abs` and `cwd` fields.
+
+    Together they let the caller detect the session-root mismatch that #39
+    documents: `resolved: true` when `repo_root_abs != cwd` means the check
+    was answered against a directory the session registry did not load from.
+    """
+    import json
+    from pathlib import Path
+
+    from review.cli import main
+
+    code = main(["--repo-root", str(tmp_path), "resolve-capability", "fog"])
+    out = json.loads(capsys.readouterr().out)
+    # tmp_path has no agents directory so the resolution fails — but both
+    # topology fields must be present regardless of the exit code.
+    assert code == 1
+    assert "repo_root_abs" in out
+    assert "cwd" in out
+    assert out["repo_root_abs"] == str(Path(tmp_path).resolve())
+    assert isinstance(out["cwd"], str)
+    assert out["cwd"]  # non-empty
+
+
 def test_cli_resolve_capability_exits_1_on_failure(capsys, tmp_path):
     """The skill's actual instrument: exit code and a reason it can quote."""
     import json

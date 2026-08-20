@@ -159,12 +159,18 @@ ran.
 **Resolve the advisor before you dispatch it.** Run this first, and read the exit code:
 
 ```bash
-uv run python -m review.cli resolve-capability fog
+uv run python -m review.cli --repo-root ~/workspace/galactus resolve-capability fog
 ```
 
 Exit 0 means `fog-advisor` is loadable and you may dispatch it. **Exit 1 means the advisor
 did not resolve, and you may not run the pass at all** — not inline, not with the contract
-pasted in, not with a substitute agent. Record the `reason` from the payload verbatim:
+pasted in, not with a substitute agent. Record the `reason` from the payload verbatim.
+
+The `--repo-root` flag is required. Without it the command resolves relative to the session's
+CWD, which may not be the galactus repo root — and a resolution that checked `/tmp` or
+`~/workspace` instead of `~/workspace/galactus` is meaningless. The payload's `repo_root_abs`
+field confirms which directory was checked; if it does not match the galactus checkout path,
+the resolution is invalid and must not be used to gate the dispatch (#39).
 
 ```
 Epistemic: UNTESTED
