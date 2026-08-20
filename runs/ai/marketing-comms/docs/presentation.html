@@ -341,23 +341,25 @@ curl -X POST localhost:8000/collateral -d '{ ...identical body... }'
 
   <table>
     <tr><th>Metric</th><th>Value</th><th>Meaning</th></tr>
-    <tr><td>Contract pass rate</td><td class="num-cell">58.3%</td><td>valid on first generation</td></tr>
-    <tr><td>Repair convergence</td><td class="num-cell">0.36</td><td>mean attempts, converged cases</td></tr>
-    <tr><td>Fallback rate</td><td class="num-cell">8.3%</td><td>needed deterministic truncation</td></tr>
+    <tr><td>Contract pass rate</td><td class="num-cell">33.3%</td><td>valid on first generation</td></tr>
+    <tr><td>Repair convergence</td><td class="num-cell">1.0</td><td>mean attempts, converged cases</td></tr>
+    <tr><td>Fallback rate</td><td class="num-cell">0.0%</td><td>needed deterministic truncation</td></tr>
     <tr><td>Grounding rate</td><td class="num-cell">91.7%</td><td>traceable to a source span</td></tr>
     <tr class="headline-row"><td><strong>Valid after repair + fallback</strong></td><td class="num-cell">100%</td><td>the guarantee</td></tr>
+    <tr><td>Total provider calls</td><td class="num-cell">145</td><td>for 12 cases</td></tr>
   </table>
 
-  <p>Read the first row and the last row together. <strong>First-pass compliance is a
-  coin flip</strong> — which is exactly the argument for not trusting the model with
-  arithmetic. The 100% is not the model getting better; it is the deterministic layer
+  <p>Read the first row and the last row together. <strong>Only a third of drafts satisfy
+  the contract unaided</strong> — which is exactly the argument for not trusting the model
+  with arithmetic. The 100% is not the model getting better; it is the deterministic layer
   doing its job.</p>
 
   <div class="note">
-    <strong>Said out loud:</strong> these come from scripted fixtures and synthesized PDFs,
-    not the client's real documents. The harness replays fixed responses, so the pass rate measures
-    the harness, not a live model. It is a working instrument, not a benchmark — and running
-    it against a live model is the first thing I would do next.
+    <strong>Said out loud:</strong> this is a live run against Claude Sonnet 5 — synthesized
+    PDFs, not the client's real documents. A live run is not deterministic: three consecutive
+    runs gave first-pass rates of 41.7 / 33.3 / 33.3, and this is the median. Grounding and
+    the 100% guarantee were identical across all three — the variance is in how often the
+    model satisfies the contract unaided, not in whether the system holds it.
   </div>
 </section>
 
@@ -437,9 +439,10 @@ curl -X POST localhost:8000/collateral -d '{ ...identical body... }'
   <h1>The honest gaps</h1>
 
   <ol>
-    <li><strong>Run the evals against a live model.</strong> Every number on slide 7 comes
-    from a scripted provider. Real first-pass compliance is the single most informative
-    missing measurement — and it is a day's work.</li>
+    <li><strong>Pin the eval numbers down statistically.</strong> Slide 7 is now a live
+    run, but a single run of a non-deterministic model is a sample, not a measurement:
+    first-pass compliance moved 8 points across three consecutive runs. Reporting a mean
+    and a spread over N runs is the honest version, and it is a day's work.</li>
 
     <li><strong>A real job queue.</strong> <code>BackgroundTasks</code> dies with the
     process: an in-flight job is lost on deploy, with no retry. Startup now fails

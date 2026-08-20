@@ -1,0 +1,12 @@
+# The image copies only pyproject.toml, uv.lock, and the marketing-comms
+# src/ + templates/ — this file just keeps the build context small.
+.git
+.venv
+.claude
+worktrees
+ml
+runs/ml
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache

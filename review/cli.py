@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from pydantic import ValidationError
 
@@ -198,6 +199,12 @@ def _cmd_resolve_capability(args: argparse.Namespace) -> int:
             # the value a *failed* resolution licenses is the thing #15 got
             # wrong, so the command answers it rather than implying it.
             "epistemic": (None if result["resolved"] else epistemic_for(Outcome.FAILED)),
+            # Topology fields: the mismatch between repo_root_abs and cwd is
+            # the signal that the check was answered against a different root
+            # than the session's registry — the gap this subcommand was added
+            # to expose (#39).
+            "repo_root_abs": result["repo_root_abs"],
+            "cwd": str(Path.cwd()),
         },
         sys.stdout,
         indent=2,

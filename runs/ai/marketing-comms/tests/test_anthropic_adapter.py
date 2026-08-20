@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -27,6 +28,9 @@ class StubBlock:
 class StubResponse:
     content: list[StubBlock]
     stop_reason: str = "end_turn"
+    usage: Any = None
+    """Only the truncation path reads this, so most stubs leave it None —
+    which also covers the real case of a response carrying no usage details."""
 
 
 @dataclass
@@ -120,6 +124,56 @@ async def test_sends_no_sampling_parameters(settings, clean_draft):
     assert "temperature" not in call
     assert "top_p" not in call
     assert "top_k" not in call
+
+
+async def test_thinking_is_disabled(settings, clean_draft):
+    """The regression that made every live eval case fail.
+
+    Current models run adaptive thinking when `thinking` is omitted, and
+    `max_tokens` bounds thinking and answer as one budget. Without this
+    parameter the whole ceiling went to thinking and the response carried an
+    empty thinking block and no draft.
+    """
+    adapter, client = _adapter(settings, _json_response(clean_draft))
+
+    await adapter.complete_structured("prompt", {"type": "object"})
+
+    assert client.messages.calls[0]["thinking"] == {"type": "disabled"}
+
+
+async def test_counts_calls_for_spend_reporting(settings, clean_draft):
+    """The eval harness reads `.calls` off whatever provider it is handed."""
+    adapter, _ = _adapter(settings, _json_response(clean_draft))
+
+    assert adapter.calls == 0
+    await adapter.complete_structured("prompt", {"type": "object"})
+    await adapter.complete_structured("prompt", {"type": "object"})
+
+    assert adapter.calls == 2
+
+
+async def test_counts_a_call_that_failed(settings):
+    """A failed attempt is spend too, so it counts."""
+    response = StubResponse(content=[StubBlock(text="{}")], stop_reason="refusal")
+    adapter, _ = _adapter(settings, response)
+
+    with pytest.raises(LLMError):
+        await adapter.complete_structured("prompt", {"type": "object"})
+
+    assert adapter.calls == 1
+
+
+async def test_truncation_error_names_thinking_spend(settings):
+    """A ceiling hit is almost always thinking, and the message should say so."""
+    response = StubResponse(
+        content=[StubBlock(text="")],
+        stop_reason="max_tokens",
+        usage=SimpleNamespace(output_tokens_details=SimpleNamespace(thinking_tokens=8000)),
+    )
+    adapter, _ = _adapter(settings, response)
+
+    with pytest.raises(LLMError, match="8000 spent on thinking"):
+        await adapter.complete_structured("prompt", {"type": "object"})
 
 
 async def test_refusal_raises_before_content_is_read(settings):

@@ -17,11 +17,13 @@ from fakes import ScriptedLLM as FakeVisionLLM
 from ingest.facts import (
     MIN_PAGE_TEXT_CHARS,
     VISION_CONFIDENCE,
+    PageLimitError,
     _drop_table_overlaps,
     extract_vision_facts,
     ingest_pdf,
     ingest_pdf_bytes,
     pages_needing_vision,
+    pdf_page_count,
     verify_facts,
 )
 from ingest.text import (
@@ -343,3 +345,38 @@ def test_prose_sharing_a_page_with_a_table_is_kept():
     )
 
     assert _drop_table_overlaps([prose, run_on], [table]) == [prose]
+
+
+# ---------------------------------------------------------------------------
+# Page cap
+# ---------------------------------------------------------------------------
+
+
+def _pdf_with_pages(count: int) -> bytes:
+    doc = pymupdf.open()
+    for number in range(count):
+        page = doc.new_page()
+        page.insert_text((72, 72), f"Page {number + 1}")
+    return doc.tobytes()
+
+
+async def test_ingest_rejects_a_pdf_over_the_page_cap():
+    """Over the cap is a refusal, not a silent truncation — a brief grounded
+    on the first N pages of a longer deck would misreport its grounding."""
+    with pytest.raises(PageLimitError, match="3 pages"):
+        await ingest_pdf_bytes(_pdf_with_pages(3), None, max_pages=2)
+
+
+async def test_ingest_at_the_cap_proceeds():
+    facts = await ingest_pdf_bytes(_pdf_with_pages(3), None, max_pages=3)
+
+    assert isinstance(facts, list)  # sparse pages yield nothing, but it ran
+
+
+def test_pdf_page_count_reads_the_document():
+    assert pdf_page_count(_pdf_with_pages(2)) == 2
+
+
+def test_pdf_page_count_raises_on_unreadable_bytes():
+    with pytest.raises(Exception):  # noqa: B017 - pymupdf's error types are its own
+        pdf_page_count(b"%PDF-1.4 not actually a pdf")

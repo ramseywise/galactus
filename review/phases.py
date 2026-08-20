@@ -278,6 +278,7 @@ def resolve_capability_agent(
     not load — a bare False sends the caller back to guessing, which is the
     failure mode this function exists to close.
     """
+    repo_root_abs = str(Path(repo_root).resolve())
     agent_path = CAPABILITY_AGENT.get(capability)
     if agent_path is None:
         return {
@@ -287,6 +288,7 @@ def resolve_capability_agent(
                 f"capability {capability.value!r} has no registered agent in "
                 f"CAPABILITY_AGENT; it cannot be dispatched as a subagent"
             ),
+            "repo_root_abs": repo_root_abs,
         }
 
     path = Path(repo_root) / agent_path
@@ -295,6 +297,7 @@ def resolve_capability_agent(
             "resolved": False,
             "agent": agent_path,
             "reason": f"agent definition not found at {agent_path}",
+            "repo_root_abs": repo_root_abs,
         }
 
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -304,6 +307,7 @@ def resolve_capability_agent(
             "resolved": False,
             "agent": agent_path,
             "reason": f"{agent_path} has no YAML front matter; the registry cannot register it",
+            "repo_root_abs": repo_root_abs,
         }
 
     # `name:` is what the registry registers under and what the dispatch names.
@@ -317,6 +321,7 @@ def resolve_capability_agent(
             "resolved": False,
             "agent": agent_path,
             "reason": f"{agent_path} front matter declares no `name:`",
+            "repo_root_abs": repo_root_abs,
         }
     if name != expected:
         return {
@@ -326,9 +331,10 @@ def resolve_capability_agent(
                 f"{agent_path} registers as {name!r}, not {expected!r}; "
                 f"a dispatch naming {expected!r} would not resolve to this file"
             ),
+            "repo_root_abs": repo_root_abs,
         }
 
-    return {"resolved": True, "agent": agent_path, "reason": ""}
+    return {"resolved": True, "agent": agent_path, "reason": "", "repo_root_abs": repo_root_abs}
 
 
 def epistemic_for(outcome: Outcome, findings: int = 0) -> str:

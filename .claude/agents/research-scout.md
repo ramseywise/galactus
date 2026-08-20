@@ -1,5 +1,5 @@
 ---
-name: plan-research-scout
+name: research-scout
 description: Breadth-first research scout for workflow-research fan-out mode. Investigates one assigned angle of a topic (codebase search, web search, or targeted file reads) and writes a single findings report. Read-only — never edits code. Used by /proto-research fan-out; not invoked directly.
 tools: Read, Grep, Glob, Bash, WebSearch, Write
 model: haiku

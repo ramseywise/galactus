@@ -56,15 +56,41 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_jobs_company ON jobs (company_id);
-CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs (dedup_key);
 """
 """`payload` holds the whole job document as JSON.
 
 Result shape changes with the template, so columns would mean a migration every
 time a designer adds a field. The scalars that are promoted to real columns are
 exactly the ones queried on: `company_id` for listings, `dedup_key` for the
-idempotency lookup, `created_at` so a future cleanup job can age rows out.
+idempotency lookup, `created_at` so the retention sweep can age rows out.
 """
+
+DEDUP_INDEX = """
+DROP INDEX IF EXISTS idx_jobs_dedup;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_dedup_active
+ON jobs (dedup_key) WHERE dedup_key IS NOT NULL AND status != 'failed';
+"""
+"""One active job per dedup key, enforced by the database.
+
+The API's check-then-insert (`find_active_job` then `create_job`) is a race:
+two identical requests interleaving between the check and the insert used to
+produce two billed generations — the exact double spend the dedup key exists
+to prevent. The partial index makes the loser's insert fail instead; its WHERE
+clause mirrors `find_active_job`, so a failed job releases its key and a
+resubmission generates rather than replaying the error.
+
+Kept out of SCHEMA because creating it can fail on a database that predates it
+(duplicate active rows already present) — `_init_schema` resolves those first.
+The DROP clears this index's non-unique predecessor.
+"""
+
+
+class DuplicateJobError(Exception):
+    """An active job already holds this dedup key.
+
+    Raised from `create_job` when the unique index rejects the insert — the
+    caller lost a submission race and should re-read the winning job.
+    """
 
 
 class Store:
@@ -117,6 +143,32 @@ class Store:
     def _init_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            try:
+                conn.executescript(DEDUP_INDEX)
+            except sqlite3.IntegrityError:
+                # A database from before the unique index can hold duplicate
+                # active rows. Keep the newest per key and fail the rest —
+                # failing is honest (each duplicate was a real double spend)
+                # and frees the key for the index to build.
+                self._fail_duplicate_active_jobs(conn)
+                conn.executescript(DEDUP_INDEX)
+
+    @staticmethod
+    def _fail_duplicate_active_jobs(conn: sqlite3.Connection) -> None:
+        message = "duplicate of a newer job with the same dedup key; superseded at migration"
+        rows = conn.execute(
+            "SELECT job_id, payload FROM jobs WHERE dedup_key IS NOT NULL "
+            "AND status != 'failed' AND rowid NOT IN ("
+            "  SELECT max(rowid) FROM jobs WHERE dedup_key IS NOT NULL "
+            "  AND status != 'failed' GROUP BY dedup_key)"
+        ).fetchall()
+        for row in rows:
+            payload = json.loads(row["payload"])
+            payload["error"] = message
+            conn.execute(
+                "UPDATE jobs SET status = 'failed', payload = ? WHERE job_id = ?",
+                (json.dumps(payload), row["job_id"]),
+            )
 
     def close(self) -> None:
         if self._keepalive is not None:
@@ -182,14 +234,24 @@ class Store:
     def create_job(
         self, company_id: str, payload: dict[str, Any], dedup_key: str | None = None
     ) -> str:
-        """Record a queued job and return its id."""
+        """Record a queued job and return its id.
+
+        Raises `DuplicateJobError` when an active job already holds
+        `dedup_key` — the unique index decides, so two racing submissions
+        cannot both insert.
+        """
         job_id = str(uuid.uuid4())
         with self._connect() as conn:
-            conn.execute(
-                "INSERT INTO jobs (job_id, company_id, status, dedup_key, payload) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (job_id, company_id, "queued", dedup_key, json.dumps(payload)),
-            )
+            try:
+                conn.execute(
+                    "INSERT INTO jobs (job_id, company_id, status, dedup_key, payload) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (job_id, company_id, "queued", dedup_key, json.dumps(payload)),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise DuplicateJobError(
+                    f"an active job already holds dedup key {dedup_key}"
+                ) from exc
         return job_id
 
     def find_active_job(self, dedup_key: str) -> dict[str, Any] | None:
@@ -250,6 +312,38 @@ class Store:
                     (json.dumps(payload), row["job_id"]),
                 )
         return len(rows)
+
+    def sweep_expired(self, retention_days: int) -> tuple[int, int]:
+        """Delete finished jobs and uploaded PDFs older than `retention_days`.
+
+        Returns (jobs deleted, pdfs deleted). Only terminal jobs are swept: a
+        queued/running row either belongs to a live worker or gets failed
+        loudly at the next boot — deleting it under the worker would resurrect
+        the stuck-job problem. PDFs age out unconditionally; context is
+        re-uploadable, and keeping client documents forever is the liability
+        retention exists to bound. A swept succeeded job also releases its
+        dedup key, so the idempotency window is at most the retention window.
+
+        The cutoff is computed by SQLite against the same clock and in the
+        same format `created_at` defaults use, so the comparison can never
+        drift on formatting.
+        """
+        if retention_days <= 0:
+            raise ValueError(f"retention_days must be positive, got {retention_days}")
+
+        modifier = f"-{retention_days} days"
+        cutoff_sql = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?)"
+        with self._connect() as conn:
+            jobs = conn.execute(
+                "DELETE FROM jobs WHERE status IN ('succeeded', 'failed') "
+                f"AND created_at < {cutoff_sql}",
+                (modifier,),
+            ).rowcount
+            pdfs = conn.execute(
+                f"DELETE FROM pdfs WHERE created_at < {cutoff_sql}",
+                (modifier,),
+            ).rowcount
+        return jobs, pdfs
 
     @staticmethod
     def _job_document(row: sqlite3.Row | None) -> dict[str, Any] | None:

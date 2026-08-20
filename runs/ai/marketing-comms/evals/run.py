@@ -383,7 +383,7 @@ async def run_case(
             used_fallback=False,
             grounded=False,
             contract_valid=False,
-            llm_calls=getattr(provider, "calls", 0),
+            llm_calls=provider.calls,
             error=f"{type(exc).__name__}: {exc}",
         )
 
@@ -453,25 +453,37 @@ def compute_metrics(results: list[CaseResult]) -> dict[str, Any]:
 
     Denominators are reported alongside every rate. A pass rate without its `n`
     is not a claim anyone should act on.
+
+    **Errored cases are excluded from every rate.** A case whose provider call
+    failed produced no draft, so it can neither satisfy the contract nor
+    violate it — scoring it as a contract failure attributes an infrastructure
+    fault to the model. That is the precise overclaim these metrics exist to
+    prevent, pointed the other way: it understates the system instead of
+    overstating it. Errors are reported as their own count against `cases`, and
+    `scored` is the denominator every rate actually used, so a run that lost
+    half its cases to a bad credential cannot masquerade as a low score.
     """
     total = len(results)
     if not total:
         raise ValueError("no cases to score")
 
-    converged = [r for r in results if not r.used_fallback and not r.error]
+    scored = [r for r in results if not r.error]
+    n = len(scored)
+    converged = [r for r in scored if not r.used_fallback]
 
     return {
         "cases": total,
-        "contract_pass_rate": _rate(sum(r.first_pass_valid for r in results), total),
+        "scored": n,
+        "errors": total - n,
+        "contract_pass_rate": _rate(sum(r.first_pass_valid for r in scored), n),
         "repair_convergence": (
             round(sum(r.repair_attempts for r in converged) / len(converged), 2)
             if converged
             else None
         ),
-        "fallback_rate": _rate(sum(r.used_fallback for r in results), total),
-        "grounding_rate": _rate(sum(r.grounded for r in results), total),
-        "contract_valid_rate": _rate(sum(r.contract_valid for r in results), total),
-        "errors": sum(1 for r in results if r.error),
+        "fallback_rate": _rate(sum(r.used_fallback for r in scored), n),
+        "grounding_rate": _rate(sum(r.grounded for r in scored), n),
+        "contract_valid_rate": _rate(sum(r.contract_valid for r in scored), n),
         "total_llm_calls": sum(r.llm_calls for r in results),
     }
 
@@ -529,10 +541,16 @@ def format_report(results: list[CaseResult], metrics: dict[str, Any]) -> str:
     ]
 
     convergence = metrics["repair_convergence"]
+    scored_note = (
+        f"  ({metrics['errors']} errored, excluded from the rates below)"
+        if metrics["errors"]
+        else ""
+    )
     lines = [
         summarize_table(rows),
         "",
-        f"Cases:                {metrics['cases']}",
+        f"Cases:                {metrics['cases']}{scored_note}",
+        f"Scored:               {metrics['scored']}  (denominator for every rate)",
         f"Contract pass rate:   {metrics['contract_pass_rate']}%  (valid on first generation)",
         (
             f"Repair convergence:   {convergence if convergence is not None else 'n/a'}"
@@ -597,6 +615,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # A draft that fails the contract after repair and fallback is a broken
     # guarantee, not a low score — that is the one result worth a nonzero exit.
+    # An errored case fails the run too: it is not a contract violation, but it
+    # is not a pass either, and now that errors sit outside the rates a run that
+    # lost every case would otherwise exit 0 on a vacuous 100%.
+    if metrics["errors"]:
+        return 1
     return 0 if metrics["contract_valid_rate"] == 100.0 else 1
 
 

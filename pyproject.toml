@@ -15,6 +15,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "python-multipart>=0.0.9",
     "structlog>=24.1",
+    # The container image installs with --no-dev and still has to serve HTTP —
+    # the server is a runtime dependency, not tooling.
+    "uvicorn>=0.30",
 ]
 
 [dependency-groups]
@@ -28,7 +31,6 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.8",
     "seaborn>=0.13.2",
-    "uvicorn>=0.30",
 ]
 # `runs/ml/customer segmentation/` and `tests/unit/ml` import these directly. They
 # already resolved transitively, which meant the POC's imports worked by accident;

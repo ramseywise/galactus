@@ -82,7 +82,7 @@ needs one of two things — and the burden of proof is on the agent:
    worked example: withholding the author's justification requires a separate context, because
    a lens that has read the rationale grades the rationale.
 2. **Parallelism** — N instances of the same shape run concurrently over different inputs
-   (`plan-research-scout`, `/war-game`'s per-angle attackers).
+   (`research-scout`, `/war-game`'s per-angle attackers).
 
 Neither of those is "it feels like a distinct role." **A job title is not a lens.** Splitting
 PM / designer / EM into three agents buys nothing, because they are not adversarial to each

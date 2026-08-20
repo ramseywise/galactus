@@ -100,9 +100,12 @@ names below are the actual module and function names.
 
 **1. Upload context** — `POST /companies/meridian/context` with a PDF and
 `role=sender`. `upload_context` validates the role against `{sender, receiver}`,
-rejects an empty body, an upload over the 25 MB cap (**413**), and bytes that do
+rejects an empty body, an upload over the 25 MB cap (**413**), bytes that do
 not start with the PDF magic (**422** — a mislabelled JPEG accepted today is a
-failed generation job tomorrow, discovered by the wrong person). Then it stores
+failed generation job tomorrow, discovered by the wrong person), bytes pymupdf
+cannot open at all (**422**), and a document over the
+`GALACTUS_MAX_PDF_PAGES` ingest cap (**413** — the vision path bills per page,
+so an unbounded page count is an unbounded spend). Then it stores
 the bytes via `Store.put_pdf` and returns 201 with a `pdf_id`. Ingest does
 **not** happen here: the vision path costs money, and a PDF uploaded but never
 used in a brief should not incur it. `GET`/`DELETE` on the same path list and
@@ -122,12 +125,22 @@ before any job exists:
   and the caller should hear that now rather than infer it from a hollow
   draft later.
 
+Before any of that, a per-caller rate limit (keyed by sender company,
+`GALACTUS_RATE_LIMIT_PER_MINUTE`) answers a runaway client loop with **429**
+and a `Retry-After` — the cheapest guard runs first, ahead of any store read.
+
 Then the request's dedup key — `sha256(sender, receiver, template, prompt)` —
 is checked against the store: an identical request with a queued, running, or
 succeeded job returns *that* job instead of billing a second generation, the
 same conditional-write idempotency the cloud design puts on the job document.
-Otherwise `Store.create_job` writes a `queued` row, `BackgroundTasks` schedules
-`run_job`, and the endpoint returns **202** with the `job_id`.
+The check is not merely read-then-insert: a partial unique index on
+`jobs.dedup_key` (over non-failed rows) arbitrates, so two identical requests
+racing between the read and the insert cannot both create a job — the loser's
+insert fails and the retry returns the winner. Otherwise `Store.create_job`
+writes a `queued` row, `BackgroundTasks` schedules `run_job` — which waits on
+a process-wide semaphore (`GALACTUS_MAX_CONCURRENT_JOBS`) before flipping to
+`running`, so a burst of accepted jobs queues rather than running unbounded
+pipelines at once — and the endpoint returns **202** with the `job_id`.
 
 The 202 is not only a latency accommodation. A synchronous endpoint would push
 back against retrying — and the retries are where the contract guarantee comes
@@ -292,32 +305,34 @@ filler padding, and it is flagged so the caller can treat it accordingly.
 
 ## Numbers
 
-From `uv run python evals/run.py --dry-run` — 12 cases across easy/medium/hard,
-run against a scripted provider so the harness is deterministic and costs
-nothing:
+From `uv run python evals/run.py` — 12 cases across easy/medium/hard, run live
+against `claude-sonnet-5`:
 
 | Metric | Value | Meaning |
 |---|---|---|
-| Contract pass rate | 58.3% | valid on first generation, no repair |
-| Repair convergence | 0.36 | mean repair attempts, converged cases |
-| Fallback rate | 8.3% | needed deterministic truncation |
+| Contract pass rate | 33.3% | valid on first generation, no repair |
+| Repair convergence | 1.0 | mean repair attempts, converged cases |
+| Fallback rate | 0.0% | needed deterministic truncation |
 | Grounding rate | 91.7% | claims traceable to a source span |
 | **Contract valid after repair+fallback** | **100.0%** | the guarantee |
-| Total provider calls | 19 | for 12 cases |
+| Total provider calls | 145 | for 12 cases |
 
-Read the first and last rows together. First-pass compliance is a coin flip —
-which is precisely the argument for not trusting the model with arithmetic. The
-100% is not the model getting better; it is the deterministic layer doing its
-job.
+Read the first and last rows together. Only a third of drafts satisfy the
+contract on the first try — which is precisely the argument for not trusting the
+model with arithmetic. The 100% is not the model getting better; it is the
+deterministic layer doing its job.
 
 The one ungrounded case is `no-facts-at-all`: a brief with no source material
-at all, which exhausts the repair budget and lands in fallback. It is in the
-suite because that is the case a demo would quietly omit.
+at all. It is in the suite because that is the case a demo would quietly omit.
 
-**These numbers come from scripted fixtures, not from the client's real PDFs.** The
-scripted provider replays fixed responses, so the pass rate measures the
-*harness*, not a live model. Treat them as a working instrument, not a
-benchmark.
+**A live run is not deterministic, so these are one run's numbers.** Three
+consecutive runs gave contract pass rates of 41.7 / 33.3 / 33.3 and fallback
+rates of 8.3 / 0.0 / 0.0; the table reports the median run. Grounding rate and
+the 100% guarantee were identical across all three — the variance sits in how
+often the model happens to satisfy the contract unaided, not in whether the
+system holds it. Rerunning will move the first three rows by a few points.
+`--dry-run` remains available for a deterministic, zero-cost pass against the
+scripted provider, but its numbers measure the *harness*, not a model.
 
 ## Cost model
 
@@ -339,7 +354,16 @@ SQLite, two tables ([src/store.py](../src/store.py)):
   Queryable by company and role.
 - **`jobs`** — `(job_id, company_id, status, dedup_key, payload_json,
   created_at)`. The payload is a JSON blob merged on update; `dedup_key` backs
-  the idempotency lookup.
+  the idempotency lookup and carries a partial UNIQUE index over non-failed
+  rows, so the database — not application code — decides which of two racing
+  identical submissions wins.
+
+An hourly retention sweep (`GALACTUS_RETENTION_DAYS`, default 30, `0`
+disables) deletes finished jobs and uploaded PDFs past their age by
+`created_at`. Client documents are not kept forever, and a swept succeeded job
+releases its dedup key — the idempotency window is therefore at most the
+retention window. Non-terminal jobs are never swept; a stale one is failed
+loudly at the next boot instead.
 
 `GALACTUS_DB_PATH` points the store at a file (WAL mode, 5s busy timeout) so
 uploads and results survive a restart; unset, it runs in memory — fine for
@@ -420,9 +444,12 @@ because they are hedges.
 
 In priority order, and honestly:
 
-1. **Run the evals against a live model.** Every number above comes from a
-   scripted provider. The first-pass pass rate against a real model is the
-   single most informative missing measurement, and it is a day's work.
+1. **Pin the eval numbers down statistically.** The numbers above are a live
+   run, but one run of a non-deterministic model is a sample, not a
+   measurement: first-pass compliance moved 8 points across three consecutive
+   runs. Reporting a mean and a spread over N runs — and failing the suite on a
+   regression in the *mean* rather than in one sample — is the honest version,
+   and it is a day's work.
 2. **Per-field repair targeting.** Today an over-long headline resends all nine
    fields. Sending the draft whole is right for *coupled* fields (the two
    columns), but `cta` and `headline` are independent, and a narrower repair

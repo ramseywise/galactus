@@ -92,6 +92,26 @@ The largest template totals well under 2000 words across all fields, so this is
 roughly 4x headroom. Sized generously on purpose: a `max_tokens` cut produces a
 truncated JSON object that fails to parse, which surfaces as an `LLMError`
 rather than as a repairable violation.
+
+`max_tokens` bounds thinking *and* answer together, so the headroom is only
+real while thinking is off — see `THINKING`.
+"""
+
+THINKING: dict[str, str] = {"type": "disabled"}
+"""Thinking is off for generation, deliberately.
+
+Current models run adaptive thinking when the parameter is omitted, and
+`max_tokens` caps thinking plus response text as one budget. A filled template
+is a few hundred output tokens; adaptive thinking on this prompt consumed the
+entire 8000-token ceiling and returned an empty thinking block with no draft —
+every call failing as `max_tokens`, which read as a model that could not satisfy
+the contract rather than as a misconfigured request.
+
+Off is also the right default on the merits: the reasoning this task needs is
+the deterministic part — counting characters and words — and that lives in the
+validator, not the model. The model's job is content, and the repair loop feeds
+it a specific violation when the content misses. Raising the ceiling instead
+would buy thinking tokens for work that code already does exactly.
 """
 
 
@@ -114,6 +134,16 @@ class AnthropicAdapter:
         """
         self._settings = settings if settings is not None else Settings.load()
         self._client = client
+        self.calls = 0
+        """Provider calls made by this adapter.
+
+        Part of the port in practice, not an implementation detail: the eval
+        harness reports total provider calls per case and reads this attribute
+        off whatever provider it was handed. Without it the harness's
+        `getattr(provider, "calls", 0)` fell back to its default and reported
+        zero calls for every live run — a spend figure of 0 that looked like a
+        measurement rather than a missing attribute.
+        """
 
     @property
     def model(self) -> str:
@@ -138,11 +168,16 @@ class AnthropicAdapter:
         import anthropic
 
         client = self._get_client()
+        # Counted before the call, so a failed attempt still registers as spend
+        # — a retry storm that never returns a draft is exactly the case where
+        # an accurate call count matters most.
+        self.calls += 1
 
         try:
             response = await client.messages.create(
                 model=self._settings.model,
                 max_tokens=MAX_TOKENS,
+                thinking=THINKING,
                 messages=[{"role": "user", "content": _to_content(prompt, images)}],
                 output_config={"format": {"type": "json_schema", "schema": schema}},
             )
@@ -198,7 +233,17 @@ def _extract_json(response: Any) -> dict[str, Any]:
     if stop_reason == "refusal":
         raise LLMError("model declined to produce output for this prompt")
     if stop_reason == "max_tokens":
-        raise LLMError(f"response hit the {MAX_TOKENS}-token ceiling and is incomplete")
+        # Name the thinking split. A draft is a few hundred tokens, so hitting
+        # this ceiling almost always means thinking consumed the budget rather
+        # than the model writing an enormous draft — and those two causes have
+        # opposite fixes.
+        thinking_tokens = getattr(
+            getattr(getattr(response, "usage", None), "output_tokens_details", None),
+            "thinking_tokens",
+            None,
+        )
+        detail = f" ({thinking_tokens} spent on thinking)" if thinking_tokens else ""
+        raise LLMError(f"response hit the {MAX_TOKENS}-token ceiling and is incomplete{detail}")
 
     blocks = getattr(response, "content", None) or []
     text = "".join(block.text for block in blocks if getattr(block, "type", None) == "text")

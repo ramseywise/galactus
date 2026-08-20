@@ -25,6 +25,7 @@ from pathlib import Path
 
 import structlog
 
+from config import DEFAULT_MAX_PDF_PAGES
 from ingest.tables import facts_from_table, row_span_contains_cells
 from ingest.text import SPAN_RE, facts_from_pages, normalize_ws, resolve_span
 from ingest.vision import render_pages
@@ -50,6 +51,17 @@ Below 1.0 because it cannot be checked against the source bytes. The number is
 a marker of provenance, not a calibrated probability — it exists so a consumer
 can rank verified facts above asserted ones.
 """
+
+
+class PageLimitError(ValueError):
+    """The PDF has more pages than the ingest cap allows.
+
+    A ValueError so the job runner's existing failure handling records it as a
+    failed job with the message intact. The cap is a spend guard: the vision
+    path bills per rendered page, and without a ceiling one oversized upload
+    sets the ingest bill.
+    """
+
 
 VISION_PROMPT = (
     "Extract every factual claim from this page as a JSON array of strings. "
@@ -79,6 +91,7 @@ async def ingest_pdf(
     *,
     force_vision: bool = False,
     model: str = "unknown",
+    max_pages: int = DEFAULT_MAX_PDF_PAGES,
 ) -> list[Fact]:
     """Extract verified facts from a PDF using both ingest paths.
 
@@ -92,11 +105,14 @@ async def ingest_pdf(
             fixtures and evals where the vision path must be exercised.
         model: Model name recorded on vision spans. Passed in rather than read
             off the port, which is deliberately narrow enough not to expose it.
+        max_pages: Ingest page cap; a longer document raises `PageLimitError`
+            rather than silently truncating — a brief grounded on the first
+            forty pages of a sixty-page deck would misreport its grounding.
 
     Returns:
         Verified text facts followed by vision facts, in page order.
     """
-    pages, table_facts = await asyncio.to_thread(_parse_path, pdf_path)
+    pages, table_facts = await asyncio.to_thread(_parse_path, pdf_path, max_pages)
     return await _ingest(
         pdf_path, pages, llm, table_facts=table_facts, force_vision=force_vision, model=model
     )
@@ -108,13 +124,14 @@ async def ingest_pdf_bytes(
     *,
     force_vision: bool = False,
     model: str = "unknown",
+    max_pages: int = DEFAULT_MAX_PDF_PAGES,
 ) -> list[Fact]:
     """Ingest a PDF held in memory.
 
     The API layer receives uploads as bytes and has nowhere to put them but a
     temp file; pymupdf can open a byte stream directly, so it does not have to.
     """
-    pages, table_facts = await asyncio.to_thread(_parse_bytes, data)
+    pages, table_facts = await asyncio.to_thread(_parse_bytes, data, max_pages)
     return await _ingest(
         data, pages, llm, table_facts=table_facts, force_vision=force_vision, model=model
     )
@@ -195,20 +212,44 @@ async def extract_vision_facts(
     ]
 
 
-def _parse_path(pdf_path: str | Path) -> tuple[list[str], list[Fact]]:
+def _parse_path(pdf_path: str | Path, max_pages: int) -> tuple[list[str], list[Fact]]:
     """Open a PDF from disk and read pages + table facts. Sync — run off-loop."""
     import pymupdf
 
     with pymupdf.open(pdf_path) as doc:
+        _check_page_cap(doc.page_count, max_pages)
         return _read_pages(doc)
 
 
-def _parse_bytes(data: bytes) -> tuple[list[str], list[Fact]]:
+def _parse_bytes(data: bytes, max_pages: int) -> tuple[list[str], list[Fact]]:
     """Open an in-memory PDF and read pages + table facts. Sync — run off-loop."""
     import pymupdf
 
     with pymupdf.open(stream=data, filetype="pdf") as doc:
+        _check_page_cap(doc.page_count, max_pages)
         return _read_pages(doc)
+
+
+def pdf_page_count(data: bytes) -> int:
+    """Page count of an in-memory PDF; raises if the bytes are not readable.
+
+    For the upload endpoint, so an over-cap or unreadable document is rejected
+    while its uploader is still on the line — the failure otherwise surfaces at
+    generation time, discovered by whoever requested the brief. Sync — run
+    off-loop.
+    """
+    import pymupdf
+
+    with pymupdf.open(stream=data, filetype="pdf") as doc:
+        return doc.page_count
+
+
+def _check_page_cap(page_count: int, max_pages: int) -> None:
+    if page_count > max_pages:
+        raise PageLimitError(
+            f"PDF has {page_count} pages, over the {max_pages}-page ingest cap — "
+            "split the document or raise GALACTUS_MAX_PDF_PAGES"
+        )
 
 
 def _read_pages(doc: object) -> tuple[list[str], list[Fact]]:

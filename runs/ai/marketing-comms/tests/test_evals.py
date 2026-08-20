@@ -246,6 +246,43 @@ def test_convergence_excludes_errored_cases():
     assert compute_metrics(results)["errors"] == 1
 
 
+def test_errors_are_excluded_from_every_rate():
+    """An errored case produced no draft, so it cannot fail the contract.
+
+    The regression: a live run where half the cases died on a provider fault
+    reported a 50% contract pass rate, which read as a model that could not
+    satisfy the contract rather than as a broken request. Errors get their own
+    count and leave the denominators alone.
+    """
+    results = [
+        _result("a", first_pass_valid=True, grounded=True),
+        _result("b", first_pass_valid=False, contract_valid=False, error="LLMError: boom"),
+    ]
+
+    metrics = compute_metrics(results)
+
+    assert metrics["cases"] == 2
+    assert metrics["scored"] == 1
+    assert metrics["errors"] == 1
+    # One scored case, and it passed — not 50% over a denominator that
+    # includes a case which never produced a draft.
+    assert metrics["contract_pass_rate"] == 100.0
+    assert metrics["grounding_rate"] == 100.0
+    assert metrics["contract_valid_rate"] == 100.0
+
+
+def test_a_run_with_errors_exits_nonzero():
+    """Excluding errors from the rates must not make a failed run look clean."""
+    results = [_result("a", error="LLMError: boom", contract_valid=False)]
+
+    metrics = compute_metrics(results)
+
+    # Vacuously 100% over zero scored cases — the exit code is what carries
+    # the failure, so assert the signal the runner actually keys on.
+    assert metrics["errors"] == 1
+    assert metrics["scored"] == 0
+
+
 def test_convergence_is_none_when_nothing_converged():
     """None, not zero. Zero would read as 'converged immediately'."""
     results = [_result("a", repair_attempts=3, used_fallback=True)]
