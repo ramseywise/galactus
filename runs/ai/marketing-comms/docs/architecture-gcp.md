@@ -70,9 +70,12 @@ new prompt carrying computed violations. A draft that fails the contract must
 never be redelivered as a queue failure; it is handled in-process and lands in
 the deterministic fallback.
 
-*Prototype:* `BackgroundTasks` in the API process. No retry, no dedup, and an
-in-flight job is lost on restart. This is the most significant gap between the
-two designs.
+*Prototype:* `BackgroundTasks` in the API process. No retry, and an in-flight
+job is lost on restart (it is failed loudly at the next boot rather than left
+polling forever). Dedup, however, *is* enforced: a partial unique index on the
+job table (`dedup_key` over non-failed rows) applies the same
+conditional-write rule, so racing duplicate submissions cannot both bill. The
+missing queue remains the most significant gap between the two designs.
 
 ### 3. Cloud Run — API and worker tiers
 
@@ -90,7 +93,9 @@ low-latency, the worker is low-QPS and high-latency. One service sized for both
 is sized wrong for both, and a slow generation would occupy a container that
 should be answering polls.
 
-*Prototype:* one process, both roles, no scaling.
+*Prototype:* one process, both roles, no scaling — packaged for Cloud Run as
+a single pinned instance; see [deploy-cloud-run.md](deploy-cloud-run.md) for
+the flags that pin and why.
 
 ### 4. Vertex AI — the model
 
@@ -153,10 +158,16 @@ back off the poll interval or switch to listeners.
 | Poison message | Dead-lettered after 3 attempts, alert fires. |
 | PDF unreadable | Job `failed` at ingest with the specific error, before any model spend. |
 
-**Not implemented anywhere:** per-tenant rate limiting, a spend cap, and
-authentication. The prototype has no auth at all. For a production deployment
-the spend cap is the urgent one — a loop of duplicate submissions against a
-per-call-billed model is the failure mode that costs real money.
+**Partially closed in the prototype, still open here:** the prototype now
+carries a per-caller rate limit on the billed endpoint, a concurrent-job cap,
+an ingest page cap, a retention sweep, and a shared-secret `X-API-Key` gate —
+all in-process, which is exactly why they do not survive scaling past one
+instance (see [deploy-cloud-run.md](deploy-cloud-run.md)). Still missing at
+both levels: per-tenant identity (every keyholder sees every company) and a
+hard spend cap. The rate limit bounds how fast a runaway client can spend,
+not how much — a total cap needs billing-side budget alerts or a metered
+counter in the datastore, and for a production deployment it is the urgent
+one.
 
 ## AWS
 

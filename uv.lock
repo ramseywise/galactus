@@ -723,6 +723,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "python-multipart" },
     { name = "structlog" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -736,7 +737,6 @@ dev = [
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "seaborn" },
-    { name = "uvicorn" },
 ]
 ml = [
     { name = "catboost" },
@@ -755,6 +755,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "structlog", specifier = ">=24.1" },
+    { name = "uvicorn", specifier = ">=0.30" },
 ]
 
 [package.metadata.requires-dev]
@@ -768,7 +769,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.8" },
     { name = "seaborn", specifier = ">=0.13.2" },
-    { name = "uvicorn", specifier = ">=0.30" },
 ]
 ml = [
     { name = "catboost", specifier = ">=1.2.10" },
