@@ -267,6 +267,29 @@ that is not HITL, it is a bottleneck; name the specific edges instead.
 
 ## Stage 2 — Simulate
 
+### 2a — Attack the design's own premises
+
+Before simulating scenarios, check whether the spec rests on a thesis nobody has tested.
+A design whose value depends on an unrun experiment treats that experiment as a
+foundation — it is a risk.
+
+For each load-bearing premise (a claim the design assumes true but has not verified):
+
+1. **Name the experiment that would test it.** If no experiment exists, the premise is
+   unvalidated and the experiment is the design's **first component**, not a follow-up.
+2. **Write the failure branch.** What does this design look like if the premise fails?
+   The honest outcome may be "this is a finding, not a feature," and the spec must
+   survive that answer. A design with no failure branch has not been stressed — it has
+   been assumed.
+3. **Add the premise to the Findings table** (Layer: Grounding) if it is unvalidated,
+   with the experiment as the spec change.
+
+Evidence: a relational thesis gated an entire workstream and had never been run; a
+feasibility doc's decisive A/B test was written but never executed while downstream
+design proceeded as though it had passed (diskoe, 2026-08-24).
+
+### 2b — Simulate scenarios
+
 Now attack the spec. Generate **three scenarios**, and do not let them all be happy paths:
 
 1. **The nominal case** — what the requirement literally describes.
