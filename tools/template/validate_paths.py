@@ -40,6 +40,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import os
 import re
 import subprocess
@@ -439,6 +440,14 @@ def _path_exists_in_template(
         for t in all_template:
             if t == candidate or t.startswith(candidate + "/"):
                 return True
+
+    # Shell glob: `rm -f nbks/0[0-6]_*.py` is expanded by the shell at render
+    # time, so it exists if it matches at least one template path.
+    for candidate in candidates:
+        if any(c in candidate for c in "*?[") and any(
+            fnmatch.fnmatchcase(t, candidate) for t in all_template
+        ):
+            return True
     return False
 
 
