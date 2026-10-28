@@ -24,6 +24,17 @@ claude_cwd() {
   jq -r '.cwd // empty' <<<"$_HOOK_INPUT"
 }
 
+# True when the repo holding <path> is on a spike/* branch. Spikes are the
+# throwaway lane: no plan doc is expected, so the plan-doc state machine stands
+# down there. Keyed on the edited file's repo, not the hook's cwd (see claude_cwd).
+on_spike_branch() {
+  local dir branch
+  dir=$(dirname "$1")
+  [ -d "$dir" ] || return 1
+  branch=$(git -C "$dir" symbolic-ref --short HEAD 2>/dev/null) || return 1
+  [[ "$branch" == spike/* ]]
+}
+
 claude_content() {
   jq -r '.tool_input.new_string // .tool_input.content // .new_string // .content // empty' <<<"$_HOOK_INPUT"
 }

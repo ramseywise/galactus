@@ -69,7 +69,8 @@ spec for one.
 | Good for | a spike, a demo, a thesis to test in an afternoon | something that will be deployed, shared or kept |
 | Next | `/proto-scope` → `/proto-design` → BUILD band | Steps 0–6 below, then the project's own skills |
 
-Default to **run** when the operator says spike, demo, or try. A run can graduate to a
+Default to **run** when the operator says spike, demo, or try (and for a pure spike, hand
+off to `/spike`, which skips the plan doc). A run can graduate to a
 repo later; a repo that should have been a spike is weight carried for nothing.
 
 For a run: create `runs/ai/<slug>/{src,tests}/`, add `runs/ai/<slug>/tests` to

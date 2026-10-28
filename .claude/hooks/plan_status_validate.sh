@@ -8,6 +8,7 @@ path=$(claude_path)
 [ -z "$path" ] && exit 0
 [ -f "$path" ] || exit 0
 echo "$path" | grep -q '/\.claude/docs/plans/.*\.md$' || exit 0
+on_spike_branch "$path" && exit 0
 
 # `|| status=$?` keeps set -e from aborting here: the reject path still has to reach
 # log_event below before the hook exits non-zero, so the block is recorded either way.

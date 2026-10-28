@@ -560,6 +560,19 @@ RACE_N=$(wc -l < "$GALACTUS_TRANSITION_LOG")
   && pass "the ledger lock is released, not leaked" \
   || fail "the ledger lock is released, not leaked"
 
+echo "=== spike/* branches skip validation; other branches do not ==="
+# Spikes carry no plan doc by design, so the state machine stands down there. The
+# control case on a feature branch proves the skip is the branch, not the fixture.
+SPIKE="$TMP/spike-repo"
+mkdir -p "$SPIKE/.claude/docs/plans"
+git -C "$SPIKE" init -q -b spike/try-a-thing
+printf 'Status: BOGUS\n' > "$SPIKE/.claude/docs/plans/s.md"
+run "$SPIKE/.claude/docs/plans/s.md"
+assert_exit0 "invalid Status on a spike/* branch"
+git -C "$SPIKE" checkout -q -b GAL-1-feature
+run "$SPIKE/.claude/docs/plans/s.md"
+[ "$LAST_RC" -eq 2 ] && pass "same doc on a feature branch is rejected" || fail "same doc on a feature branch exited $LAST_RC (must be 2)"
+
 echo
 echo "RESULT: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

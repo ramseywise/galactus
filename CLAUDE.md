@@ -64,6 +64,10 @@ work lands: a run (a subdirectory under `runs/ai/` or `runs/ml/`, which then ent
 or a standalone repo rendered from this repo's copier template (`copier.yaml` +
 `template/`, Python or TypeScript). See `TEMPLATE.md` for the template itself.
 
+**`/spike` is the side door.** One question, a `spike/*` branch, no plan doc and no bands,
+then one light review. The plan-doc hooks stand down on `spike/*`; the guards and the Stop
+hook do not. Graduating a spike means entering FRAME with it as evidence.
+
 `runs/_index/` is reserved for run records — one per training execution, a different grain
 from the run directory that produced it, which is why the name is prefixed: `_index` can
 never collide with a run. **Runs do not define the record shape.** It lives in the root
