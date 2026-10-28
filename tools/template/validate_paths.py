@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-validate_paths.py — bidirectional path sweep for ai-project-template.
+validate_paths.py — bidirectional path sweep for the galactus copier template.
 
 Static analysis (default):
   - Parse copier.yaml _tasks entries and extract every path they reference

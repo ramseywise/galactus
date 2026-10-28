@@ -130,11 +130,11 @@ skill copies for now; step 3 removes the duplicates.
   `proto-scope` description capped. `new-agent` left: 114-line SKILL.md, refs load on demand.
 - 5.6 dangling refs: done (47e1949).
 - 5.7 `/new` from anywhere: done. `~/.claude/skills/new` → this repo (local machine only).
-- 6 cutover: not started; every item is outward-facing. New blocker: every rendered
-  project's `ci.yml` (and atlas/listen-wiseer/librarian) calls
-  `ramseywise/ai-project-template/.github/workflows/python-ci.yml@main`. ai-project-template
-  is public and galactus is private, so repointing breaks public consumers; private ones
-  need Actions access sharing enabled on galactus.
+- 6 cutover (2026-10-28): galactus made public so public consumers can call its reusable
+  workflows. Rendered `ci.yml` now calls `ramseywise/galactus/.github/workflows/python-ci.yml@main`.
+  librarian, listen-wiseer, guacamayo and atlas repointed on their own branches; atlas's
+  `_src_path` → galactus. ai-project-template is deliberately **not archived** yet (owner's
+  call, later); its issues have not been moved.
 
 ## Open decisions
 - D1: Land the staged work via PR before merging (recommended) or park it on `preserve/`?

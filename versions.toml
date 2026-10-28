@@ -1,4 +1,4 @@
-# Canonical dependency versions across ai-project-template, galactus, and
+# Canonical dependency versions across galactus (incl. its copier template) and
 # dssg/project-mgmt-ai.
 #
 # Why this file exists (AIT-70): the three repos drifted to `ai@^5` vs `ai@^7`
