@@ -39,7 +39,7 @@ templates; framework/scaffold docs are workflow guides.
 
 ### Step 2 — Decide the framework (if not given)
 
-Read `references/framework-selection.md` and walk its decision table with
+Read `.claude/skills/framework-selection/SKILL.md` and walk its decision table with
 the user, or infer from project context (existing agent code, deployment target
 mentioned) and confirm before proceeding. Do not silently default.
 
@@ -53,19 +53,19 @@ same table and scaffold only that half, saying plainly which half is missing. Re
 ### Step 3 — Scaffold
 
 **If framework == `adk`:**
-1. Read `references/adk-scaffold.md` and follow it exactly — it drives
+1. Read `.claude/skills/adk-scaffold/SKILL.md` and follow it exactly — it drives
    requirement-gathering, `DESIGN_SPEC.md`, and the `agent-starter-pack` CLI invocation.
-2. Then read `references/adk-dev-guide.md` for the development workflow
+2. Then read `.claude/skills/adk-dev-guide/SKILL.md` for the development workflow
    before writing any agent logic.
 
 **If framework == `langgraph`:**
-1. Read `references/langgraph-scaffold.md` and follow it — it drives
+1. Read `.claude/skills/langgraph-scaffold/SKILL.md` and follow it — it drives
    requirement-gathering, `DESIGN_SPEC.md`, and the file scaffold.
-2. Read `references/langgraph-fundamentals.md` before writing graph code.
+2. Read `.claude/skills/langgraph-fundamentals/SKILL.md` before writing graph code.
 3. If the spec calls for cross-turn memory, also read
-   `references/langgraph-persistence.md`.
+   `.claude/skills/langgraph-persistence/SKILL.md`.
 4. If the spec calls for approval/pause-for-input steps, also read
-   `references/langgraph-human-in-the-loop.md`.
+   `.claude/skills/langgraph-human-in-the-loop/SKILL.md`.
 
 ### Step 4 — Apply capability templates
 

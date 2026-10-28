@@ -3,17 +3,17 @@ name: langgraph-scaffold
 description: >
   Scaffold a new LangGraph agent's core files — state schema, graph builder, nodes,
   checkpointer wiring, tests, and infra. Use when the user wants to build a new
-  LangGraph agent (e.g. "build me a langgraph agent for X") or when the framework
-  selection skill picks langgraph. Unlike ADK, there is no official scaffolder CLI — this
+  LangGraph agent (e.g. "build me a langgraph agent for X") or when /new-agent selects
+  the langgraph framework. Unlike ADK, there is no official scaffolder CLI — this
   skill hand-writes the file set directly.
 ---
 
 # LangGraph Project Scaffolding Guide
 
-Read `.agents/skills/langgraph-fundamentals/SKILL.md` before writing graph code if you
+Read `.claude/skills/langgraph-fundamentals/SKILL.md` before writing graph code if you
 haven't already — it covers `StateGraph`, nodes, edges, `Command`, and `Send`. Read
-`.agents/skills/langgraph-persistence/SKILL.md` and
-`.agents/skills/langgraph-human-in-the-loop/SKILL.md` if the agent needs cross-turn
+`.claude/skills/langgraph-persistence/SKILL.md` and
+`.claude/skills/langgraph-human-in-the-loop/SKILL.md` if the agent needs cross-turn
 memory or approval steps.
 
 ---
@@ -74,8 +74,8 @@ The spec should be thorough enough for another developer to implement the agent 
 ## Step 3: Scaffold the File Set
 
 Substitute `{AGENT_NAME}` → snake_case agent name, `{DOMAIN}` → the domain label from
-Step 1, `{OUTPUT_DIR}` → the output path (default: `{py_project_root}/{ai_source_root}/agents/{AGENT_NAME}`,
-confirm with the user if `py_project_root/ai_source_root` isn't obvious from the project layout).
+Step 1, `{OUTPUT_DIR}` → the output path (default: `{source_root}/agents/{AGENT_NAME}`,
+confirm with the user if `source_root` isn't obvious from the project layout).
 
 ```
 {OUTPUT_DIR}/

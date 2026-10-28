@@ -78,7 +78,7 @@ For ADK API patterns and code examples, consult the official ADK documentation (
 
 Once evaluation thresholds are met:
 
-1. Deploy when ready — see `.agents/skills/adk-scaffold/SKILL.md` for `agent-starter-pack enhance` deployment commands (Agent Engine, Cloud Run)
+1. Deploy when ready — see `.claude/skills/adk-scaffold/SKILL.md` for `agent-starter-pack enhance` deployment commands (Agent Engine, Cloud Run)
 
 **IMPORTANT**: Never deploy without explicit human approval.
 
@@ -161,14 +161,14 @@ Before finalizing any code replacement, verify:
 
 ## Scaffold as Reference
 
-When you need specific infrastructure files but don't want to scaffold the current project directly, use `.agents/skills/adk-scaffold/SKILL.md` to create a temporary reference project in `/tmp/` and copy over what you need.
+When you need specific infrastructure files but don't want to scaffold the current project directly, use `.claude/skills/adk-scaffold/SKILL.md` to create a temporary reference project in `/tmp/` and copy over what you need.
 
 ---
 
 ## Development Commands
 
 Projects created via the Agent Starter Pack CLI include a Makefile with these commands.
-To create or enhance a project, see `.agents/skills/adk-scaffold/SKILL.md` for full instructions.
+To create or enhance a project, see `.claude/skills/adk-scaffold/SKILL.md` for full instructions.
 For non-scaffolded projects, use the ADK CLI equivalents.
 
 | Make (scaffolded) | ADK CLI equivalent | Purpose |

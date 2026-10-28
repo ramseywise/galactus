@@ -233,7 +233,7 @@ Error codes must be stable across versions. Callers build routing logic on them.
 
 - Topic 6.7 from `2026-07-19-research-B-topic-canon.md`
 - `.claude/skills/new-agent/references/cap-streaming.md` (exception handler patterns)
-- `new-agent/references/langgraph-persistence.md` (checkpointing mechanism)
+- `.claude/skills/langgraph-persistence/SKILL.md` (checkpointing mechanism)
 - `harness/agent-retry-taxonomy.md` — call-level vs node-level retry; error-as-context; degrade loudly
 - `harness/loop-detection-and-the-two-retry-rule.md` — the two-per-gate cap and its epistemic argument
 - `harness/production-reliability-primitives.md` — clarifying questions; confidence routing and quarantine; checkpointing payoff ranking and the two-store split; cross-provider fallback behind a uniform endpoint

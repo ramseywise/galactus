@@ -190,7 +190,7 @@ When using `agent_engine` as the deployment target, Agent Engine manages session
 
 After scaffolding, save the approved spec from Step 2 to the project root as `DESIGN_SPEC.md`.
 
-**Then immediately load `.agents/skills/adk-dev-guide/SKILL.md`** — it contains the development workflow, coding guidelines, and operational rules you must follow when implementing the agent.
+**Then immediately load `.claude/skills/adk-dev-guide/SKILL.md`** — it contains the development workflow, coding guidelines, and operational rules you must follow when implementing the agent.
 
 ---
 

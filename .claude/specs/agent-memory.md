@@ -304,7 +304,7 @@ This spec sits beside `agent-context.md` as a peer. The wiki does not organise i
 
 - Topic 5.3 from `2026-07-19-research-B-topic-canon.md`
 - Research B emerging/settled table (taxonomy = settled; backends = contested)
-- `new-agent/references/langgraph-persistence.md` (mechanism)
+- `.claude/skills/langgraph-persistence/SKILL.md` (mechanism)
 - `new-agent/references/core.md` (`memory.py` patterns)
 - `memory/memory-lifecycle.md` — the five stages; rollback-friendly consolidation; ChatGPT and OpenClaw designs
 - `memory/memory-forms-taxonomy.md` — Forms/Functions/Dynamics; the four retrieval decisions; working memory
