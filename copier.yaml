@@ -1543,11 +1543,17 @@ _tasks:
     ~ _copier_conf.dst_path ~ '/DELIVERY.md '
     ~ _copier_conf.dst_path ~ '/DEPLOYMENT.md '
     ~ _copier_conf.dst_path ~ '/RELEASE.md' }}
-  # The ML EDA notebook is the ML shape's counterpart to corpus_analysis.py —
-  # removed as a FILE for any non-ML shape, same as the corpus task removes the
-  # corpus notebook for a non-retrieval shape. Between the two, nbks/ holds
-  # exactly the notebooks the render's shape justifies.
-  - "{{ 'true' if is_ml_shaped or (not scaffold_full_project) else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks/01_eda.py' }}"
+  # The per-stage ML notebooks (00–06, plus their _sample_data helper) are the ML
+  # shape's counterpart to corpus_analysis.py — removed as FILES for any non-ML
+  # shape, same as the corpus task removes the corpus notebook for a
+  # non-retrieval shape. They import ml.*, and the ruff ignores that make them
+  # lint-clean ship only with include_ml, so a corpus shape that kept them would
+  # fail lint on code it cannot run. Between the two, nbks/ holds exactly the
+  # notebooks the render's shape justifies.
+  - >-
+    {{ 'true' if is_ml_shaped or (not scaffold_full_project) else 'rm -f '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks/0[0-6]_*.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks/_sample_data.py' }}
   # nbks/ — removed only when NEITHER reason to have notebooks applies. The two
   # tasks above remove the notebook FILES; this removes the now-empty directory
   # for a shape with no notebooks at all.
