@@ -276,6 +276,35 @@ like to a user (slow? wrong answer? error? silent staleness)? - How would you _n
 14. **What's explicitly OUT of scope for the POC?**
     (Name it explicitly — prevents scope creep during build.)
 
+### Step 5b — Verify build state against the working tree
+
+**Brownfield only** (layering onto an existing codebase, per Q5). Skip entirely in
+discovery mode and in greenfield projects where no code exists yet.
+
+For every capability a source doc claims exists, find the file. A capability with no
+file path is **ABSENT**, whatever the doc says. Apply these markers:
+
+| Marker | Meaning |
+|---|---|
+| `BUILT` | Module exists **and** is tested. Never "deliverable is accepted." |
+| `ABSENT` | No file found. Not partial, not yellow — absent. |
+| `UNVERIFIED` | Could not verify (e.g. code exists but no tests, or path ambiguous). Never an optimistic partial. |
+
+"Shipped" claims decay silently; a path is the only claim the next reader can check.
+A wrong done-marker removes work from the plan — that work then never gets planned.
+Evidence: a PRD inherited green markers from feasibility docs written before anyone
+read the code; six of eight were wrong (diskoe, 2026-08-24).
+See `~/.claude/refs/verification.md` §2.
+
+**Greenfield corollary.** When there is no working tree, **nothing** may be marked
+`BUILT` — the honest state is `SPECIFIED`, and the artifact states that build state was
+unverifiable. Do not read "no tree" as "nothing works" — the system may be running and
+simply not in this checkout.
+
+**Discovery mode.** This step is inapplicable — discovery runs before any code context
+exists, and the profile it emits carries no build-state claims. Say `N/A — discovery
+mode` and move on.
+
 ### Step 6 — Confirm and write DESIGN.md
 
 Summarize what you've learned back to the user in the DESIGN.md structure below. Get explicit

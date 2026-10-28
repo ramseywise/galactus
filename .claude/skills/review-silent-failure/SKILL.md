@@ -86,6 +86,37 @@ case: nothing throws. The pipeline succeeds and is wrong. See
 - Partial ASR hypotheses treated as final — acting on a transcript that can still
   revise means acting on something the recognizer has not committed to.
 
+## Gates without checks
+
+A quality gate that runs against checks nobody wrote turns CI red on **absence**
+rather than on **defect** — and the fix is always to disable the gate. Write graders
+and fixtures first, then enable the gate. If a gate can be filed separately from its
+checks, it is sequenced wrong.
+
+Flag: any gate (CI step, eval target, migration guard, metric threshold) whose
+pass/fail depends on an artifact that does not exist yet, or that computes nothing.
+The symptom is a gate whose only failure mode is "nobody wrote the check," and whose
+only resolution is removal. Evidence: diskoe's `targets.yaml` declared 13 metrics
+gated at 1.0 that nothing computed (B-18, diskoe 2026-08-24).
+
+## Silent disagreement with live state
+
+An instrument that disagrees with reality and says nothing invalidates every row it
+certifies. The defect is not the wrong value — it is the missing signal. See
+`~/.claude/refs/verification.md` §1.
+
+Detection list:
+
+- `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` skipping against a live
+  table or index whose real definition differs from the declared one. The guard checks
+  **name**, not definition — it is not a verification, it is an optimistic skip.
+- A drift checker or migration map keyed by version number, where a duplicate version
+  silently evicts the first entry — neither reported applied nor reported missing.
+- RLS enabled with no `anon` select policy: zero rows returned, read as "no data"
+  rather than "no permission." The query succeeds; the result is wrong.
+- A numeric budget or threshold (tap count, latency ceiling, spend cap) with nothing
+  measuring it — a constraint that can only be enforced by accident.
+
 ## What NOT to flag
 
 - Intentional suppression with a comment explaining why (best-effort cleanup,
