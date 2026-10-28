@@ -141,12 +141,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install copier
-        run: pip install copier
-
-      # No enable-cache: the template root has no uv.lock (it only exists after
-      # render), so cache keying on **/uv.lock fails hard with "No file matched".
+      # No enable-cache: renders resolve their own deps, so a cache keyed on the
+      # repo's uv.lock would never hit for them.
       - uses: astral-sh/setup-uv@v7
+
+      - name: Install copier
+        run: uv tool install copier
 
       # Renders have no package-lock.json, so npm caching (which keys on a
       # lockfile) is deliberately not enabled here.
