@@ -1,0 +1,34 @@
+import { getAccessToken } from "./supabase";
+
+/**
+ * The single seam between this SPA and the backend.
+ *
+ * Every call goes through here so the bearer token is attached in exactly one
+ * place — a component that calls `fetch` directly will work while logged in
+ * locally and 401 in production, which is the expensive way to learn this.
+ */
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const token = await getAccessToken();
+  const headers = new Headers(init.headers);
+  headers.set("content-type", "application/json");
+  if (token) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetch(`/api${path}`, { ...init, headers });
+
+  if (!res.ok) {
+    // Surface the server's own message when it sent one — a bare status code
+    // tells the user nothing and tells the developer almost as little.
+    let detail = res.statusText;
+    try {
+      const body = (await res.json()) as { detail?: string; error?: string };
+      detail = body.detail ?? body.error ?? detail;
+    } catch {
+      // Non-JSON error body — the status text stands.
+    }
+    throw new Error(`${res.status} ${detail}`);
+  }
+
+  return (await res.json()) as T;
+}

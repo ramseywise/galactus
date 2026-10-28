@@ -1,0 +1,48 @@
+# ML metric targets — the numbers a run is held to.
+#
+# Why this lives in ml/evaluation/ and not in the agentic evals/ root: that tree
+# grades model *interactions* (golden sets, LLM judges) and is deliberately not
+# rendered for an ml_model project — see copier.yaml's include_eval_suite. An ML
+# project measures itself with metrics over folds, so its targets belong next to
+# the code that computes them.
+#
+# Two kinds of entry, and the distinction is the point:
+#
+#   absolute:  a floor the metric must clear. Set from a business requirement, not
+#              from what the model happens to score. A target back-filled from the
+#              current run is not a target.
+#   baseline:  compared against baseline.json from the previous run. This is what
+#              turns "PR-AUC 0.02" into "PR-AUC 0.02, unchanged from baseline,
+#              which is chance".
+#
+# Shipped mostly commented out on purpose: a fresh project has no basis for a real
+# floor yet, and an invented one is worse than none. Uncomment as you learn what
+# the problem requires.
+
+absolute:
+  # The floor that is never wrong to keep: a model must beat its own prevalence.
+  # A PR-AUC at prevalence is chance, whatever the number looks like.
+  average_precision_over_prevalence: 1.0
+
+  # roc_auc: 0.70
+  # average_precision: 0.15
+  # brier: 0.20            # lower is better — see `direction` below
+
+baseline:
+  # Regression tolerance against baseline.json. A drop larger than this fails;
+  # a smaller one is noise. Matches settings.baseline_tolerance so a "win" in a
+  # report and a "no regression" here use one number.
+  tolerance: 0.01
+
+  metrics:
+    - average_precision
+    - roc_auc
+    - brier
+
+# Metrics where a lower value is better. Anything not listed here is assumed
+# higher-is-better; getting this wrong silently inverts a gate.
+direction:
+  lower_is_better:
+    - brier
+    - log_loss
+    - expected_cost

@@ -1,0 +1,407 @@
+name: Test template renders
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- render+lint tier ---
+          # (no plain "defaults" row — defaults-tested below renders the same
+          # config and additionally runs the test suite, fully subsuming it)
+          - name: layering-only
+            args: "-d project_type=existing_repo"
+          - name: project_type-mcp_server
+            args: "-d project_type=mcp_server"
+          - name: project_type-eval_suite
+            args: "-d project_type=eval_suite"
+          - name: project_type-ai_backend
+            args: "-d project_type=ai_backend"
+          - name: primary_chat_agent-lg_agent
+            args: "-d primary_chat_agent=lg_agent"
+          - name: primary_chat_agent-adk_agent
+            args: "-d primary_chat_agent=adk_agent"
+          - name: primary_chat_agent-none
+            args: "-d primary_chat_agent=none"
+          # A1 flips: .agents/ and the MCP server no longer render by default —
+          # these rows keep the opt-in paths (and the agent_tools=[mcp] seed)
+          # render-covered.
+          - name: agent-reference-library
+            args: "-d include_agent_reference_library=true"
+          - name: mcp-via-agent-tools
+            args: "-d agent_tools=[mcp]"
+          # --- full tier: real test execution, one config per feature axis ---
+          # defaults-tested is the post-A1 minimal chat_app: lg_agent only, no
+          # MCP server, no rag_agent, no .agents/.
+          - name: defaults-tested
+            args: ""
+            tier: test-py
+          # The pre-A1 default config — full demo chain (both chat agents +
+          # rag_agent + MCP server). Keeps the lg_agent → MCP tool →
+          # rag_agent wiring tested now that defaults no longer render it.
+          - name: full-chain
+            args: "-d primary_chat_agent=both -d include_rag_agent=true -d include_mcp_server=true"
+            tier: test-py
+          # rag shape: the one project_type whose include_rag_agent default is
+          # on (plus vector_backend + structure guard).
+          - name: project_type-rag
+            args: "-d project_type=rag"
+            tier: test-py
+          # A2: a non-retrieval shape — no lg_agent BM25, no rag_agent, so
+          # has_corpus_pipeline is false: core/ is an empty ETL home, the corpus
+          # subpackage + retrieval golden-QA eval + tests/unit/core are dropped.
+          # primary_chat_agent defaults to none for ai_backend, so
+          # has_gradeable_interactions is also false — interaction evals and all
+          # test subdirs are removed. Lint-only (no unit tests to run).
+          - name: no-corpus-ai_backend
+            args: "-d project_type=ai_backend"
+          - name: ts-backend
+            args: "-d primary_backend_language=typescript"
+            tier: test-ts
+          - name: split-service
+            args: "-d primary_backend_language=both -d frontend_backend_topology=split_service -d include_frontend=true"
+            tier: test-split
+          - name: ml
+            args: "-d include_ml=true"
+            tier: test-py
+          # The ml_model SHAPE, as distinct from the `ml` row above: that one
+          # adds the ML toolkit to an agentic scaffold, this one renders an ML
+          # project — ml/ + nbks/ + tests/unit/ml and no agentic tree at all.
+          # assert_no_agentic=true drives the structural assertion step below;
+          # without it this row would only prove the render doesn't crash, which
+          # is precisely the failure mode the shape exists to prevent.
+          - name: project_type-ml_model
+            args: "-d project_type=ml_model"
+            tier: test-py
+            assert_no_agentic: "true"
+          # include_mcp_server is derived (when: false) and defaults OFF for
+          # chat_app, so it must be forced here — without it this row rendered
+          # no mcp_servers/ at all and the test-mcp-ts step had no working dir.
+          - name: mcp-ts
+            args: "-d include_mcp_server=true -d mcp_server_language=typescript"
+            tier: test-mcp-ts
+          - name: mcp-py
+            args: "-d include_mcp_server=true -d mcp_server_language=python"
+            tier: test-mcp-py
+          - name: vector-memory
+            args: "-d vector_backend=memory"
+            tier: test-py
+          # defaults-tested already exercises the seeded escalation+friction
+          # pair (chat_app is agent-shaped); this row covers all four
+          # interaction metrics. The zero-metric removal path is covered by
+          # project_type-eval_suite/mcp_server above (not agent-shaped).
+          - name: eval-metrics-all
+            args: "-d eval_metrics=[escalation,friction,intent,language]"
+            tier: test-py
+          # Domain agent_slug axis: no framework-named dirs in the render.
+          # (lg_agent-without-rag_agent is now the defaults-tested config, so
+          # this row only carries the slug axis.)
+          - name: agent-slug
+            args: "-d agent_slug=helpdesk"
+            tier: test-py
+          # AIT-40: use_flat_layout=true keeps AIT-33's flat-by-default ergonomics
+          # verified. Answers use_flat_layout=true → py_project_root=. → src/ at
+          # repo root (same as the pre-AIT-40 default for python-only projects).
+          - name: flat-layout
+            args: "-d use_flat_layout=true"
+            tier: test-py
+          # AIT-40 persistence: a flat-layout render (use_flat_layout=true)
+          # records the answer, then `copier update` re-applies it without -d.
+          # This is the load-bearing direction: if recording breaks, update
+          # would default to false (nested) and relocate src/ to backend/src.
+          # The assertion tier is handled by the "Layout persistence" step below.
+          - name: layout-persistence
+            args: "-d use_flat_layout=true"
+            tier: test-persistence
+          # Eval-in-CI gate (Phase 4b): an agentic+docker profile must render
+          # BOTH the informational ci.yml eval-report job AND the hard cd.yml
+          # build-canary gate (before docker/login). assert_gate=present drives
+          # the assertion step below.
+          - name: eval-gate-agentic
+            args: "-d primary_chat_agent=lg_agent -d deployment_target=docker -d eval_metrics=[escalation,friction]"
+            assert_gate: present
+          # The mirror: a fire-and-forget shape (no eval harness, no cd.yml) must
+          # render NEITHER the eval-report job NOR any gate step. Proves the
+          # has_corpus_pipeline / include_interaction_evals guards keep
+          # non-agentic scaffolds byte-untaxed.
+          - name: eval-gate-absent
+            args: "-d project_type=eval_suite -d primary_chat_agent=none"
+            assert_gate: absent
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install copier
+        run: pip install copier
+
+      # No enable-cache: the template root has no uv.lock (it only exists after
+      # render), so cache keying on **/uv.lock fails hard with "No file matched".
+      - uses: astral-sh/setup-uv@v7
+
+      # Renders have no package-lock.json, so npm caching (which keys on a
+      # lockfile) is deliberately not enabled here.
+      - uses: actions/setup-node@v7
+        if: contains(matrix.tier || '', 'ts') || matrix.tier == 'test-split'
+        with:
+          node-version: "22"
+
+      # The destination MUST be absolute. copier runs _tasks with cwd already set
+      # to the destination, and the tasks build their paths from
+      # _copier_conf.dst_path — which is the dst exactly as passed here. A
+      # relative "out/" therefore resolves as out/out/ inside the tasks: the rm
+      # cleanups become silent no-ops and the staging mv fails outright
+      # ("out/ is not a directory"), breaking every matrix row.
+      - name: Render (${{ matrix.name }})
+        run: |
+          copier copy --vcs-ref HEAD --trust --defaults \
+            -d "project_name_input=Render Test" \
+            ${{ matrix.args }} \
+            . "$GITHUB_WORKSPACE/out"
+
+      # skills/ is vendored reference material that mentions copier variables in
+      # prose (e.g. framework-selection's SKILL.md) — excluded here for the same
+      # reason the generated Makefile's LINT_PATHS and pre-commit exclude it.
+      # It moved from .agents/ to .claude/skills/ ("mv skills folder"), which is
+      # why the exclusion is keyed to the directory name rather than the old path.
+      # .claude/skills/new-agent/references/ carries Cypher/JSON/prose examples
+      # with literal {{ }} (not unrendered copier) — same exclusion rationale.
+      # The f-string pattern is scripted.py's literal {{field}} placeholder
+      # emitted by an f-string ('{{{{' collapses to '{{' at runtime) — real code,
+      # not unrendered copier.
+      # experiments/io.py's {{"..."}} pairs are f-string brace escaping in an error
+      # message (each '{{' collapses to a literal '{' at runtime) — real code, not
+      # unrendered copier, same as the scripted.py pattern above.
+      # {{prompt}}/{{question}} are promptfoo's own runtime template syntax, not
+      # unrendered copier Jinja — filtered by pattern (not by excluding the whole
+      # file, which also carries real copier substitutions worth checking).
+      # GitHub Actions expression syntax (github.actor, secrets.*, steps.*.outputs.*)
+      # in the rendered cd.yml/ci.yml is a dollar sign followed by '{{' — same
+      # rationale as promptfoo above. The pattern requires the leading '$', so a
+      # line carrying real unrendered '{{ copier_var }}' still trips the check.
+      # The Actions pattern is carried in ACTIONS_EXPR rather than written inline:
+      # the literal sequence in a run: block would make Actions parse THIS file as
+      # an unclosed expression, and escaping it through both YAML and shell quoting
+      # silently collapses ('\$' is not a YAML escape, so the var stops expanding
+      # and the filter matches nothing). A plain env value needs no escaping.
+      - name: Check for leftover Jinja
+        env:
+          ACTIONS_EXPR: '[$]{{'
+        run: |
+          if grep -rn '{{' out/ --exclude-dir='.agents' --exclude-dir='skills' --exclude-dir='references' --include='*.py' --include='*.md' --include='*.toml' --include='*.yaml' --include='*.yml' | grep -v "font-family\|border-collapse\|padding: 0.4rem\|background: #f2f2f2\|margin-bottom\|font-weight: bold\|{{prompt}}\|{{question}}\|{{ }}\|return f\"{{{{{field_spec.name}}}}}\"$\|{{\"{_NOT_APPLICABLE_KEY}\": {{\"reason\"\|$ACTIONS_EXPR"; then
+            echo "Leftover unrendered Jinja found"
+            exit 1
+          fi
+
+      # Phase 4b eval-in-CI gate — assert the conditionals don't silently rot.
+      # present: agentic+docker profile renders the informational ci.yml
+      # eval-report job AND the hard cd.yml build-canary gate (before docker
+      # login). absent: fire-and-forget profile renders neither and has no cd.yml.
+      - name: Assert eval gate rendered (${{ matrix.assert_gate }})
+        if: matrix.assert_gate == 'present'
+        run: |
+          CI=out/.github/workflows/ci.yml
+          CD=out/.github/workflows/cd.yml
+          grep -q 'eval-report' "$CI" || { echo "FAIL: ci.yml missing eval-report job"; exit 1; }
+          test -f "$CD" || { echo "FAIL: cd.yml did not render for agentic+docker"; exit 1; }
+          grep -q -- '--gate' "$CD" || { echo "FAIL: cd.yml build-canary missing hard --gate step"; exit 1; }
+          grep -q -- '--warn-empty' "$CD" || { echo "FAIL: cd.yml gate missing --warn-empty"; exit 1; }
+          # The gate must run BEFORE the image build/push (docker/login).
+          awk '/eval gate/{g=NR} /docker\/login-action/{d=NR} END{exit !(g>0 && g<d)}' "$CD" \
+            || { echo "FAIL: eval gate is not before docker/login in cd.yml"; exit 1; }
+          echo "OK: eval gate present in ci.yml (report) + cd.yml (hard, pre-build)"
+      - name: Assert eval gate absent (${{ matrix.assert_gate }})
+        if: matrix.assert_gate == 'absent'
+        run: |
+          CI=out/.github/workflows/ci.yml
+          grep -q 'eval-report' "$CI" && { echo "FAIL: eval-report leaked into a fire-and-forget ci.yml"; exit 1; }
+          test ! -f out/.github/workflows/cd.yml || { echo "FAIL: cd.yml rendered for a fire-and-forget profile"; exit 1; }
+          echo "OK: no eval gate for the fire-and-forget profile (ci.yml untaxed, no cd.yml)"
+
+      # ml_model shape: the render must be an ML PROJECT, not an agentic scaffold
+      # that also has ml/. Asserted structurally because every individual removal
+      # is a separate _tasks entry — a gate that silently stops firing leaves the
+      # unwanted tree in place, and nothing else in this workflow would notice.
+      # The payload half is asserted too: a shape that removed everything and
+      # shipped no ml/ would otherwise "pass" the absence checks.
+      - name: Assert ml_model renders no agentic scaffold
+        if: matrix.assert_no_agentic == 'true'
+        run: |
+          cd out
+          fail=0
+          # Absent: the agentic tree, the LLM starter kit, the eval suite, the
+          # corpus ETL home, and the lifecycle/change-contract docs.
+          for p in backend/src src/agents evals llm_kit core \
+                   LIFECYCLE.md DELIVERY.md DEPLOYMENT.md RELEASE.md SANYI.md \
+                   tests/unit/agents tests/unit/evals tests/unit/core tests/smoke; do
+            if [ -e "$p" ]; then echo "FAIL: $p rendered for project_type=ml_model"; fail=1; fi
+          done
+          # No agents/ package anywhere in the project source (.claude/ ships
+          # vendored skill payload that legitimately mentions agents — excluded).
+          if find . -type d -name agents -not -path "./.claude/*" | grep -q .; then
+            echo "FAIL: an agents/ directory survived somewhere in the render"
+            find . -type d -name agents -not -path "./.claude/*"
+            fail=1
+          fi
+          # Present: the ML payload the shape exists to deliver.
+          for p in backend/ml nbks/01_eda.py tests/unit/ml backend/experiments; do
+            if [ ! -e "$p" ]; then echo "FAIL: $p missing from an ml_model render"; fail=1; fi
+          done
+          [ "$fail" = 0 ] || exit 1
+          echo "OK: ml_model rendered the ML payload and no agentic scaffold"
+
+      # Delegates to the render's own `make lint-check` (LINT_PATHS) rather than
+      # repo-wide ruff — .claude/ ships vendored reference scripts (mcp-builder)
+      # that are deliberately outside the project's lint boundary.
+      # Lint needs only the dev group (ruff), not the full agent runtime
+      # (sentence-transformers/torch, ~2GB) — sync just dev and stop `uv run`
+      # from re-syncing the project. Test-tier jobs sync the full runtime later
+      # via `uv run pytest`'s own auto-sync.
+      - name: Lint rendered project
+        working-directory: out
+        run: |
+          if [ -f pyproject.toml ]; then
+            uv sync --only-group dev
+            UV_NO_SYNC=1 make lint-check
+          fi
+
+      # Runs before the tests so an orphaned module is reported as "nothing
+      # imports this" rather than surfacing later as a type error in a file no
+      # code path reaches (AIT-51; the TS twin is the check:unimported step below).
+      - name: Python — no unimported modules
+        if: matrix.tier == 'test-py' || matrix.tier == 'test-split'
+        working-directory: out
+        run: uv run python scripts/check_imports.py
+
+      - name: Run Python tests
+        if: matrix.tier == 'test-py' || matrix.tier == 'test-split'
+        working-directory: out
+        run: uv run pytest tests/unit -q
+
+      # Re-entry idempotency: the /add-capability flow drives `copier update -d`
+      # on an already-rendered repo. That exercises the _tasks staging moves a
+      # SECOND time — where a plain `mv _scaffold/src ./` fails "Directory not
+      # empty" (the merge-based cp -R moves in copier.yaml exist to survive this).
+      # Fresh-render-only CI missed that class of bug; this step guards it. Uses
+      # the working-tree re-render form (copier copy --overwrite --vcs-ref HEAD),
+      # matching how these jobs render — `copier update` needs a tagged _commit.
+      - name: Re-entry — add a capability onto the rendered repo
+        if: matrix.tier == 'test-py'
+        working-directory: out
+        run: |
+          git init -q && git add -A
+          git -c user.email=ci@ci -c user.name=ci commit -qm "genesis render"
+          # Remove out/.git before copier re-render: copier 9.17 detects a dirty
+          # local template and runs `git add -A --work-tree=$GITHUB_WORKSPACE` on
+          # its temp clone. That picks up out/ as a gitlink (nested .git), and the
+          # subsequent `git submodule update` fails because there is no .gitmodules
+          # entry. copier copy --overwrite doesn't need the destination to have VCS
+          # history, so removing .git is safe.
+          rm -rf .git || true
+          copier copy --overwrite --vcs-ref HEAD --trust --defaults \
+            ${{ matrix.args }} -d include_rag_agent=true "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/out"
+          # py_project_root derives from use_flat_layout (AIT-40): '.' when true
+          # (agents at src/agents), 'backend' when false (agents at
+          # backend/src/agents). py_project_root itself is `when: false` and not
+          # recorded, but use_flat_layout IS recorded in .copier-answers.yml.
+          # Probe both valid locations to handle all test-py rows regardless of
+          # their use_flat_layout setting.
+          test -d src/agents/rag_agent -o -d backend/src/agents/rag_agent \
+            || { echo "add-capability re-entry did not land rag_agent"; exit 1; }
+          # rag_agent implies has_corpus_pipeline → the corpus subpackage + its
+          # retrieval eval must land on re-entry too (covers the no-corpus shape
+          # gaining a retrieval backend, and stays true for shapes that had it).
+          test -d core/pipelines/corpus \
+            || { echo "re-entry did not land core/pipelines/corpus"; exit 1; }
+          test -f evals/pipelines/run.py \
+            || { echo "re-entry did not land the retrieval golden-QA eval"; exit 1; }
+          test ! -e _scaffold \
+            || { echo "staging dir survived re-render (mv/cp task not idempotent)"; exit 1; }
+          uv run pytest tests/unit -q
+
+      # AIT-40 layout persistence: render with use_flat_layout=true (flat, src/
+      # at root), then re-render WITHOUT -d and assert src/ survives and backend/
+      # did NOT appear. This is the load-bearing direction: if use_flat_layout is
+      # not recorded, the re-render defaults to false (nested) and silently
+      # relocates src/ → backend/src, which is the original bug.
+      #
+      # Uses the working-tree re-render form (copier copy --overwrite --vcs-ref
+      # HEAD), for the same two reasons the re-entry step above does — plus one
+      # more this step hit directly:
+      #   1. `copier update` resolves _commit (a bare SHA) via `git describe`,
+      #      and the template repo carries no tags, so it fails with "cannot
+      #      obtain old template references from `.copier-answers.yml`".
+      #   2. `copier update` refuses to run against a dirty repo, and the render
+      #      step leaves an untracked out/ in $GITHUB_WORKSPACE. The resulting
+      #      "Destination repository is dirty" names the destination but is
+      #      actually reporting the template workspace.
+      # copier copy --overwrite --defaults still reads the destination's
+      # .copier-answers.yml for its defaults, so omitting -d use_flat_layout
+      # leaves the recorded answer as the only thing that can produce src/.
+      - name: Layout persistence — re-render keeps flat layout
+        if: matrix.tier == 'test-persistence'
+        working-directory: out
+        run: |
+          grep 'use_flat_layout: true' .copier-answers.yml \
+            || { echo "FAIL: use_flat_layout not recorded in .copier-answers.yml"; exit 1; }
+          grep 'py_project_root' .copier-answers.yml \
+            && { echo "FAIL: py_project_root (when:false) must NOT be in .copier-answers.yml"; exit 1; }
+          test -d src \
+            || { echo "FAIL: src/ did not render for use_flat_layout=true"; exit 1; }
+          copier copy --overwrite --vcs-ref HEAD --trust --defaults \
+            "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/out"
+          test -d src \
+            || { echo "FAIL: src/ was lost after re-render (flat layout not persisted)"; exit 1; }
+          test ! -d backend \
+            || { echo "FAIL: backend/ appeared after re-render on a flat-layout project"; exit 1; }
+          echo "OK: flat layout persisted across re-render without re-passing -d"
+
+      # ts_project_root defaults to project_slug — "Render Test" → render-test.
+      - name: TS backend — install/lint/typecheck/test/build
+        if: matrix.tier == 'test-ts'
+        working-directory: out/render-test
+        run: |
+          npm install
+          npm run lint
+          # Runs before typecheck/test so an orphaned module is reported as
+          # "nothing imports this" rather than surfacing later as a type error
+          # in a file no code path reaches (AIT-44).
+          npm run check:unimported
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: split_service frontend — install/build
+        if: matrix.tier == 'test-split'
+        working-directory: out/frontend/render-test
+        run: |
+          npm install
+          npm run build
+
+      - name: TS MCP server — install/build
+        if: matrix.tier == 'test-mcp-ts'
+        run: |
+          ! ls -d out/mcp_servers/*__unchosen* 2>/dev/null
+          cd out/mcp_servers/render-test
+          npm install
+          npm run build
+
+      # Guards the __unchosen_* prune: the chosen language must survive at the
+      # real slug and the other must be gone. A naive alias where both slugs
+      # resolved to mcp_server_slug deleted BOTH trees, leaving only README.md.
+      - name: Python MCP server — assert tree + sync
+        if: matrix.tier == 'test-mcp-py'
+        run: |
+          test -f out/mcp_servers/render-test/src/server.py
+          test -f out/mcp_servers/render-test/pyproject.toml
+          ! ls -d out/mcp_servers/*__unchosen* 2>/dev/null
+          cd out/mcp_servers/render-test && uv sync

@@ -1,0 +1,12 @@
+# Smoke tests
+
+This tier exercises a *running* `{{ lg_agent_dir }}` service over real HTTP, as opposed to the
+in-process `TestClient` used by `tests/unit`. Point it at an instance started with
+`make {{ lg_agent_dir | replace('_', '-') }}-up` (or whatever the deployed base URL is) and hit `GET /health` and
+`POST /chat` with `httpx`/`requests` to confirm the process actually boots, binds its
+port, and can serve a request end to end — catching packaging, config, and startup
+issues that in-process unit tests can't see. Run with `make test-smoke`
+(`pytest tests/smoke -q`). There are no tests here yet because there is no live
+service to point at in a freshly generated template; add them once the project has a
+deployed (or locally `make {{ lg_agent_dir | replace('_', '-') }}-up`'d) instance to target, e.g. reading the base URL
+from an environment variable such as `LG_AGENT_BASE_URL`.

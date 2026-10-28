@@ -1,0 +1,165 @@
+/**
+ * {{ project_name }} — verification loop wrapper for the Vercel AI SDK agent.
+ *
+ * Runs `runAgent()` once, grades the accumulated text response against a
+ * configurable grader function, and retries up to `maxRetries` times if the
+ * grade fails.  The retry cap is independent of the agent's own `maxSteps`
+ * (set in settings.ts) so the inner loop can hit its own ceiling without
+ * burning the outer retry budget.
+ *
+ * The grader interface mirrors the Python eval pillar's GraderResult shape
+ * (score: number, isCorrect: boolean, reasoning: string) so cross-stack
+ * eval tooling stays aligned — no duplication of the contract.
+ *
+ * NOT wired into agent.ts (streaming incompatibility — intentional)
+ * ---------------------------------------------------------------
+ * `runWithVerification` calls `collectStream()` which fully consumes the
+ * `streamText` result's async iterator and returns a plain `string`.
+ * `handler.ts` needs the raw `StreamTextResult` object so it can call
+ * `.toUIMessageStreamResponse()` and return a live HTTP stream to the client.
+ * Consuming the stream here would convert the streaming response to a batch
+ * response — a regression in a streaming-first template.
+ *
+ * Use this module in eval/batch contexts where the caller does not need a
+ * streaming HTTP response (e.g. agent/eval/run.ts, test harnesses, scripts).
+ */
+
+import { type UIMessage } from "ai";
+import { runAgent } from "./agent.js";
+import { settings } from "./settings.js";
+import { type StallDetector } from "./stallDetector.js";
+
+// ---------------------------------------------------------------------------
+// Grader interface — mirrors evals/models.py GraderResult (Python side)
+// ---------------------------------------------------------------------------
+
+export interface GraderResult {
+  score: number;       // 0.0–1.0
+  isCorrect: boolean;
+  reasoning: string;
+}
+
+export type GraderFn = (
+  query: string,
+  response: string,
+) => Promise<GraderResult> | GraderResult;
+
+// ---------------------------------------------------------------------------
+// Verification loop
+// ---------------------------------------------------------------------------
+
+export interface VerificationLoopOptions {
+  /** Maximum number of attempts (first run + retries). Default: `settings.maxRetries`. */
+  maxRetries?: number;
+  /** Minimum score to accept as passing. Default: 0.7. */
+  passThreshold?: number;
+  /**
+   * Optional grader.  When omitted the loop runs exactly once with no grading
+   * (zero overhead on the happy path).
+   */
+  grader?: GraderFn;
+  /** Optional stall detector to reset between retries. */
+  stallDetector?: StallDetector;
+}
+
+export interface VerificationResult {
+  answer: string;
+  attempts: number;
+  passed: boolean;
+  lastGrade: GraderResult | null;
+}
+
+/**
+ * Collect the full text response from a `streamText` result stream.
+ * Consumes the stream and returns the concatenated text.
+ */
+async function collectStream(
+  // runAgent is async since AI SDK v7, so ReturnType<typeof runAgent> is a
+  // Promise — Awaited<> unwraps it to the StreamTextResult this consumes.
+  stream: Awaited<ReturnType<typeof runAgent>>,
+): Promise<string> {
+  let text = "";
+  for await (const chunk of stream.textStream) {
+    text += chunk;
+  }
+  return text;
+}
+
+/**
+ * Run the agent with optional grader-gated retries.
+ *
+ * @param messages - The conversation messages to pass to the agent.
+ * @param options  - Verification loop options.
+ * @returns The final answer text, attempt count, pass status, and last grade.
+ */
+export async function runWithVerification(
+  messages: UIMessage[],
+  options: VerificationLoopOptions = {},
+): Promise<VerificationResult> {
+  const {
+    maxRetries = settings.maxRetries,
+    passThreshold = 0.7,
+    grader,
+    stallDetector,
+  } = options;
+
+  if (maxRetries < 1) {
+    throw new Error(`maxRetries must be >= 1, got ${maxRetries}`);
+  }
+
+  const query = messages
+    .filter((m) => m.role === "user")
+    .map((m) =>
+      m.parts
+        .filter((p) => p.type === "text")
+        .map((p) => (p as { type: "text"; text: string }).text)
+        .join(" "),
+    )
+    .join(" ");
+
+  let lastGrade: GraderResult | null = null;
+  let currentMessages = messages;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    stallDetector?.reset();
+
+    const stream = await runAgent(currentMessages);
+    const answer = await collectStream(stream);
+
+    if (!grader) {
+      return { answer, attempts: attempt, passed: true, lastGrade: null };
+    }
+
+    lastGrade = await grader(query, answer);
+
+    if (lastGrade.score >= passThreshold) {
+      return { answer, attempts: attempt, passed: true, lastGrade };
+    }
+
+    if (attempt < maxRetries) {
+      // Feed failure context back so the next attempt can improve.
+      const feedbackText =
+        "[verification-loop] Previous response did not meet quality threshold " +
+        `(score=${lastGrade.score.toFixed(2)}). Reasoning: ${lastGrade.reasoning}. ` +
+        "Please try again with a more accurate answer.";
+
+      currentMessages = [
+        ...messages,
+        {
+          id: `vl-feedback-${attempt}`,
+          role: "user",
+          parts: [{ type: "text", text: feedbackText }],
+        } as UIMessage,
+      ];
+    }
+  }
+
+  return {
+    answer: currentMessages.length > messages.length
+      ? String(currentMessages[currentMessages.length - 1].parts[0])
+      : "",
+    attempts: maxRetries,
+    passed: false,
+    lastGrade,
+  };
+}

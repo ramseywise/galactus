@@ -1,0 +1,256 @@
+{% set lgmk = lg_agent_dir | replace('_', '-') -%}
+{% set adkmk = adk_agent_dir | replace('_', '-') -%}
+# {{ project_name }}
+
+{{ project_description }}
+
+Scaffolded by `ai-project-template` — working example agent(s) over the same
+tiny FAQ corpus:
+{%- if include_rag_agent %}
+`{{ py_project_root }}/{{ ai_source_root }}/agents/rag_agent` (embedding-based semantic retrieval,
+standalone service — the shared retrieval backend the MCP tool calls)
+{%- endif %}
+{%- if primary_chat_agent in ["lg_agent", "both"] %}{% if include_rag_agent %},{% endif %} `{{ lg_agent_dir }}` (LangGraph, BM25 retrieval){% endif %}
+{%- if primary_chat_agent in ["adk_agent", "both"] %}, `{{ adk_agent_dir }}` (Google ADK, routes retrieval through the MCP tool){% endif %}.
+{% if primary_chat_agent in ["lg_agent", "adk_agent", "both"] %}Each consumes the project's MCP server
+via its framework's native client — see `.claude/skills/mcp-builder/SKILL.md`'s
+"Consuming your server" section.
+{% endif -%}
+Plus the project shell (evals, infra, tests, CI) to build real agents on top
+of. See `CLAUDE.md` for AI-assistant conventions and `.agents/skills/README.md`
+for the ADK/LangGraph framework reference library.
+
+## Quick start
+
+```bash
+./project_init.sh                          # uv sync, .env from example, git init if needed
+{%- if include_rag_agent %}
+make rag-corpus-ingest                      # build rag_agent's embedding index from data/raw_corpus/
+make rag-up && make rag-wait && make rag-chat   # start + smoke test rag_agent
+{%- endif %}
+```
+
+{% if primary_chat_agent in ["lg_agent", "both"] -%}
+Try `{{ lg_agent_dir }}`{% if has_corpus_pipeline %} (BM25 retrieval){% endif %} with `make {% if has_corpus_pipeline %}corpus-ingest && make {% endif %}{{ lgmk }}-up && make {{ lgmk }}-chat`.
+{% endif -%}
+{% if primary_chat_agent in ["adk_agent", "both"] -%}
+Try `{{ adk_agent_dir }}` (Google ADK — requires `GOOGLE_API_KEY`) with `make {{ adkmk }}-up && make {{ adkmk }}-chat`.
+{% endif %}
+{%- if has_typescript and ts_agent_framework == "vercel_ai_sdk" %}
+Try the TS agent (Vercel AI SDK) with `make ts-install && make ts-dev`, then
+`curl -X POST localhost:3000/agent/chat -d '{"messages":[{"role":"user","parts":[{"type":"text","text":"hi"}]}]}'`
+(PORT defaults to 3000 — see `{{ ts_project_root }}/{{ ts_source_root }}/index.ts`).
+{% endif %}
+
+## Layout
+
+```
+{{ project_slug }}/
+{%- if primary_chat_agent in ["lg_agent", "both"] %}
+├── {{ py_project_root }}/{{ ai_source_root }}/agents/{{ lg_agent_dir }}/   Chat agent (LangGraph): guardrail -> retrieve -> generate (BM25)
+{%- endif %}
+{%- if include_rag_agent %}
+├── {{ py_project_root }}/{{ ai_source_root }}/agents/rag_agent/  Working example: embedding-based retrieval, standalone service
+{%- endif %}
+{%- if primary_chat_agent in ["adk_agent", "both"] %}
+├── {{ py_project_root }}/{{ ai_source_root }}/agents/{{ adk_agent_dir }}/  Chat agent (Google ADK), retrieval via the MCP tool
+{%- endif %}
+├── core/                                Data/ETL pipelines{% if has_corpus_pipeline %} (pipelines/corpus/ = markdown->JSONL->FTS, feeds retrieval){% endif %}
+{%- if has_corpus_pipeline %}
+├── data/raw_corpus/                         Example FAQ corpus (swap this out for your own)
+{%- endif %}
+├── {{ eval_root }}/                     Eval suite ({{ eval_allowed_dirs }})
+{%- if include_ml %}
+├── ml/                                  Classical ML/stats toolkit (regression, timeseries, stats_testing, feature_engineering, model_comparison, clustering)
+{%- endif %}
+{%- if has_corpus_pipeline %}
+├── nbks/                                Marimo notebooks — inspection, not production code
+{%- endif %}
+├── tests/                               unit / smoke / integration
+├── infrastructure/                      docker-compose + Dockerfiles{% if cloud == 'aws' %}, Terraform skeleton{% endif %}
+├── configs/                             Per-environment config (non-secret)
+├── .claude/                             Claude Code skills + hooks
+{%- if include_dev_companion %}
+├── .claude/docs/companion/              Living "how we work" doc — see /grow-companion, /dream
+{%- endif %}
+└── .agents/skills/                      ADK/LangGraph framework reference library
+```
+
+## Building your own agent
+
+The example agent is a starting point, not the point. Once you understand it:
+
+```
+/new-agent <name> --framework langgraph   # or --framework adk
+```
+
+reads `.agents/skills/framework-selection` (if you haven't already decided) and
+scaffolds a new agent next to the existing one(s) under `{{ py_project_root }}/{{ ai_source_root }}/agents/`.
+See `.claude/skills/new-agent/SKILL.md`.
+
+{% if has_corpus_pipeline -%}
+## Replacing the example corpus
+
+`data/raw_corpus/*.md` is a placeholder "Acme Coffee Machine" FAQ set so the example
+agent has something real to retrieve over. Delete it, drop your own markdown files
+in `data/raw_corpus/`, and re-run `make corpus-ingest`. `core/pipelines/corpus/ingestion.py` expects each
+file to start with a single `# Title` line; everything else is body text.
+
+{% endif -%}
+## Everyday commands
+
+See the `Makefile` for the full list (
+{%- if primary_chat_agent in ["lg_agent", "both"] %}{% if has_corpus_pipeline %}`corpus-ingest`, {% endif %}`{{ lgmk }}-up`/`{{ lgmk }}-down`/`{{ lgmk }}-chat`, {% endif -%}
+{%- if include_rag_agent %}`rag-corpus-ingest`/`rag-up`/`rag-down`/`rag-chat`,{% endif %}
+{%- if primary_chat_agent in ["adk_agent", "both"] %} `{{ adkmk }}-up`/`{{ adkmk }}-down`/`{{ adkmk }}-chat`,{%- endif %}
+`eval-heuristic`/`eval-render`, {% if has_corpus_pipeline %}`nbks-corpus`, {% endif %}`test`/`test-smoke`/`test-integration`,
+`lint`/`typecheck`, `docker-up`/`docker-down`
+{%- if has_typescript and ts_agent_framework == "vercel_ai_sdk" %}, `ts-agent-eval`{% endif %}).
+
+## Deploying
+
+See `infrastructure/README.md` for the local Docker Compose flow and the Terraform
+skeleton under `infrastructure/terraform/` (defaults to `{{ aws_region }}`).
+{%- if has_typescript and ts_agent_framework == "vercel_ai_sdk" %}
+
+**TS agent on Vercel**: with `{{ ts_project_root }}/` set as the project's
+Vercel root directory, `{{ ts_source_root }}/index.ts` is already at a path
+Vercel auto-detects for Express (`src/index.ts`) — no `vercel.json` needed,
+deploy is zero-config
+([Vercel's Express docs](https://vercel.com/docs/frameworks/backend/express)).
+The existing `app.listen(PORT)` pattern in `index.ts` works as-is on Vercel
+(it also supports `export default app` instead, but this template doesn't
+need that variant). Set `ANTHROPIC_API_KEY` (and any other `TS_AGENT_*`
+vars from `.env.example`) in the Vercel project's dashboard — same
+variables as local `.env`, different delivery mechanism, not automatically
+synced between the two. Streaming (`/agent/chat`) works on Vercel's default
+Node.js runtime with no special configuration
+([Vercel's streaming docs](https://vercel.com/docs/functions/streaming-functions))
+— no Edge runtime needed. If a conversation needs longer than the plan's
+default function duration to stream a full response, see
+[max duration](https://vercel.com/docs/functions/limitations#max-duration)
+for how to raise it via `vercel.json`.
+{%- endif %}
+
+## Integrations
+
+**n8n calling this project** (outbound from n8n's perspective): every agent's
+`POST /chat`{% if include_rag_agent %} (and `rag_agent`'s `POST /api/v1/retrieval`){% endif %} is plain JSON over
+HTTP — callable directly from n8n's HTTP Request node.
+{%- if primary_chat_agent in ["adk_agent", "both"] %} `{{ adk_agent_dir }}`'s gateway
+already supports an optional `X-API-Key` header (`GATEWAY_API_KEY` env var, a
+no-op when unset); the LangGraph FastAPI apps don't have this yet — add the
+same pattern before exposing one outside a private network.
+{%- else %} None of the FastAPI apps require auth out of the box — add an
+API-key check before exposing one outside a private network.
+{%- endif %}
+{%- if include_n8n_webhook %}
+
+**This project calling n8n back** (inbound webhook, the reverse direction): a
+generic `POST /webhooks/n8n` route is mounted on every present agent's FastAPI
+app (`{{ py_project_root }}/{{ ai_source_root }}/integrations/n8n_webhook.py`) — HMAC-SHA256-verified via
+an `X-Webhook-Signature` header computed over the raw request body with
+`N8N_WEBHOOK_SECRET`. Payload shape: `{"event": "...", "data": {...}}`. Add your
+own handlers to `EVENT_HANDLERS` in that file; unrecognized events are accepted
+(200) but not dispatched.
+{%- endif %}
+{%- if include_calendar_integration %}
+
+**Google Calendar** (`{{ py_project_root }}/{{ ai_source_root }}/integrations/google_calendar.py`):
+`GoogleCalendarClient` — list/create events, find open slots. Needs a
+pre-obtained OAuth2 refresh token (`GOOGLE_CALENDAR_REFRESH_TOKEN` +
+`GOOGLE_CALENDAR_CLIENT_ID`/`_SECRET`) — see the module's docstring for the
+one-time consent-flow setup this template deliberately doesn't automate.
+{%- endif %}
+{%- if include_marketing_integrations %}
+
+**Marketing** (`{{ py_project_root }}/{{ ai_source_root }}/integrations/{eventbrite,linkedin,canva}.py`):
+thin clients for publishing an Eventbrite event, posting a LinkedIn update, and
+generating a Canva asset from a brand template — each needs its own API
+token/credential (see each module for the exact env var names).
+{%- endif %}
+{%- if include_meeting_intelligence %}
+
+**Meeting intelligence** (`{{ py_project_root }}/{{ ai_source_root }}/integrations/meeting_intelligence.py`):
+`extract_action_items(transcript)` turns a raw transcript (from a
+Granola/Fireflies webhook, or pasted manually) into structured action
+items/decisions/owners/deadlines via one LLM call. This module doesn't fetch
+transcripts itself — wire your transcript source to call it, e.g. from the
+`include_n8n_webhook` receiver's `EVENT_HANDLERS`.
+{%- endif %}
+{%- if include_ragas_grader %}
+
+**Ragas grader** (`{{ eval_root }}/graders/ragas_grader.py`): an additional
+LLM-judge grader (faithfulness/answer-relevancy/context-precision) wired into
+`make eval-heuristic` alongside the existing heuristic graders. **Known issue**
+(verified 2026-07-14): the current `ragas` release has a broken top-level
+import due to an upstream packaging bug — this module catches that and skips
+ragas scoring gracefully rather than crashing the eval run, but produces no
+real scores until ragas ships a fix. Check `ragas`'s changelog before relying
+on this.
+{%- endif %}
+{%- if include_promptfoo %}
+
+**Promptfoo** (`promptfoo.config.yaml`): a config-driven eval harness, run via
+`make promptfoo-eval`{% if include_rag_agent %} (needs `rag_agent` running — `make rag-up` first){% else %} (targets `RAG_AGENT_URL`-style `/chat` on port 8011 — point it
+at your custom RAG service){% endif %}.
+Hits `/chat` directly over HTTP with its own assertions, alongside (not
+instead of) the Python eval suite.
+{%- endif %}
+{%- if include_composio %}
+
+**Composio** (`{{ py_project_root }}/{{ ai_source_root }}/integrations/composio.py`):
+`get_tools()`/`execute_tool()` — discover and execute third-party app actions
+(Gmail, Slack, GitHub, hundreds more) via Composio's unified API. Connect an
+account once via Composio's own dashboard/CLI first.
+{%- endif %}
+{%- if include_web_research %}
+
+**Web research** (`{{ py_project_root }}/{{ ai_source_root }}/integrations/web_research.py`):
+`research(query)` runs GPT-Researcher end-to-end and returns a markdown
+report. Needs GPT-Researcher's own LLM + search-provider env vars (e.g.
+`OPENAI_API_KEY` + `TAVILY_API_KEY`), not this project's settings. **Known
+issue** (verified 2026-07-14): `gpt-researcher`'s `spacy` dependency has no
+Python 3.14 wheel yet — pin an older Python (3.12 confirmed working) if
+`uv sync` fails.
+{%- endif %}
+{%- if has_typescript and ts_agent_framework == "vercel_ai_sdk" %}
+
+**TS agent** (`{{ ts_project_root }}/{{ ts_source_root }}/agent/`): a
+Vercel AI SDK tool-calling agent (`streamText` + `tool()`, automatic
+multi-step tool use), mounted at `POST /agent/chat` on the existing Express
+app — no separate service or port. `agent/handler.ts` is a plain
+`(req: Request) => Response` function, so it also drops straight into a
+Next.js App Router route handler unchanged if this project is (or becomes)
+Next.js-based. Reads `ANTHROPIC_API_KEY` (same key as the Python agents).
+See `.agents/skills/framework-selection/SKILL.md` for when to reach for
+this vs. ADK/LangGraph. Answer-only smoke eval (NOT retrieval grading — the
+TS agent has no search step, unlike the Python backends): `make ts-dev`
+in one terminal, `make ts-agent-eval` in another — scores token overlap
+against `data/raw_corpus/golden_qa.jsonl` the same way `citation.py`'s
+`grade_answer_overlap` does for the Python backends, writes
+`evals/reports/output/heuristic_results_ts_agent.json`.
+{%- endif %}
+{%- if frontend_backend_topology == "split_service" %}
+
+**split_service** (`{{ ts_project_root }}/` + `{{ py_project_root }}/{{ ai_source_root }}/middleware/`):
+two independently-deployed services sharing identity via Supabase Auth JWT —
+FOIA-Fluent's production shape (`dssg/projects/FOIA-Fluent`), not a single
+process. `{{ ts_project_root }}/src/middleware.ts` is the Next.js Edge
+route gate (session check, redirects unauthenticated requests to `/login`);
+`{{ py_project_root }}/{{ ai_source_root }}/middleware/auth.py`'s `get_current_user_id` FastAPI
+dependency verifies the same JWT server-side (HS256 or RS256/JWKS,
+auto-detected) and is mounted on every present agent's FastAPI app.
+Local dev needs no live Supabase project — `get_current_user_id` returns a
+fixed `DEV_USER_ID` whenever `SUPABASE_URL` is unset.
+
+Run both sides locally: `make ts-install && make ts-dev` (frontend, port
+3000) and {% if include_rag_agent %}`make rag-up` (backend, port 8011){% else %}`make {{ lgmk }}-up` (backend){% endif %} in separate
+terminals. Deploy split: `vercel.json` builds the frontend for Vercel;
+`railway.toml` starts the backend under uvicorn for Railway. Fill in
+`SUPABASE_URL`/`SUPABASE_ANON_KEY`/`SUPABASE_JWT_SECRET`/`BACKEND_CORS_ORIGINS`
+(backend) and `NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`
+(frontend) from a real Supabase project before first deploy — both sides run
+without them locally, but auth is a no-op (everyone is `DEV_USER_ID`) until
+they're set.
+{%- endif %}

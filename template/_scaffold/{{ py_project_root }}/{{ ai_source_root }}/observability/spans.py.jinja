@@ -1,0 +1,361 @@
+"""OTel span context managers for the five required span types.
+
+All span helpers follow the same contract:
+- Console exporter by default (zero-config for local dev and CI).
+- OTLP exporter when ``OTEL_EXPORTER_OTLP_ENDPOINT`` is set (prod).
+- Tracing failures are swallowed with a warning — a dead OTel backend must
+  never take the agent down with it.
+- Attributes are redacted before the span is written (see tracing.py's
+  ``redact()``).
+{% if data_sensitivity in ["restricted", "secret"] %}
+data_sensitivity={{ data_sensitivity }}: redact() is enforced inside every
+helper below. Raw query/response text must never reach the exporter.
+{%- endif %}
+
+Span types (per agent-observability.md):
+  invoke_agent  — full agent turn (request → response, root span)
+  chat          — single LLM API call within a turn
+  execute_tool  — one tool call (input → output)
+  retrieve      — RAG / search query + results
+  eval_item     — one eval-harness row (query, response, score, latency, tokens)
+
+Usage::
+
+    from observability.spans import invoke_agent_span, chat_span
+
+    with invoke_agent_span(agent_id="my_agent", session_id=sid) as span:
+        with chat_span(model=settings.model, input_tokens=n, output_tokens=m):
+            response = llm.invoke(messages)
+"""
+
+from __future__ import annotations
+
+import contextvars
+import hashlib
+import logging
+import time
+from collections.abc import Generator
+from contextlib import contextmanager
+from typing import Any
+
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+
+from .tracing import redact
+
+log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Provider bootstrap — called once at module import. Console exporter is
+# always wired; OTLP joins when the endpoint env var is present.
+# ---------------------------------------------------------------------------
+
+_TRACER_NAME = "{{ project_slug }}.agent"
+
+
+def _build_provider() -> TracerProvider:
+    import os
+    import sys
+
+    provider = TracerProvider()
+
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+    if endpoint:
+        try:
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,
+            )
+
+            provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+            log.info("otel.exporter.otlp.ready", extra={"endpoint": endpoint})
+        except ImportError:
+            log.warning(
+                "otel.exporter.otlp.sdk_missing",
+                extra={"hint": "pip install opentelemetry-exporter-otlp-proto-grpc"},
+            )
+    elif "pytest" in sys.modules:
+        # ConsoleSpanExporter binds sys.stdout at construction, and
+        # BatchSpanProcessor's final flush runs at interpreter shutdown — by which
+        # point pytest has already closed the stdout it captured. The flush then
+        # raises "ValueError: I/O operation on closed file" after the test summary:
+        # alarming output that no scaffolded project should inherit, and which no
+        # test depends on (tests needing spans install their own in-memory
+        # exporter). Emitting nothing under pytest is the whole fix.
+        log.debug("otel.exporter.console.skipped_under_pytest")
+    else:
+        provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+        log.debug("otel.exporter.console.ready")
+
+    return provider
+
+
+try:
+    _provider = _build_provider()
+    trace.set_tracer_provider(_provider)
+    _tracer = trace.get_tracer(_TRACER_NAME)
+    _otel_available = True
+except Exception as _init_err:
+    log.warning("otel.init.failed", extra={"error": str(_init_err)})
+    _otel_available = False
+    _tracer = None  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+
+def _input_hash(payload: Any) -> str:
+    """One-way hash of tool inputs — for correlation without logging PII."""
+    return hashlib.sha256(str(payload).encode()).hexdigest()[:16]
+
+
+# Carries the finish reason recorded *inside* an open chat_span back out to that
+# span's ``finally``, which is where the truncation warning is decided. A
+# ContextVar rather than a module global so concurrent agenerate() calls — each
+# in its own asyncio task, each with its own context copy — cannot see each
+# other's value. chat_span sets a token on entry and resets it on exit.
+_recorded_finish_reason: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "recorded_finish_reason", default=""
+)
+
+
+def record_finish_reason(span: Any, reason: str) -> None:
+    """Set the finish-reason attribute AND arm chat_span's truncation warning.
+
+    Callers must use this rather than ``span.set_attribute`` directly — a bare
+    set_attribute records the trace but leaves the log warning unarmed, which is
+    the exact defect this helper exists to prevent. Safe to call with
+    ``span=None`` (OTel unavailable): the warning still arms.
+    """
+    if span is not None:
+        span.set_attribute("gen_ai.response.finish_reasons", reason)
+    _recorded_finish_reason.set(reason)
+
+
+@contextmanager
+def _span(name: str, attributes: dict[str, Any]) -> Generator[Any, None, None]:
+    """Inner span wrapper — absorbs tracing errors so callers never crash."""
+    if not _otel_available or _tracer is None:
+        yield None
+        return
+
+    safe = redact(attributes)
+    try:
+        with _tracer.start_as_current_span(name, attributes=safe) as span:
+            yield span
+    except Exception as exc:
+        log.warning("otel.span.failed", extra={"span": name, "error": str(exc)})
+        yield None
+
+
+# ---------------------------------------------------------------------------
+# Public span context managers
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def invoke_agent_span(
+    *,
+    agent_id: str,
+    session_id: str,
+    user_id: str = "",
+    model: str = "",
+    prompt_version: str = "",
+) -> Generator[Any, None, None]:
+    """Root span: covers the full agent turn (request → response).
+
+    Nest all child spans (chat, execute_tool, retrieve) inside this context.
+    """
+    attrs: dict[str, Any] = {
+        "operation_name": "invoke_agent",
+        "agent_id": agent_id,
+        "session_id": session_id,
+        "gen_ai.system": "anthropic",
+    }
+    if user_id:
+        attrs["user_id"] = user_id
+    if model:
+        attrs["gen_ai.request.model"] = model
+    if prompt_version:
+        attrs["prompt_version"] = prompt_version
+
+    with _span("invoke_agent", attrs) as span:
+        yield span
+
+
+@contextmanager
+def chat_span(
+    *,
+    model: str,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    max_tokens: int = 0,
+    temperature: float | None = None,
+    finish_reason: str = "",
+) -> Generator[Any, None, None]:
+    """Span for a single LLM API call (model call span).
+
+    finish_reason=max_tokens is treated as a warning — truncated outputs are
+    wasted spend and should surface in cost dashboards.
+
+    The real finish reason is usually not known at entry (it arrives with the
+    response, inside the block). Record it with ``record_finish_reason(span,
+    reason)`` rather than ``span.set_attribute`` — the ``finish_reason``
+    parameter here only covers callers that somehow know it up front, and a bare
+    set_attribute leaves the warning below unarmed.
+    """
+    attrs: dict[str, Any] = {
+        "operation_name": "chat",
+        "gen_ai.request.model": model,
+        "gen_ai.usage.input_tokens": input_tokens,
+        "gen_ai.usage.output_tokens": output_tokens,
+    }
+    if max_tokens:
+        attrs["gen_ai.request.max_tokens"] = max_tokens
+    if temperature is not None:
+        attrs["gen_ai.request.temperature"] = temperature
+    if finish_reason:
+        attrs["gen_ai.response.finish_reasons"] = finish_reason
+
+    start = time.monotonic()
+    token = _recorded_finish_reason.set(finish_reason)
+    with _span("chat", attrs) as span:
+        try:
+            yield span
+        finally:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            if span is not None:
+                span.set_attribute("duration_ms", duration_ms)
+            # Prefer what the caller recorded inside the block over the
+            # entry-time parameter, which is "" for every real caller.
+            recorded = _recorded_finish_reason.get() or finish_reason
+            _recorded_finish_reason.reset(token)
+            if recorded == "max_tokens":
+                log.warning(
+                    "otel.chat.truncated",
+                    extra={"model": model, "input_tokens": input_tokens},
+                )
+
+
+@contextmanager
+def execute_tool_span(
+    *,
+    tool_name: str,
+    tool_version: str = "1",
+    inputs: Any = None,
+    retry_count: int = 0,
+) -> Generator[Any, None, None]:
+    """Span for one tool call (input → output).
+
+    Raw inputs are hashed, not logged, to avoid PII leakage.
+    """
+    attrs: dict[str, Any] = {
+        "operation_name": "execute_tool",
+        "tool.name": tool_name,
+        "tool.version": tool_version,
+        "retry_count": retry_count,
+        "is_error": False,
+    }
+    if inputs is not None:
+        attrs["input_hash"] = _input_hash(inputs)
+
+    start = time.monotonic()
+    with _span("execute_tool", attrs) as span:
+        try:
+            yield span
+        except Exception as exc:
+            if span is not None:
+                span.set_attribute("is_error", True)
+                span.set_attribute("error_code", type(exc).__name__)
+            raise
+        finally:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            if span is not None:
+                span.set_attribute("duration_ms", duration_ms)
+
+
+@contextmanager
+def retrieve_span(
+    *,
+    query: str,
+    backend: str = "",
+    top_k: int = 0,
+    result_count: int = 0,
+) -> Generator[Any, None, None]:
+    """Span for a RAG / search query + results (retrieval span).
+
+    The raw query is redacted at restricted/secret sensitivity — pass
+    ``query=redact({"query": q})["query"]`` or use the hash form for full
+    redaction.
+    """
+    attrs: dict[str, Any] = {
+        "operation_name": "retrieve",
+{%- if data_sensitivity in ["restricted", "secret"] %}
+        "query_hash": _input_hash(query),
+{%- else %}
+        "query": query,
+{%- endif %}
+    }
+    if backend:
+        attrs["retrieval.backend"] = backend
+    if top_k:
+        attrs["retrieval.top_k"] = top_k
+    if result_count:
+        attrs["retrieval.result_count"] = result_count
+
+    start = time.monotonic()
+    with _span("retrieve", attrs) as span:
+        try:
+            yield span
+        finally:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            if span is not None:
+                span.set_attribute("duration_ms", duration_ms)
+
+
+@contextmanager
+def eval_item_span(
+    *,
+    eval_id: str,
+    query: str,
+    backend: str = "",
+    model: str = "",
+    score: float | None = None,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+) -> Generator[Any, None, None]:
+    """Span for one eval-harness row.
+
+    Emits: query (or hash), response score, latency, token counts, and model
+    name — enough for cost attribution per eval item.
+    """
+    attrs: dict[str, Any] = {
+        "operation_name": "eval_item",
+        "eval.id": eval_id,
+{%- if data_sensitivity in ["restricted", "secret"] %}
+        "eval.query_hash": _input_hash(query),
+{%- else %}
+        "eval.query": query,
+{%- endif %}
+    }
+    if backend:
+        attrs["eval.backend"] = backend
+    if model:
+        attrs["gen_ai.request.model"] = model
+    if input_tokens:
+        attrs["gen_ai.usage.input_tokens"] = input_tokens
+    if output_tokens:
+        attrs["gen_ai.usage.output_tokens"] = output_tokens
+
+    start = time.monotonic()
+    with _span("eval_item", attrs) as span:
+        try:
+            yield span
+        finally:
+            duration_ms = int((time.monotonic() - start) * 1000)
+            if span is not None:
+                span.set_attribute("eval.latency_ms", duration_ms)
+                if score is not None:
+                    span.set_attribute("eval.score", score)

@@ -1,0 +1,58 @@
+diff --git a/template/_scaffold/{{ ts_project_root }}/tests/traceTools.test.ts.jinja b/template/_scaffold/{{ ts_project_root }}/tests/traceTools.test.ts.jinja
+index 076fe34..5b1bced 100644
+--- a/template/_scaffold/{{ ts_project_root }}/tests/traceTools.test.ts.jinja
++++ b/template/_scaffold/{{ ts_project_root }}/tests/traceTools.test.ts.jinja
+@@ -2,7 +2,7 @@
+  * Tests for traceTools.ts — `wrapToolsWithSpans`.
+  *
+  * Verifies that the execute_tool OTel span:
+- *   1. Has non-zero duration (opens before execute, closes after)
++ *   1. Brackets the tool call (opens before execute, closes after it resolves)
+  *   2. Is marked is_error=true and status=ERROR when execute throws
+  *   3. Always ends even on throw (finally block)
+  *
+@@ -60,21 +60,28 @@ beforeAll(async () => {
+ // ---------------------------------------------------------------------------
+
+ describe("wrapToolsWithSpans — execute_tool span", () => {
+-  it("span has non-zero duration: opens before execute, closes after", async () => {
++  it("span brackets execute: opens before it starts, closes after it resolves", async () => {
+     const span = makeSpanMock();
++    // Monotonic counter rather than Date.now(): the property under test is
++    // ordering, and wall-clock millisecond granularity makes a duration
++    // comparison flaky (a 5ms setTimeout can measure as 4ms elapsed).
++    let tick = 0;
+     let spanCreatedAt = 0;
++    let executeStartedAt = 0;
++    let executeEndedAt = 0;
+
+     mockStartExecuteToolSpan.mockImplementationOnce(() => {
+-      spanCreatedAt = Date.now();
++      spanCreatedAt = ++tick;
+       // Wire end() to record when span closes
+-      span.end.mockImplementation(() => { span.endedAt = Date.now(); });
++      span.end.mockImplementation(() => { span.endedAt = ++tick; });
+       return span;
+     });
+
+-    const DELAY_MS = 5;
+     const slowTool = {
+       execute: async () => {
+-        await new Promise((r) => setTimeout(r, DELAY_MS));
++        executeStartedAt = ++tick;
++        await new Promise((r) => setTimeout(r, 5));
++        executeEndedAt = ++tick;
+         return "done";
+       },
+     };
+@@ -82,8 +89,8 @@ describe("wrapToolsWithSpans — execute_tool span", () => {
+     const wrapped = wrapToolsWithSpans({ slow: slowTool });
+     await (wrapped.slow as { execute: () => Promise<unknown> }).execute();
+
+-    const duration = span.endedAt - spanCreatedAt;
+-    expect(duration).toBeGreaterThanOrEqual(DELAY_MS);
++    expect(spanCreatedAt).toBeLessThan(executeStartedAt);
++    expect(span.endedAt).toBeGreaterThan(executeEndedAt);
+     expect(span.end).toHaveBeenCalledTimes(1);
+     // Success path: OK status
+     expect(span.setStatus).toHaveBeenCalledWith(

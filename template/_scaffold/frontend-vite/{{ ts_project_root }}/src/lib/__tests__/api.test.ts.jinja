@@ -1,0 +1,72 @@
+/**
+ * Tests for lib/api.ts — the single API seam.
+ *
+ * These assert the two properties every caller depends on and no component
+ * re-implements: the bearer token is attached when a session exists, and a
+ * non-2xx response becomes a thrown Error carrying the server's own message.
+ * They FAIL if apiFetch stops reading the token or starts returning error
+ * bodies as data.
+ */
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { apiFetch } from "../api";
+
+const mocks = vi.hoisted(() => ({ getAccessToken: vi.fn() }));
+
+vi.mock("../supabase", () => ({
+  getAccessToken: mocks.getAccessToken,
+}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  mocks.getAccessToken.mockReset();
+});
+
+/** Stubs fetch and hands back the Request it was called with. */
+function stubFetch(response: Response) {
+  const spy = vi.fn(async () => response);
+  vi.stubGlobal("fetch", spy);
+  return spy;
+}
+
+describe("apiFetch", () => {
+  it("attaches the bearer token when a session exists", async () => {
+    mocks.getAccessToken.mockResolvedValue("token-123");
+    const spy = stubFetch(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await apiFetch("/health");
+
+    const [, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).get("authorization")).toBe("Bearer token-123");
+  });
+
+  it("omits the authorization header when signed out", async () => {
+    mocks.getAccessToken.mockResolvedValue(null);
+    const spy = stubFetch(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    await apiFetch("/health");
+
+    const [, init] = spy.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).has("authorization")).toBe(false);
+  });
+
+  it("throws with the server's detail message on a non-2xx response", async () => {
+    mocks.getAccessToken.mockResolvedValue(null);
+    stubFetch(
+      new Response(JSON.stringify({ detail: "tenant mismatch" }), {
+        status: 403,
+        statusText: "Forbidden",
+      }),
+    );
+
+    await expect(apiFetch("/things")).rejects.toThrow("403 tenant mismatch");
+  });
+
+  it("falls back to status text when the error body is not JSON", async () => {
+    mocks.getAccessToken.mockResolvedValue(null);
+    stubFetch(new Response("<html>502</html>", { status: 502, statusText: "Bad Gateway" }));
+
+    await expect(apiFetch("/things")).rejects.toThrow("502 Bad Gateway");
+  });
+});

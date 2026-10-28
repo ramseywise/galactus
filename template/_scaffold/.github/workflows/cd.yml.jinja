@@ -1,0 +1,107 @@
+name: CD
+
+# Rendered only when deployment_target is docker/cloud AND the LangGraph chat
+# agent is scaffolded — infrastructure/containers/{{ lg_agent_dir }}/Dockerfile is the
+# only image the template ships (see copier.yaml's cd.yml cleanup task).
+#
+# This is the "build" half of CD, staged for a canary rollout (see
+# DEPLOYMENT.md's stage table):
+#   - build-canary: on every push to main, builds + pushes the sha-tagged
+#     image only. That's your canary — point the canary revision at it.
+#   - promote:      manual workflow_dispatch, re-tags that sha image as
+#     `latest` (stable) with no rebuild, behind the `production` environment
+#     gate. This is the 100%-traffic promotion; run it only after the canary
+#     bakes and /deploy-check's guardrails hold.
+# Wire the "deploy" half (Railway/ECS/Cloud Run/...) as follow-on steps that
+# point each revision at the right tag — serverless/split_service projects
+# don't get this file at all (Vercel and Railway deploy from their own git
+# integrations).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  # ── Canary build (automatic on push to main) ──────────────────────────────
+  # Pushes ONLY the sha tag. The `latest` (stable) tag is NOT moved here — a
+  # push to main produces a canary image your platform points its canary
+  # revision at (~5% traffic per DEPLOYMENT.md's stage table). Nothing goes to
+  # 100% of users until the `promote` job below is run by hand.
+  build-canary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      ANTHROPIC_API_KEY: "test-key-not-real"
+      LANGSMITH_TRACING: "false"
+      VECTORDB_PATH: ":memory:"
+    steps:
+      - uses: actions/checkout@v4
+{%- if has_corpus_pipeline or include_interaction_evals %}
+      # ── Eval gate (hard) — runs BEFORE the docker build/push ──────────────
+      # A threshold miss aborts the canary (--gate exits non-zero). Free
+      # heuristic layer only; judges are opt-in for repos that add
+      # ANTHROPIC_API_KEY as a real secret. --warn-empty makes a fresh scaffold
+      # with no activated targets.yaml metric loud instead of a silent no-op:
+      # the gate passes (canary iteration isn't hostage to eval setup) but CI
+      # can't green-wash it — /deploy-check's G2 holds the real pre-prod line.
+      - uses: astral-sh/setup-uv@v3
+      - run: uv sync --group dev
+{%- if has_corpus_pipeline %}
+      # The retrieval gate reads the corpus index — build it first.
+      - run: make corpus-ingest
+      - name: Retrieval eval gate
+        run: PYTHONPATH={{ py_project_root }}/{{ ai_source_root }}:. uv run python -m {{ eval_root }}.pipelines.run heuristic --gate --warn-empty
+{%- endif %}
+{%- if include_interaction_evals %}
+      - name: Interaction eval gate
+        run: PYTHONPATH={{ py_project_root }}/{{ ai_source_root }}:. uv run python -m {{ eval_root }}.pipelines.grade run --no-judges --gate --warn-empty
+{%- endif %}
+{%- endif %}
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: {% raw %}${{ github.actor }}{% endraw %}
+          password: {% raw %}${{ secrets.GITHUB_TOKEN }}{% endraw %}
+      # metadata-action also lowercases the image name (GHCR requires it).
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: {% raw %}ghcr.io/${{ github.repository }}{% endraw %}/{{ lg_agent_dir }}
+          # sha only — the immutable canary tag. `latest` moves in `promote`.
+          tags: type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/containers/{{ lg_agent_dir }}/Dockerfile
+          push: true
+          tags: {% raw %}${{ steps.meta.outputs.tags }}{% endraw %}
+          labels: {% raw %}${{ steps.meta.outputs.labels }}{% endraw %}
+
+  # ── Promote canary → stable (manual gate) ─────────────────────────────────
+  # Run via `workflow_dispatch` AFTER the canary has baked and DEPLOYMENT.md's
+  # guardrail metrics held (see /deploy-check). Re-tags the already-built sha
+  # image as `latest` — no rebuild, so the bits promoted are exactly the bits
+  # that baked. Wire the `production` environment to a required reviewer in
+  # repo Settings → Environments to make the promotion an approval gate.
+  promote:
+    if: {% raw %}${{ github.event_name == 'workflow_dispatch' }}{% endraw %}
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: {% raw %}${{ github.actor }}{% endraw %}
+          password: {% raw %}${{ secrets.GITHUB_TOKEN }}{% endraw %}
+      # Re-tag the canary sha image as latest without rebuilding (buildx imagetools).
+      - name: Promote sha image to latest
+        run: |
+          IMAGE={% raw %}ghcr.io/${{ github.repository }}{% endraw %}/{{ lg_agent_dir }}
+          SHA_TAG={% raw %}sha-${{ github.sha }}{% endraw %}
+          docker buildx imagetools create --tag "${IMAGE}:latest" "${IMAGE}:${SHA_TAG}"

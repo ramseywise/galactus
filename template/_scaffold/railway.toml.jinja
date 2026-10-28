@@ -1,0 +1,8 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "uvicorn agents.{% if include_rag_agent %}rag_agent{% elif primary_chat_agent in ['lg_agent', 'both'] %}{{ lg_agent_dir }}{% else %}{{ adk_agent_dir }}.api{% endif %}.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "on_failure"

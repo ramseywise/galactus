@@ -1,0 +1,155 @@
+/* Inlined into every report — never linked. A <link href> would make the file
+   stop rendering the moment it is moved, which is the failure mode this whole
+   module exists to avoid.
+
+   Both palettes are defined as custom properties so the SVG charts, which
+   reference var(--accent) and friends, follow the theme without being redrawn. */
+
+:root {
+  --bg: #ffffff;
+  --surface: #f7f8fa;
+  --border: #e2e5ea;
+  --text: #16181d;
+  --muted: #626873;
+  --accent: #2f6feb;
+  --accent-soft: #dbe6fd;
+  --good: #1a7f4b;
+  --warn: #a2620a;
+  --bad: #b4262c;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101216;
+    --surface: #181b21;
+    --border: #2a2f38;
+    --text: #e6e8ec;
+    --muted: #99a0ad;
+    --accent: #6ea0ff;
+    --accent-soft: #1e2a44;
+    --good: #4cc38a;
+    --warn: #e0a63c;
+    --bad: #f0666d;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 2rem 1.25rem 4rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+main { max-width: 1080px; margin: 0 auto; }
+
+h1 { font-size: 1.6rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+h2 {
+  font-size: 1.05rem;
+  margin: 2.25rem 0 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+  letter-spacing: 0.01em;
+}
+h3 { font-size: 0.9rem; margin: 0 0 0.5rem; color: var(--muted); font-weight: 600; }
+
+.subtitle { color: var(--muted); margin: 0 0 1.5rem; font-size: 0.9rem; }
+
+.meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.meta div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+.meta dt { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.meta dd { margin: 0.2rem 0 0; font-family: var(--mono); font-size: 0.95rem; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th, td { text-align: right; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--border); }
+th:first-child, td:first-child { text-align: left; }
+thead th { color: var(--muted); font-weight: 600; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; }
+tbody tr.best { background: var(--accent-soft); }
+tbody td { font-family: var(--mono); }
+tbody td:first-child { font-family: inherit; font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+
+.tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  margin-left: 0.4rem;
+  vertical-align: middle;
+  font-family: inherit;
+  font-weight: 500;
+}
+.tag.best { border-color: var(--accent); color: var(--accent); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem 0.6rem;
+}
+.card p { margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--muted); }
+
+.chart { width: 100%; height: auto; display: block; }
+.chart-frame { fill: none; stroke: var(--border); stroke-width: 1; }
+.chart-grid { stroke: var(--border); stroke-width: 0.5; }
+.chart-tick { fill: var(--muted); font-size: 9px; font-family: var(--mono); }
+.chart-axis { fill: var(--muted); font-size: 10px; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.chart-line-dot { fill: var(--accent); }
+.chart-line-muted { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.chart-line-muted-dot { fill: var(--muted); }
+.chart-baseline { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-bar { fill: var(--accent); }
+.chart-cell { fill: var(--accent); stroke: var(--bg); stroke-width: 1; }
+.chart-cell-text { fill: var(--text); font-size: 11px; font-family: var(--mono); }
+.chart-empty { fill: var(--muted); font-size: 11px; }
+
+.note {
+  border-left: 3px solid var(--border);
+  padding: 0.5rem 0 0.5rem 0.85rem;
+  margin: 0.75rem 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.note.good { border-color: var(--good); }
+.note.warn { border-color: var(--warn); }
+.note.bad { border-color: var(--bad); }
+.note strong { color: var(--text); }
+
+ul.plain { list-style: none; padding: 0; margin: 0.4rem 0 0; font-size: 0.85rem; }
+ul.plain li { padding: 0.25rem 0; border-bottom: 1px solid var(--border); }
+ul.plain li:last-child { border-bottom: none; }
+code { font-family: var(--mono); font-size: 0.88em; }
+
+footer {
+  margin-top: 3rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+@media print {
+  body { padding: 0; }
+  .card, .meta div { break-inside: avoid; }
+}

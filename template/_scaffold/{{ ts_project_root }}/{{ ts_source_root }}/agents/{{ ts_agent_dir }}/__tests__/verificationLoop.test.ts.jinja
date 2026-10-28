@@ -1,0 +1,173 @@
+/**
+ * Tests for verificationLoop.ts — `runWithVerification`.
+ *
+ * This module is deliberately NOT wired into agent.ts: it consumes the stream
+ * internally, which is incompatible with the streaming HTTP response handler.ts
+ * returns (see the module header for the full rationale). That makes it the one
+ * agent-support module with no production importer.
+ *
+ * "Cannot be wired" must not mean "never exercised". Before these tests, the
+ * module's only reader was `tsc` — which is how two sibling modules shipped
+ * real type errors that reddened CI while `npm test` stayed green (AIT-41).
+ * These tests are the module's importer of record, and they are what lets
+ * `npm run check:unimported` pass without an exemption.
+ *
+ * Hoisting note (vitest): `vi.mock` is hoisted above the imports, so its factory
+ * cannot close over a normal `const` — the runAgent stub and its response queue
+ * live in `vi.hoisted()` instead. The subject is imported statically (AIT-70).
+ */
+
+import { vi, describe, it, expect, beforeEach } from "vitest";
+import { type UIMessage } from "ai";
+
+// GraderFn / VerificationResult are imported as types alongside the subject so
+// they stay exercised by name — a signature change to either breaks this file.
+import {
+  runWithVerification,
+  type GraderFn,
+  type VerificationResult,
+} from "../verificationLoop.js";
+
+// ---------------------------------------------------------------------------
+// Mock runAgent — verificationLoop consumes result.textStream and nothing else
+// ---------------------------------------------------------------------------
+
+const mocks = vi.hoisted(() => {
+  /** Queue of responses runAgent yields, one per attempt. */
+  const state: { responses: string[]; calls: unknown[][] } = { responses: [], calls: [] };
+  return {
+    state,
+    runAgent: vi.fn((messages: unknown[]) => {
+      state.calls.push(messages);
+      const text = state.responses.shift() ?? "";
+      return {
+        textStream: (async function* () {
+          yield text;
+        })(),
+      };
+    }),
+  };
+});
+
+vi.mock("../agent.js", () => ({
+  runAgent: mocks.runAgent,
+}));
+
+function userMessage(text: string): UIMessage {
+  return { id: "u1", role: "user", parts: [{ type: "text", text }] } as UIMessage;
+}
+
+beforeEach(() => {
+  mocks.state.responses = [];
+  mocks.state.calls = [];
+  mocks.runAgent.mockClear();
+});
+
+describe("runWithVerification", () => {
+  it("returns the agent answer unverified when no grader is supplied", async () => {
+    mocks.state.responses = ["the answer"];
+
+    // Annotated explicitly so the return type stays exercised by name: a
+    // signature change to VerificationResult breaks this line at typecheck.
+    const result: VerificationResult = await runWithVerification([userMessage("q")]);
+
+    expect(result.answer).toBe("the answer");
+    expect(result.attempts).toBe(1);
+    expect(result.passed).toBe(true);
+    expect(result.lastGrade).toBeNull();
+    expect(mocks.runAgent).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes on the first attempt when the grade clears the threshold", async () => {
+    mocks.state.responses = ["good answer"];
+    const grader = vi.fn(async () => ({
+      score: 0.9,
+      isCorrect: true,
+      reasoning: "accurate",
+    })) as unknown as GraderFn;
+
+    const result = await runWithVerification([userMessage("q")], {
+      grader,
+      passThreshold: 0.7,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.attempts).toBe(1);
+    expect(result.lastGrade?.score).toBe(0.9);
+  });
+
+  it("retries with feedback appended when the first grade fails", async () => {
+    mocks.state.responses = ["weak answer", "strong answer"];
+    let call = 0;
+    const grader = vi.fn(async () => {
+      call += 1;
+      return call === 1
+        ? { score: 0.2, isCorrect: false, reasoning: "too vague" }
+        : { score: 0.95, isCorrect: true, reasoning: "accurate" };
+    }) as unknown as GraderFn;
+
+    const result = await runWithVerification([userMessage("q")], {
+      grader,
+      maxRetries: 3,
+      passThreshold: 0.7,
+    });
+
+    expect(result.passed).toBe(true);
+    expect(result.attempts).toBe(2);
+    expect(result.answer).toBe("strong answer");
+
+    // The retry must carry the failure reasoning back to the agent, otherwise
+    // the second attempt is an identical roll of the dice.
+    expect(mocks.state.calls).toHaveLength(2);
+    const retryText = JSON.stringify(mocks.state.calls[1]);
+    expect(retryText).toContain("verification-loop");
+    expect(retryText).toContain("too vague");
+  });
+
+  it("reports failure after exhausting maxRetries", async () => {
+    mocks.state.responses = ["bad", "still bad"];
+    const grader = vi.fn(async () => ({
+      score: 0.1,
+      isCorrect: false,
+      reasoning: "wrong",
+    })) as unknown as GraderFn;
+
+    const result = await runWithVerification([userMessage("q")], {
+      grader,
+      maxRetries: 2,
+      passThreshold: 0.7,
+    });
+
+    expect(result.passed).toBe(false);
+    expect(result.attempts).toBe(2);
+    expect(result.lastGrade?.score).toBe(0.1);
+    expect(mocks.runAgent).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects a maxRetries below 1 rather than silently running zero attempts", async () => {
+    await expect(
+      runWithVerification([userMessage("q")], { maxRetries: 0 }),
+    ).rejects.toThrow("maxRetries must be >= 1");
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it("resets the stall detector before each attempt", async () => {
+    mocks.state.responses = ["a", "b"];
+    const reset = vi.fn();
+    let call = 0;
+    const grader = vi.fn(async () => {
+      call += 1;
+      return call === 1
+        ? { score: 0.1, isCorrect: false, reasoning: "no" }
+        : { score: 0.9, isCorrect: true, reasoning: "yes" };
+    }) as unknown as GraderFn;
+
+    await runWithVerification([userMessage("q")], {
+      grader,
+      maxRetries: 2,
+      stallDetector: { reset } as never,
+    });
+
+    expect(reset).toHaveBeenCalledTimes(2);
+  });
+});

@@ -1,0 +1,73 @@
+/**
+ * {{ project_name }} — tool-execution span wrapper.
+ *
+ * `wrapToolsWithSpans` takes the Vercel AI SDK tool registry and returns an
+ * identical-shape registry where each `execute` function is bracketed by an
+ * `execute_tool` OTel span.  The span:
+ *
+ *   - opens BEFORE `execute` is called (real start time)
+ *   - closes in a `finally` block so it always ends, even on throw
+ *   - is set to SpanStatusCode.ERROR and `is_error: true` when `execute` throws
+ *
+ * Usage (agent.ts):
+ *   import { wrapToolsWithSpans } from "./traceTools.js";
+ *   import { tools } from "../agents/{{ ts_agent_dir }}/tools/index.js";
+ *   // ...
+ *   return streamText({ tools: wrapToolsWithSpans(tools), ... });
+ *
+ * This file exists so tools/index.ts stays a plain registry (readable) and
+ * tracing.ts stays focused on span starters / the withSpan helper.
+ */
+
+import type { ToolSet } from "ai";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { startExecuteToolSpan, inputHash } from "./tracing.js";
+
+// ── Wrapper ────────────────────────────────────────────────────────────────
+
+/**
+ * Return a copy of `toolSet` where every tool's `execute` function is wrapped
+ * with an `execute_tool` OTel span.
+ *
+ * Tools without an `execute` function are passed through unchanged.
+ */
+export function wrapToolsWithSpans(toolSet: ToolSet): ToolSet {
+  const result: ToolSet = {};
+
+  for (const name of Object.keys(toolSet)) {
+    const tool = toolSet[name];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const originalExecute = (tool as any).execute as
+      | ((...args: unknown[]) => Promise<unknown>)
+      | undefined;
+
+    if (typeof originalExecute !== "function") {
+      result[name] = tool;
+      continue;
+    }
+
+    result[name] = {
+      ...tool,
+      execute: async (...args: unknown[]) => {
+        const span = startExecuteToolSpan({
+          toolName: name,
+          inputHash: inputHash(args[0]),
+        });
+        try {
+          const output = await originalExecute(...args);
+          span?.setStatus({ code: SpanStatusCode.OK });
+          return output;
+        } catch (err) {
+          span?.setAttribute("is_error", true);
+          span?.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+          throw err;
+        } finally {
+          span?.end();
+        }
+      },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+  }
+
+  return result;
+}

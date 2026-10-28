@@ -1,0 +1,24 @@
+import react from "@vitejs/plugin-react";
+import path from "node:path";
+import { defineConfig } from "vitest/config";
+
+// Separate from vite.config.ts so the test run does not inherit the dev
+// server's proxy or the Tailwind plugin — neither applies under jsdom, and the
+// proxy target would be dialled on every run. The `@` alias IS repeated,
+// because module resolution must match the build or imports resolve one way in
+// tests and another in the bundle.
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test-setup.ts"],
+    // Colocated, per ~/.claude/refs/naming.md §1.
+    include: ["src/**/__tests__/**/*.test.{ts,tsx}"],
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+    },
+  },
+});

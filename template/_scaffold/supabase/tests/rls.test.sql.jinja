@@ -1,0 +1,170 @@
+-- RLS test suite — one assertion per allow/deny branch in 0001_tenancy.sql.
+--
+-- Run with `supabase test db` (requires the local stack: `supabase start`).
+--
+-- Why this file exists: an RLS policy is the only kind of code that fails
+-- *open*. A missing policy does not raise — it silently returns another
+-- tenant's rows. Unit-testing the application layer cannot catch that, because
+-- the application is not where the decision is made. Every policy needs a
+-- paired allow-case and deny-case here.
+--
+-- Role switching mirrors what PostgREST does per request:
+--   anon           -> set role anon;          request.jwt.claims unset
+--   authenticated  -> set role authenticated; request.jwt.claims carries sub
+-- `auth.uid()` reads that claim, so these helpers are what make user_org_ids()
+-- and every org-scoping policy behave as they will in production.
+
+begin;
+
+select plan(12);
+
+-- ---------------------------------------------------------------------------
+-- Fixtures
+--
+-- Seeded as the superuser (before any `set role`), because RLS is FORCED on
+-- these tables and the policies under test would otherwise block the setup.
+-- ---------------------------------------------------------------------------
+
+\set alice_id    '''11111111-1111-1111-1111-111111111111'''
+\set bob_id      '''22222222-2222-2222-2222-222222222222'''
+\set outsider_id '''44444444-4444-4444-4444-444444444444'''
+\set org_a       '''eeeeeeee-0000-0000-0000-000000000001'''
+\set org_b       '''eeeeeeee-0000-0000-0000-000000000002'''
+
+insert into auth.users (id, email) values
+  (:alice_id,    'alice@example.org'),
+  (:bob_id,      'bob@example.org'),
+  (:outsider_id, 'outsider@example.org');
+
+insert into organizations (id, name) values
+  (:org_a, 'Org A'),
+  (:org_b, 'Org B');
+
+insert into organization_members (organization_id, user_id, role) values
+  (:org_a, :alice_id,    'admin'),
+  (:org_a, :bob_id,      'member'),
+  (:org_b, :outsider_id, 'owner');
+
+insert into items (id, organization_id, title, created_by) values
+  ('aaaaaaaa-0000-0000-0000-000000000001', :org_a, 'Org A item', :alice_id),
+  ('bbbbbbbb-0000-0000-0000-000000000001', :org_b, 'Org B item', :outsider_id);
+
+-- Switches the session to an authenticated user, the way PostgREST would.
+create or replace function test_as(user_id uuid)
+returns void language plpgsql as $$
+begin
+  execute format(
+    'set local request.jwt.claims = %L',
+    json_build_object('sub', user_id, 'role', 'authenticated')::text
+  );
+  set local role authenticated;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- items — tenant isolation
+-- ---------------------------------------------------------------------------
+
+select test_as(:alice_id);
+
+select is(
+  (select count(*) from items)::int, 1,
+  'alice sees only her own org''s items'
+);
+select is(
+  (select title from items), 'Org A item',
+  'alice sees Org A''s item specifically, not Org B''s'
+);
+
+select lives_ok(
+  $$insert into items (organization_id, title, created_by)
+    values ('eeeeeeee-0000-0000-0000-000000000001', 'new', '11111111-1111-1111-1111-111111111111')$$,
+  'alice can insert into her own org'
+);
+
+select throws_ok(
+  $$insert into items (organization_id, title, created_by)
+    values ('eeeeeeee-0000-0000-0000-000000000002', 'sneaky', '11111111-1111-1111-1111-111111111111')$$,
+  '42501',
+  null,
+  'alice cannot insert into an org she does not belong to'
+);
+
+select throws_ok(
+  $$insert into items (organization_id, title, created_by)
+    values ('eeeeeeee-0000-0000-0000-000000000001', 'spoofed', '22222222-2222-2222-2222-222222222222')$$,
+  '42501',
+  null,
+  'alice cannot attribute a row she creates to another user'
+);
+
+select is(
+  (select count(*) from items where id = 'bbbbbbbb-0000-0000-0000-000000000001')::int, 0,
+  'a direct id lookup across tenants returns nothing, not an error'
+);
+
+-- ---------------------------------------------------------------------------
+-- items — role gating within an org
+-- ---------------------------------------------------------------------------
+
+reset role;
+select test_as(:bob_id);
+
+select is(
+  (select count(*) from items where organization_id = :org_a)::int, 2,
+  'bob (member) sees his org''s items including alice''s insert'
+);
+
+select is(
+  (select count(*) from (delete from items
+     where id = 'aaaaaaaa-0000-0000-0000-000000000001' returning 1) d)::int, 0,
+  'bob (member) cannot delete — delete is admin-only'
+);
+
+reset role;
+select test_as(:alice_id);
+
+select is(
+  (select count(*) from (delete from items
+     where id = 'aaaaaaaa-0000-0000-0000-000000000001' returning 1) d)::int, 1,
+  'alice (admin) can delete in her own org'
+);
+
+-- ---------------------------------------------------------------------------
+-- organization_members — membership is not self-serve
+-- ---------------------------------------------------------------------------
+
+reset role;
+select test_as(:bob_id);
+
+-- A WITH CHECK denial raises 42501 rather than inserting zero rows, so this
+-- asserts the error the way the items INSERT deny-cases above do. Counting
+-- rows here would abort the plan on the raised exception instead of failing
+-- the single test.
+select throws_ok(
+  $$insert into organization_members (organization_id, user_id, role)
+    values ('eeeeeeee-0000-0000-0000-000000000002',
+            '22222222-2222-2222-2222-222222222222', 'member')$$,
+  '42501',
+  null,
+  'bob cannot add himself to another org'
+);
+
+-- ---------------------------------------------------------------------------
+-- anon — the unauthenticated baseline
+-- ---------------------------------------------------------------------------
+
+reset role;
+set local role anon;
+
+select is(
+  (select count(*) from items)::int, 0,
+  'anonymous callers see no items at all'
+);
+select is(
+  (select count(*) from organizations)::int, 0,
+  'anonymous callers see no organizations at all'
+);
+
+select * from finish();
+rollback;

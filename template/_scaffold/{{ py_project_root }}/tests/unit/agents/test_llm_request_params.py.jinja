@@ -1,0 +1,103 @@
+"""The request payload must not carry sampling parameters.
+
+Thinking-by-default models — Claude Opus 5, Fable 5, Opus 4.8/4.7, Sonnet 5 —
+reject ``temperature``/``top_p``/``top_k`` with a 400. The scaffold's default
+model (``claude-haiku-4-5-20251001``) still accepts them, so this failure is
+invisible until someone points ``LG_MODEL``/``RAG_MODEL`` at a current model,
+and no amount of linting catches it: the kwarg is valid Python and a valid SDK
+signature. It only fails at the API.
+
+These tests capture the kwargs actually handed to ``messages.create`` and assert
+the sampling params are absent. Re-add ``temperature=...`` to either client and
+they fail immediately, at import-cost, with no API key and no network.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from agents.{{ lg_agent_dir }}.model import gateway as lg_llm
+{%- if include_rag_agent %}
+from agents.rag_agent.model import gateway as rag_llm
+{%- endif %}
+
+# Every sampling parameter the thinking-by-default models reject.
+SAMPLING_PARAMS = ("temperature", "top_p", "top_k")
+
+
+class _CapturingMessages:
+    """Records the kwargs of the last create() call instead of calling the API."""
+
+    def __init__(self, response: SimpleNamespace) -> None:
+        self._response = response
+        self.received: dict[str, Any] | None = None
+
+    def create(self, **kwargs: Any) -> SimpleNamespace:
+        self.received = kwargs
+        return self._response
+
+
+class _CapturingClient:
+    def __init__(self, response: SimpleNamespace) -> None:
+        self.messages = _CapturingMessages(response)
+
+
+def _text_response(text: str = "an answer") -> SimpleNamespace:
+    return SimpleNamespace(
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+        content=[SimpleNamespace(type="text", text=text)],
+    )
+
+
+def test_lg_generate_sends_no_sampling_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Add ``temperature=`` back to lg_agent's generate() and this fails."""
+    client = _CapturingClient(_text_response())
+    monkeypatch.setattr(lg_llm, "get_client", lambda: client)
+
+    lg_llm.generate("system", "hello")
+
+    sent = client.messages.received
+    assert sent is not None, "messages.create was never called"
+    for param in SAMPLING_PARAMS:
+        assert param not in sent, f"{param} 400s on thinking-by-default models"
+
+
+{%- if include_rag_agent %}
+
+
+def test_rag_generate_sends_no_sampling_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same contract for rag_agent — a separate client factory, same failure."""
+    client = _CapturingClient(_text_response())
+    monkeypatch.setattr(rag_llm, "get_client", lambda: client)
+
+    rag_llm.generate("system", "hello")
+
+    sent = client.messages.received
+    assert sent is not None, "messages.create was never called"
+    for param in SAMPLING_PARAMS:
+        assert param not in sent, f"{param} 400s on thinking-by-default models"
+{%- endif %}
+
+
+@pytest.mark.asyncio
+async def test_lg_agenerate_sends_no_sampling_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The async tool-loop path is a separate call site and regresses separately."""
+
+    class _AsyncCapturingMessages(_CapturingMessages):
+        async def create(self, **kwargs: Any) -> SimpleNamespace:  # type: ignore[override]
+            self.received = kwargs
+            return self._response
+
+    client = SimpleNamespace(messages=_AsyncCapturingMessages(_text_response()))
+    monkeypatch.setattr(lg_llm, "get_async_client", lambda: client)
+
+    await lg_llm.agenerate("system", [{"role": "user", "content": "hello"}])
+
+    sent = client.messages.received
+    assert sent is not None, "messages.create was never called"
+    for param in SAMPLING_PARAMS:
+        assert param not in sent, f"{param} 400s on thinking-by-default models"

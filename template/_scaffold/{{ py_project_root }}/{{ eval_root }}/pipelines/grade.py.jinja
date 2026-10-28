@@ -1,0 +1,261 @@
+"""CLI entrypoint for the interaction-eval suite, wired up by the Makefile:
+
+    python -m evals.pipelines.grade run       # == `make eval-grade`
+    python -m evals.pipelines.grade report    # == `make eval-interactions-report`
+
+Grades recorded assistant interactions against the metrics registered in
+graders/metrics_registry.py. Heuristic grading is free and always runs; LLM
+judges (score + written reasoning per row) run when ANTHROPIC_API_KEY is set —
+skip them explicitly with --no-judges. pipelines/calibration.py measures how
+well the heuristic flags track the judges afterwards.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+from evals.graders.judges.base import judges_available
+from evals.graders.metrics_registry import METRICS
+from evals.models import EvalInteraction, GraderResult, InteractionReport
+from evals.pipelines.redaction import redact_interaction
+from evals.pipelines.sampling import sample_records
+from evals.reports.builder import build_report, load_graded
+from evals.reports.renderer import write_report
+
+INTERACTIONS_PATH = Path("data/evals/interactions_sample.jsonl")
+REPORTS_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "reports" / "output"
+GRADED_PATH = REPORTS_OUTPUT_DIR / "interactions_graded.jsonl"
+REPORT_HTML_PATH = REPORTS_OUTPUT_DIR / "interactions_report.html"
+TARGETS_PATH = Path(__file__).resolve().parent.parent / "targets.yaml"
+
+# Seeded from the data_sensitivity answer at generation time — redact PII
+# before grading (and before any text reaches an LLM judge) unless overridden
+# with --redact/--no-redact.
+REDACT_BY_DEFAULT = {{ "True" if data_sensitivity in ["restricted", "secret"] else "False" }}
+
+
+def _load_interactions(path: Path) -> list[dict]:
+    if not path.exists():
+        print(
+            f"error: no interactions file at '{path}'.\n"
+            "Record real interactions there (one JSON object per line — see "
+            "data/evals/interactions_sample.jsonl for the shape), or pass --input.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+def _load_targets() -> dict[str, float]:
+    """Metric thresholds from targets.yaml — {} when absent/empty (gate disabled)."""
+    if not TARGETS_PATH.exists():
+        return {}
+    import yaml
+
+    raw = yaml.safe_load(TARGETS_PATH.read_text(encoding="utf-8"))
+    if not raw:
+        return {}
+    return {key: float(value) for key, value in raw.items()}
+
+
+def _warn_no_targets_activated() -> None:
+    """Loud banner when --warn-empty runs but no targets.yaml metric is active.
+
+    An empty targets.yaml makes --gate pass trivially — enforcement that reads
+    as a no-op. In CI we want that vacuous pass to be *visible*, so the gate
+    step can't green-wash a fresh scaffold. Prints one WARNING line and returns;
+    the build still proceeds (warn-but-pass — see the plan's Phase 4b contract).
+    """
+    print(
+        "WARNING: eval gate is NOT enforcing — no targets activated in "
+        "targets.yaml. Uncomment real thresholds (see DESIGN.md's Evaluation "
+        "section) to make --gate bite. Proceeding without enforcement.",
+        file=sys.stderr,
+    )
+
+
+def run_grading(
+    input_path: Path,
+    use_judges: bool,
+    redact: bool,
+    sample_n: int | None,
+    seed: int,
+    gate: bool,
+    warn_empty: bool = False,
+) -> InteractionReport:
+    records = _load_interactions(input_path)
+    if sample_n is not None:
+        records = sample_records(records, sample_n, seed=seed)
+        print(f"Sampled {len(records)} interaction(s) (seed={seed})")
+    if redact:
+        records = [redact_interaction(record) for record in records]
+
+    judges_ran = use_judges and judges_available()
+    if use_judges and not judges_ran:
+        print("Judges skipped: ANTHROPIC_API_KEY not set (heuristic-only run).")
+
+    judges = (
+        {name: definition.judge_cls() for name, definition in METRICS.items()} if judges_ran else {}
+    )
+
+    rows: list[dict] = []
+    all_results: list[GraderResult] = []
+    for record in records:
+        interaction = EvalInteraction.model_validate(record)
+        grades: list[GraderResult] = []
+        for name, definition in METRICS.items():
+            heuristic_result = definition.heuristic(interaction)
+            if heuristic_result is not None:
+                grades.append(heuristic_result)
+            if judges_ran:
+                judge_result = judges[name].grade(interaction)
+                if judge_result is not None:
+                    grades.append(judge_result)
+        all_results.extend(grades)
+        rows.append(
+            {
+                "interaction": interaction.model_dump(),
+                "grades": [grade.model_dump() for grade in grades],
+            }
+        )
+
+    REPORTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    GRADED_PATH.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+
+    report = InteractionReport(
+        generated_at=datetime.now(UTC).isoformat(),
+        n_interactions=len(rows),
+        judges_ran=judges_ran,
+        redaction_applied=redact,
+        summaries=[definition.summarize(all_results) for definition in METRICS.values()],
+    )
+
+    _print_summary(report)
+    targets = _load_targets()
+    if warn_empty and not targets:
+        _warn_no_targets_activated()
+    failures = _check_targets(report, targets)
+    print(f"\nWrote graded rows to {GRADED_PATH}")
+    if gate and failures:
+        print("eval gate FAILED:", file=sys.stderr)
+        for failure in failures:
+            print(f"  {failure}", file=sys.stderr)
+        raise SystemExit(1)
+    return report
+
+
+def _effective_pass_rate(summary) -> float | None:
+    return (
+        summary.judge_pass_rate
+        if summary.judge_pass_rate is not None
+        else summary.heuristic_pass_rate
+    )
+
+
+def _check_targets(report: InteractionReport, targets: dict[str, float]) -> list[str]:
+    """PASS/FAIL per activated targets.yaml key; unmeasured metrics are skipped."""
+    failures: list[str] = []
+    for summary in report.summaries:
+        key = METRICS[summary.metric].targets_key
+        if key not in targets:
+            continue
+        rate = _effective_pass_rate(summary)
+        if rate is None:
+            print(f"target {key}: n/a (not measured this run — skipped)")
+            continue
+        passed = rate >= targets[key]
+        print(f"target {key}: {'PASS' if passed else 'FAIL'} ({rate:.3f} vs >= {targets[key]})")
+        if not passed:
+            failures.append(f"{key} {rate:.3f} < {targets[key]}")
+    return failures
+
+
+def _print_summary(report: InteractionReport) -> None:
+    header = f"{'metric':<12} {'heur n':>7} {'heur pass':>10} {'judge n':>8} {'judge pass':>11} {'judge score':>12}"
+    print(header)
+    print("-" * len(header))
+    for summary in report.summaries:
+        heur = (
+            f"{summary.heuristic_pass_rate:.3f}" if summary.heuristic_pass_rate is not None else "-"
+        )
+        jpass = f"{summary.judge_pass_rate:.3f}" if summary.judge_pass_rate is not None else "-"
+        jscore = f"{summary.judge_mean_score:.3f}" if summary.judge_mean_score is not None else "-"
+        print(
+            f"{summary.metric:<12} {summary.n_heuristic:>7} {heur:>10} "
+            f"{summary.n_judge:>8} {jpass:>11} {jscore:>12}"
+        )
+
+
+def run_report() -> None:
+    if not GRADED_PATH.exists():
+        print(
+            f"error: no graded file at '{GRADED_PATH}'.\n"
+            "Run `python -m evals.pipelines.grade run` (or `make eval-grade`) first.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    rows = load_graded(GRADED_PATH)
+    judges_ran = any(grade["grader"] == "judge" for row in rows for grade in row.get("grades", []))
+    report = build_report(rows, judges_ran=judges_ran)
+    write_report(report, REPORT_HTML_PATH, _load_targets())
+    print(f"Wrote HTML report to {REPORT_HTML_PATH}")
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="python -m evals.pipelines.grade")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    run_parser = subparsers.add_parser(
+        "run", help="Grade interactions with heuristics (+judges when available)."
+    )
+    run_parser.add_argument("--input", type=Path, default=INTERACTIONS_PATH)
+    run_parser.add_argument(
+        "--no-judges", action="store_true", help="Heuristics only, even with an API key."
+    )
+    run_parser.add_argument(
+        "--sample", type=int, default=None, metavar="N", help="Grade a seeded sample of N rows."
+    )
+    run_parser.add_argument("--seed", type=int, default=42)
+    redact_group = run_parser.add_mutually_exclusive_group()
+    redact_group.add_argument("--redact", dest="redact", action="store_true")
+    redact_group.add_argument("--no-redact", dest="redact", action="store_false")
+    run_parser.set_defaults(redact=REDACT_BY_DEFAULT)
+    run_parser.add_argument(
+        "--gate",
+        action="store_true",
+        help="Exit non-zero if any activated targets.yaml metric falls below its target.",
+    )
+    run_parser.add_argument(
+        "--warn-empty",
+        action="store_true",
+        help="Print a loud WARNING (but still pass) when targets.yaml has no "
+        "activated metric, so a vacuous --gate can't green-wash in CI.",
+    )
+
+    subparsers.add_parser("report", help="Render the latest graded results as HTML.")
+
+    args = parser.parse_args(argv)
+    if args.command == "run":
+        run_grading(
+            input_path=args.input,
+            use_judges=not args.no_judges,
+            redact=args.redact,
+            sample_n=args.sample,
+            seed=args.seed,
+            gate=args.gate,
+            warn_empty=args.warn_empty,
+        )
+    elif args.command == "report":
+        run_report()
+
+
+if __name__ == "__main__":
+    main()

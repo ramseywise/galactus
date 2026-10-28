@@ -1,0 +1,112 @@
+# design.yaml — the machine-readable design spine for {{ project_name }}.
+#
+# WHAT THIS IS. The ~10 human-reasoned decisions that shape what gets
+# scaffolded, in one curated file. DESIGN.md's Key Decisions table is a
+# *rendered view* of this file (between its design-table markers); copier's
+# question defaults read this file to decide which components ship. Edit the
+# decision here — never the rendered table, never the include_* flags by hand.
+#
+# HOW IT TAKES EFFECT. Nothing here is read until the owning lifecycle stage
+# is `complete`. While `stages.discovery` is anything else, every copier
+# default falls back to its project_type-derived value and the seeds below are
+# inert placeholders. That is deliberate: genesis is first intake, not final
+# design. The completion path is:
+#
+#   1. edit this file as decisions resolve
+#   2. run `/gate-check` — the ONLY writer of the `stages:` block below
+#   3. run `copier update` — resolved decisions now materialize as scaffolding
+#
+# Re-running `copier update` after advancing a stage flips exactly the
+# decisions that stage owns. See LIFECYCLE.md for the phase/gate contract.
+
+# The project shape chosen at genesis. Not consumed by copier's defaults (it IS
+# the copier answer that seeds them) — recorded here so the DESIGN.md table can
+# be regenerated from this file alone.
+project_type: {{ project_type }}
+
+stages:
+  # Written by /gate-check only. Values: not_started | in_progress | complete.
+  # A stage flips to `complete` when its gate criteria pass — at which point
+  # the decisions it owns below become authoritative for `copier update`.
+  discovery: not_started      # owns every decision in this file today
+  delivery: not_started
+  deployment: not_started
+
+# ─── Backends ──────────────────────────────────────────────────────────────
+# Which language backends exist, the agent framework each runs, and the
+# capabilities each carries. Drives: primary_chat_agent, primary_backend_language,
+# has_typescript, ts_agent_framework, include_ml_labs, include_rag_agent,
+# has_corpus_pipeline, include_ts_rag.
+backends:
+  python:
+    enabled: {{ 'true' if primary_backend_language in ['python', 'both'] else 'false' }}
+    # langgraph | adk | none
+    framework: {{ 'langgraph' if primary_chat_agent == 'lg_agent' else ('adk' if primary_chat_agent == 'adk_agent' else 'none') }}
+    # Subset of: rag, ml. Each entry ships that capability's tree.
+    capabilities:{% if include_rag_agent %}
+      - rag{% endif %}{% if include_ml_labs %}
+      - ml{% endif %}{% if not include_rag_agent and not include_ml_labs %} []{% endif %}
+
+  typescript:
+    enabled: {{ 'true' if primary_backend_language in ['typescript', 'both'] else 'false' }}
+    # The TS agent loop: vercel_ai | mastra | none
+    framework: {{ ts_agent_framework if ts_agent_framework else 'none' }}
+    # Subset of: rag. (ml is python-only by design — no backend-ts mirror.)
+    capabilities:{% if include_ts_rag %}
+      - rag{% else %} []{% endif %}
+
+# ─── Frontend ──────────────────────────────────────────────────────────────
+# Drives frontend_backend_topology: a frontend plus a python backend renders
+# `split_service`; otherwise `single`.
+web:
+  enabled: {{ 'true' if include_frontend else 'false' }}
+  framework: nextjs
+
+# ─── Retrieval ─────────────────────────────────────────────────────────────
+# Only meaningful when a backend carries the `rag` capability above.
+rag:
+  # Which implementation the vectorstore factory returns:
+  # langgraph_vectorstore | bedrock_kb | vertex_rag | ts_vectorstore
+  backend: {{ rag_impl }}
+  # Storage for langgraph_vectorstore: duckdb | memory | opensearch | postgres
+  # (ignored by the managed backends, which own their own storage)
+  vector_store: {{ vector_backend }}
+  # Which ingestion tree ships:
+  # markdown_jsonl | bedrock_ingest | vertex_datastore | ts_ingest
+  corpus_pipeline: {{ corpus_pipeline_kind }}
+
+# ─── Platform ──────────────────────────────────────────────────────────────
+# cloud selects the managed-RAG provider tree (bedrock_kb for aws, vertex_rag for gcp): none | aws | gcp
+# Note: the terraform/ skeleton is AWS-only — it ships only when cloud == aws.
+cloud: {{ cloud }}
+# local | docker | cloud
+deployment_target: {{ deployment_target }}
+# public | internal | restricted | secret
+data_sensitivity: {{ data_sensitivity }}
+
+# ─── Evaluation ────────────────────────────────────────────────────────────
+# interaction[] selects which per-metric eval modules ship. Subset of:
+# escalation, friction, intent, language. Retrieval evals ride the corpus
+# pipeline rather than being listed here.
+evals:
+  interaction:{% if include_metric_escalation %}
+    - escalation{% endif %}{% if include_metric_friction %}
+    - friction{% endif %}{% if include_metric_intent %}
+    - intent{% endif %}{% if include_metric_language %}
+    - language{% endif %}{% if not (include_metric_escalation or include_metric_friction or include_metric_intent or include_metric_language) %} []{% endif %}
+
+# ─── Non-functional budgets ────────────────────────────────────────────────
+# The trade-off axes. Seeded null at genesis and filled during /scope-poc's
+# Tier 4 (Q11b) — a value here is a decision, including an accepted tier
+# default. NOT consumed by copier and NOT rendered into DESIGN.md's generated
+# table; DESIGN.md's Non-Functional Constraints section is the human view.
+# Recorded here so tooling can read budgets without parsing prose.
+non_functional:
+  # Expected requests/day at POC. null = not yet decided.
+  load: null
+  # Response-time target a user would notice, e.g. "p95 < 10s". null = no SLA.
+  latency_target: null
+  # Monthly model/API spend ceiling, e.g. "$50". null = free tier only.
+  spend_ceiling: null
+  # What a trace must capture, and what must be redacted first (Q11c).
+  observability: null

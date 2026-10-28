@@ -1,0 +1,293 @@
+{% set lg = lg_agent_dir | replace("_", "-") -%}
+{% set adk = adk_agent_dir | replace("_", "-") -%}
+.PHONY: setup{% if has_corpus_pipeline %} corpus-preprocess{% endif %} \
+{%- if primary_chat_agent in ["lg_agent", "both"] %}
+        {% if has_corpus_pipeline %}corpus-ingest {% endif %}{{ lg }}-up {{ lg }}-down {{ lg }}-wait {{ lg }}-chat \
+{%- endif %}
+{%- if include_rag_agent %}
+        rag-corpus-ingest rag-up rag-down rag-wait rag-chat \
+{%- endif %}
+{%- if primary_chat_agent in ["adk_agent", "both"] %}
+        {{ adk }}-up {{ adk }}-down {{ adk }}-wait {{ adk }}-chat \
+{%- endif %}
+        eval-heuristic eval-gate eval-render eval-compare \
+{%- if include_interaction_evals %}
+        eval-grade eval-grade-gate eval-interactions-report eval-calibrate \
+{%- endif %}
+{%- if include_promptfoo %}
+        promptfoo-eval \
+{%- endif %}
+        {% if has_corpus_pipeline %}nbks-corpus {% endif %}test test-smoke test-integration \
+        lint lint-check check-imports typecheck \
+{%- if primary_backend_language in ["typescript", "both"] %}
+        ts-install ts-lint ts-typecheck ts-test ts-build ts-dev \
+{%- endif %}
+{%- if has_typescript and ts_agent_framework == "vercel_ai_sdk" %}
+        ts-agent-eval \
+{%- endif %}
+        docker-up docker-down \
+        status pull push quick-pr ship
+
+# {{ py_project_root }}/{{ ai_source_root }}/ holds "agents" (imported bare, e.g. `agents.{{ lg_agent_dir }}`); "core"
+# and "{{ eval_root }}" live at the project root — both need to be on PYTHONPATH
+# for anything invoked outside of pytest (which reads pythonpath from pyproject.toml).
+PY := PYTHONPATH={% if not is_ml_shaped %}{{ py_project_root }}/{{ ai_source_root }}:{% endif %}{% if include_ml %}{{ py_project_root }}:{% endif %}. uv run python
+UVICORN := PYTHONPATH={{ py_project_root }}/{{ ai_source_root }}:. uv run uvicorn
+
+setup:
+	./project_init.sh
+
+{% if has_corpus_pipeline -%}
+# --- Corpus data pipeline (core/pipelines/corpus/) ---
+corpus-preprocess:
+	$(PY) -m core.pipelines.corpus preprocess
+
+{% endif -%}
+{% if has_corpus_pipeline and primary_chat_agent in ["lg_agent", "both"] -%}
+corpus-ingest: corpus-preprocess
+	$(PY) -m core.pipelines.corpus ingest
+
+{% endif -%}
+{% if primary_chat_agent in ["lg_agent", "both"] -%}
+# --- Chat agent ({{ py_project_root }}/{{ ai_source_root }}/agents/{{ lg_agent_dir }}, LangGraph) ---
+{{ lg }}-up:
+	$(UVICORN) agents.{{ lg_agent_dir }}.main:app --port $${LG_PORT:-8010} --reload &
+
+{{ lg }}-down:
+	pkill -f "uvicorn agents.{{ lg_agent_dir }}.main:app" 2>/dev/null || true
+
+{{ lg }}-wait:
+	@for i in $$(seq 1 30); do \
+		curl -sf http://localhost:$${LG_PORT:-8010}/health >/dev/null && echo "{{ lg_agent_dir }} is up" && exit 0; \
+		sleep 1; \
+	done; \
+	echo "{{ lg_agent_dir }} did not become healthy in time" >&2; exit 1
+
+{{ lg }}-chat:
+	curl -s -X POST http://localhost:$${LG_PORT:-8010}/chat \
+		-H "Content-Type: application/json" \
+		-d '{"message": "How do I descale the machine?", "thread_id": "smoke-test"}' | uv run python -m json.tool
+
+{% endif -%}
+{% if include_rag_agent -%}
+# --- Example agent ({{ py_project_root }}/{{ ai_source_root }}/agents/rag_agent) — same corpus, embedding-based retrieval ---
+rag-corpus-ingest: corpus-preprocess
+	$(PY) -m core.pipelines.corpus rag-ingest
+
+rag-up:
+	$(UVICORN) agents.rag_agent.main:app --port $${RAG_PORT:-8011} --reload &
+
+rag-down:
+	pkill -f "uvicorn agents.rag_agent.main:app" 2>/dev/null || true
+
+rag-wait:
+	@for i in $$(seq 1 30); do \
+		curl -sf http://localhost:$${RAG_PORT:-8011}/health >/dev/null && echo "rag_agent is up" && exit 0; \
+		sleep 1; \
+	done; \
+	echo "rag_agent did not become healthy in time" >&2; exit 1
+
+rag-chat:
+	curl -s -X POST http://localhost:$${RAG_PORT:-8011}/chat \
+		-H "Content-Type: application/json" \
+		-d '{"message": "How do I descale the machine?", "thread_id": "smoke-test"}' | uv run python -m json.tool
+
+{% endif -%}
+{% if primary_chat_agent in ["adk_agent", "both"] -%}
+# --- Chat agent ({{ py_project_root }}/{{ ai_source_root }}/agents/{{ adk_agent_dir }}, Google ADK) — MCP via McpToolset ---
+{{ adk }}-up:
+	$(UVICORN) agents.{{ adk_agent_dir }}.api.main:app --port $${ADK_PORT:-8000} --reload &
+
+{{ adk }}-down:
+	pkill -f "uvicorn agents.{{ adk_agent_dir }}.api.main:app" 2>/dev/null || true
+
+{{ adk }}-wait:
+	@for i in $$(seq 1 30); do \
+		curl -sf http://localhost:$${ADK_PORT:-8000}/health >/dev/null && echo "{{ adk_agent_dir }} is up" && exit 0; \
+		sleep 1; \
+	done; \
+	echo "{{ adk_agent_dir }} did not become healthy in time" >&2; exit 1
+
+# SSE requires the stream open before POSTing — background curl on the stream,
+# give it a moment to connect, then trigger the turn.
+{{ adk }}-chat:
+	curl -sN "http://localhost:$${ADK_PORT:-8000}/chat/stream?session_id=smoke-test" & \
+	STREAM_PID=$$!; \
+	sleep 1; \
+	curl -s -X POST http://localhost:$${ADK_PORT:-8000}/chat \
+		-H "Content-Type: application/json" \
+		-d '{"session_id": "smoke-test", "request_id": "smoke-1", "message": "How do I descale the machine?"}'; \
+	sleep 5; kill $$STREAM_PID 2>/dev/null || true
+
+{% endif -%}
+# --- Evals ({{ eval_root }}/) ---
+{% if has_corpus_pipeline -%}
+# Retrieval golden-QA gate — grades the corpus retrieval backend(s) present.
+eval-heuristic:
+	$(PY) -m {{ eval_root }}.pipelines.run heuristic
+
+# Same run, but exits non-zero when any {{ eval_root }}/targets.yaml metric is
+# below target — the CI-able form of DESIGN.md's Evaluation table.
+eval-gate:
+	$(PY) -m {{ eval_root }}.pipelines.run heuristic --gate
+
+eval-render:
+	$(PY) -m {{ eval_root }}.pipelines.run render
+
+# Baseline-compare: load last run, flag regressions (score dropped >5%).
+# Promotes current results to baseline on --promote.
+# Emits one OTel eval_item span per row (console or OTLP per env).
+eval-compare:
+	$(PY) -m {{ eval_root }}.pipelines.compare
+
+{% endif -%}
+{% if include_interaction_evals -%}
+# Interaction evals ({{ eval_root }}/graders/{heuristic,judges}) — heuristics
+# always run; LLM judges join when ANTHROPIC_API_KEY is set.
+eval-grade:
+	$(PY) -m {{ eval_root }}.pipelines.grade run
+
+eval-grade-gate:
+	$(PY) -m {{ eval_root }}.pipelines.grade run --gate
+
+eval-interactions-report:
+	$(PY) -m {{ eval_root }}.pipelines.grade report
+
+# Heuristic-vs-judge agreement (needs a graded run that included judges).
+eval-calibrate:
+	$(PY) -m {{ eval_root }}.pipelines.calibration
+
+{% endif -%}
+{% if include_promptfoo -%}
+promptfoo-eval:
+	npx promptfoo eval -c promptfoo.config.yaml
+
+{% endif -%}
+{% if has_corpus_pipeline -%}
+# --- Notebooks (nbks/, Marimo) ---
+nbks-corpus:
+	PYTHONPATH={{ py_project_root }}/{{ ai_source_root }}:. uv run marimo run nbks/corpus_analysis.py
+
+{% endif -%}
+# --- Tests ---
+test:
+	uv run pytest tests/unit -q
+
+test-smoke:
+	uv run pytest tests/smoke -q
+
+test-integration:
+	uv run pytest tests/integration -q -m integration
+
+# --- Lint / typecheck ---
+# Scoped to this project's own source, not the whole repo root — .claude/.agents/
+# ship vendored reference material (e.g. mcp-builder's example scripts) that
+# isn't held to this project's lint config and was never meant to be.
+{% if primary_backend_language in ["python", "both"] -%}
+LINT_PATHS := {% if not is_ml_shaped or include_rag_agent %}{{ py_project_root }}/{{ ai_source_root }} {% endif %}{% if include_core_etl %}core {% endif %}{% if include_eval_suite %}{{ eval_root }} {% endif %}tests{% if include_ml %} {{ py_project_root }}/{{ ml_source_root }}{% endif %}{% if include_notebooks %} nbks{% endif %}
+
+lint:
+	uv run ruff check $(LINT_PATHS) --fix
+	uv run ruff format $(LINT_PATHS)
+
+lint-check:
+	uv run ruff check $(LINT_PATHS)
+	uv run ruff format --check $(LINT_PATHS)
+
+# Fails when a module under a source root is imported by nothing (AIT-51). Runs
+# before typecheck so an orphaned module is reported as "nothing imports this"
+# rather than surfacing later as a type error in a file no code path reaches.
+check-imports:
+	uv run python scripts/check_imports.py
+
+typecheck:
+	uv run pyright
+{% else -%}
+lint:
+	@echo "Python lint skipped (primary_backend_language={{ primary_backend_language }})"
+
+lint-check:
+	@echo "Python lint-check skipped (primary_backend_language={{ primary_backend_language }})"
+
+check-imports:
+	@echo "Python check-imports skipped (primary_backend_language={{ primary_backend_language }})"
+
+typecheck:
+	@echo "Python typecheck skipped (primary_backend_language={{ primary_backend_language }})"
+{% endif -%}
+
+{% if primary_backend_language in ["typescript", "both"] -%}
+# --- TS backend service ({{ ts_project_root }}/) ---
+ts-install:
+	cd {{ ts_project_root }} && npm install
+
+ts-lint:
+	cd {{ ts_project_root }} && npm run lint
+
+ts-typecheck:
+	cd {{ ts_project_root }} && npm run typecheck
+
+ts-test:
+	cd {{ ts_project_root }} && npm test
+
+ts-build:
+	cd {{ ts_project_root }} && npm run build
+
+ts-dev:
+	cd {{ ts_project_root }} && npm run dev
+
+{% if ts_agent_framework == "vercel_ai_sdk" -%}
+# Answer-only smoke eval, NOT retrieval grading (the TS agent has no search
+# step) — see agent/eval/run.ts's docstring. Requires the server already
+# running (`make ts-dev` in another terminal) and ANTHROPIC_API_KEY set.
+ts-agent-eval:
+	cd {{ ts_project_root }} && GOLDEN_QA_PATH=$(CURDIR)/data/raw_corpus/golden_qa.jsonl npm run eval
+
+{% endif -%}
+{% endif -%}
+# --- Docker (infrastructure/containers) ---
+docker-up:
+	docker compose -f infrastructure/containers/docker-compose.yml up --build
+
+docker-down:
+	docker compose -f infrastructure/containers/docker-compose.yml down
+
+# --- Git workflow ---
+
+status:  ## Show branch, unpushed commits, staged changes, open PRs
+	@echo "=== {{ project_slug }} ==="
+	@echo "Branch: $$(git branch --show-current)"
+	@echo "Unpushed:"
+	@git log origin/$$(git branch --show-current)..HEAD --oneline 2>/dev/null || echo "  (no remote tracking)"
+	@echo "Staged:"
+	@git diff --cached --stat 2>/dev/null || true
+	@echo "Modified:"
+	@git diff --stat 2>/dev/null || true
+	@echo "Open PRs:"
+	@gh pr list --state open --json number,title,headBranch --jq '.[] | "#\(.number) \(.title) [\(.headBranch)]"' 2>/dev/null || echo "  (none)"
+
+pull:  ## Rebase current branch onto origin/main
+	@git fetch origin main && \
+	git rebase origin/main || \
+	(echo "Rebase conflict — resolve manually, then re-run make ship"; exit 1)
+
+push:  ## Push current branch to origin
+	git push -u origin $$(git branch --show-current)
+
+quick-pr:  ## Create PR from current branch with auto-generated body
+	@BRANCH=$$(git branch --show-current); \
+	if [ "$$BRANCH" = "main" ]; then echo "Error: can't PR from main"; exit 1; fi; \
+	EXISTING=$$(gh pr list --head "$$BRANCH" --json number --jq '.[0].number' 2>/dev/null); \
+	if [ -n "$$EXISTING" ]; then echo "PR #$$EXISTING already exists for $$BRANCH"; exit 0; fi; \
+	COMMITS=$$(git log origin/main..HEAD --oneline 2>/dev/null); \
+	ISSUES=$$(echo "$$COMMITS" | grep -oE '#[0-9]+' | sort -u | tr '\n' ' ' | xargs); \
+	if [ -n "$$ISSUES" ]; then \
+		CLOSES=$$(echo "$$ISSUES" | tr ' ' '\n' | grep -v '^$$' | sed 's/^/Closes /' | tr '\n' ' '); \
+	else \
+		CLOSES="(no issue references found in commits)"; \
+	fi; \
+	BODY=$$(printf "## Summary\n%s\n\n%s\n" "$$COMMITS" "$$CLOSES"); \
+	echo "Creating PR for $$BRANCH..."; \
+	gh pr create --title "$$BRANCH" --body "$$BODY"
+
+ship: lint test pull push quick-pr  ## lint -> test -> pull -> push -> PR

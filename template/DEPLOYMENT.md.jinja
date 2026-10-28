@@ -1,0 +1,147 @@
+# Deployment — {{ project_name }}
+
+Phase 3 of the lifecycle: **Discovery → Delivery → Deployment**. This is the
+runbook the team executes when a delivered, eval-passing build goes to real
+users. It is written once at G2 (delivery → deployment) and revised per release.
+
+Phase and gate state live in `LIFECYCLE.md` (machine-readable, written by
+`/gate-check`). This file is the **human** operating document: rollout stages,
+rollback criteria, the A/B decision procedure, and the alert checklist. Keep it
+current — a stale runbook is worse than none.
+
+> **Gate G2 must be green before deployment.** Run `/deploy-check` — it audits
+> G2 readiness (eval-gate, security review, deployment-target
+> decision, this runbook) and reports what's missing. It does **not** write
+> `LIFECYCLE.md` — only `/gate-check` does; `/deploy-check` is the launch-day
+> pre-flight, `/gate-check` is the recorded verdict.
+
+---
+
+## G2 readiness — what "ready to deploy" means
+
+Deployment does not begin until every G2 check passes (per the lifecycle
+schema in `LIFECYCLE.md`):
+
+| G2 check | Evidence |
+|---|---|
+| `eval_gate_green` | `{{ eval_root }}/targets.yaml` has ≥1 **activated** (uncommented) target — a fully-commented file passes `make eval-gate` vacuously (CI/CD only WARNs on it so canary iteration isn't blocked; readiness holds the real line). Then `make eval-gate` passes against those targets, including the margin-over-naive-baseline row. |
+| `security_review_clean` | `/security-review` run for the shipping commit, no unresolved findings. |
+| `deployment_target_resolved` | DESIGN.md's deployment decision is `Resolved` (this project: `{{ deployment_target }}`), not Open/Deferred. |
+| `runbook_monitoring_documented` | This file's Rollout, Rollback, and Monitoring sections are filled — not placeholders. |
+
+---
+
+## Rollout stages (canary)
+
+Ship in stages; each stage has an explicit **promote** and **rollback**
+trigger. Do not advance on a timer alone — advance on the metrics below holding.
+
+| Stage | Traffic | Promote when | Rollback when |
+|---|---|---|---|
+| **0 — Shadow** | 0% (mirror, no user-visible response) | Errors/latency comparable to prod; eval metrics on shadow traffic within target | Any hard error class the golden set didn't cover |
+| **1 — Canary** | ~5% | Health checks green + no regression on the guardrail metrics below for the bake window | Guardrail metric breaches its floor, or error rate rises vs. control |
+| **2 — Ramp** | 25% → 50% | Canary metrics hold at each step; A/B (below) shows no significant harm | Any guardrail regression that a bootstrap CI (ml) confirms is real, not noise |
+| **3 — Full** | 100% | 50% stable for the bake window; on-call sign-off | — (rollback path is redeploy of the previous image) |
+
+**Bake window:** <!-- set per release, e.g. 24h or N thousand interactions -->
+
+**Guardrail metrics** (the ones that trigger rollback — a subset of the eval
+suite chosen because a regression here is user-visible harm):
+{%- if include_metric_escalation %}
+- Escalation rate — must not rise vs. control.
+{%- endif %}
+{%- if include_metric_friction %}
+- Friction score — must not rise vs. control.
+{%- endif %}
+{%- if include_metric_intent %}
+- Intent-resolution rate — must not fall vs. control.
+{%- endif %}
+- Error rate / p95 latency — must stay within the prod envelope.
+<!-- Name the specific floor/ceiling for each. A guardrail without a number
+     can't trigger a rollback. -->
+
+### How the canary is deployed
+{%- if deployment_target in ['docker', 'cloud'] %}
+`.github/workflows/cd.yml` builds and pushes the image (tagged `sha` + `latest`)
+to GHCR and — for a `docker`/`cloud` target — carries a **canary** job that
+gates the `latest` promotion behind a manual `workflow_dispatch` approval after
+the sha-tagged image bakes.
+{%- if has_corpus_pipeline or include_interaction_evals %}
+The `build-canary` job runs the **eval gate first** (`--gate`, before the docker
+build): a threshold miss in `{{ eval_root }}/targets.yaml` aborts the canary. With
+no target activated yet it prints a loud WARNING and proceeds (`--warn-empty`) —
+so a fresh scaffold isn't blocked, but `/deploy-check`'s G2 still refuses to call
+it launch-ready until ≥1 target is real.
+{%- endif %} Your platform (Railway/ECS/Cloud Run/…) points its
+canary revision at the sha tag and the stable revision at `latest`; promotion =
+re-pointing `latest`. See the comments in `cd.yml`.
+{%- else %}
+This project's `deployment_target` is `{{ deployment_target }}` — no `cd.yml`
+build/canary job ships (serverless/local deploy via the platform's own git
+integration). Implement the staged rollout with your platform's traffic-split
+primitive (Vercel/Lambda alias weights, etc.) following the stage table above.
+{%- endif %}
+
+---
+
+## Rollback
+
+Rollback is **redeploy of the last-known-good image/revision** — never a
+forward-fix under pressure. Criteria (any one triggers it):
+
+1. A guardrail metric breaches its floor and an ml bootstrap CI (see the A/B
+   bridge below) confirms the difference is real, not sampling noise.
+2. Error rate or p95 latency exceeds the prod envelope for longer than one
+   health-check interval.
+3. A `/security-review` finding surfaces post-deploy at the shipping commit.
+
+<!-- Record the last-known-good tag/revision here at each promotion so rollback
+     is one command, not an investigation. -->
+
+---
+
+## A/B evaluation (ml ↔ evals bridge)
+
+Canary and ramp decisions are **statistical**, not eyeballed. The bridge
+between the eval suite (which scores interaction quality) and the ml stats
+toolkit (which decides whether a score difference is real) is documented in
+{% if include_ml %}[`ml/AB_BRIDGE.md`](ml/AB_BRIDGE.md){% else %}the ml A/B bridge doc — add the `ml` capability (`/add-capability ml`) to ship `ml/AB_BRIDGE.md` and the `ml/stats_testing` toolkit it documents{% endif %}.
+
+The short version: eval metrics on control vs. canary traffic → ml
+`stats_testing` (`required_sample_size` before you start, `mann_whitney_test`
++ `bootstrap_cliffs_delta` after) → promote only when the effect is
+non-negative with a CI that excludes meaningful harm.
+
+---
+
+## Monitoring & alerts
+
+A launch is not done when traffic hits 100% — it's done when someone is
+watching it. Fill and keep current:
+
+- [ ] **Health checks** — every service exposes `/health`; the platform (or an
+      external uptime check) polls it and pages on failure. Endpoints:
+      <!-- list each service's /health URL -->
+- [ ] **Structured logs** — shipping to <!-- destination -->; error-rate alert
+      threshold set.
+{%- if include_ml or include_metric_escalation or include_metric_friction or include_metric_intent %}
+- [ ] **Eval logging** — interaction samples logged for offline re-grading
+      (W&B / the eval report pipeline) so guardrail regressions are caught in
+      the next grading run, not just live.
+{%- endif %}
+- [ ] **On-call / operator** — who is paged, and by what.
+      <!-- DESIGN.md's operator-model row names this. -->
+- [ ] **Rollback rehearsed** — the redeploy-previous path has been run at least
+      once in staging.
+
+---
+
+## Notes
+
+- This phase is re-entrant: a rollback returns the project to delivery
+  (`/gate-check` re-audits and may regress `phase` to `delivery`) — that's
+  normal, not a failure.
+- Every number above (bake window, guardrail floors, traffic steps) is 变易 —
+  tune it per release. The invariant (不易) is that a rollout is **staged, has
+  named rollback criteria, and promotes on measured metrics** — never on a
+  timer alone.

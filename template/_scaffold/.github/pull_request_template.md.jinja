@@ -1,0 +1,19 @@
+## Summary
+
+<!-- What changed and why -->
+
+Linked issue: <!-- {{ ticket_prefix }}-123 — also goes in the PR title ("{{ ticket_prefix }}-123 Add auth") and commits ("feat: add auth ({{ ticket_prefix }}-123)") -->
+
+## Testing
+
+- [ ] `make lint-check` passes
+- [ ] `make test` passes
+- [ ] Manually verified against the running example agent ({% if primary_chat_agent in ['lg_agent', 'both'] %}`make {{ lg_agent_dir | replace('_', '-') }}-up && make {{ lg_agent_dir | replace('_', '-') }}-chat`{% elif primary_chat_agent == 'adk_agent' %}`make {{ adk_agent_dir | replace('_', '-') }}-up && make {{ adk_agent_dir | replace('_', '-') }}-chat`{% else %}`make rag-up && make rag-chat`{% endif %}), if applicable
+
+## Type of change
+
+- [ ] Feature
+- [ ] Fix
+- [ ] Refactor
+- [ ] Docs
+- [ ] Infra/CI

@@ -1,0 +1,33 @@
+/**
+ * Guard settings for guardrails/ — separate from the agent's own settings.ts
+ * since the guards aren't agent-specific (every agent path runs the same
+ * three layers). Same convention as Python's guardrails/settings.py.jinja.
+ *
+ * Read process.env here and nowhere else in guardrails/.
+ */
+
+export const settings = {
+  // Master off-switch per layer. Guards fail OPEN when disabled and fail
+  // CLOSED on internal error (see guards.ts) — the two are deliberately
+  // different: an operator turning a layer off is a decision, a guard
+  // crashing is not.
+  inputGuardEnabled: process.env.INPUT_GUARD_ENABLED !== "false",
+  contentFilterEnabled: process.env.CONTENT_FILTER_ENABLED !== "false",
+  outputFilterEnabled: process.env.OUTPUT_FILTER_ENABLED !== "false",
+
+  // Longest accepted user turn. Oversized input is the cheapest injection and
+  // cost-blowup vector, so it is rejected before any model call.
+  maxInputChars: Number(process.env.MAX_INPUT_CHARS ?? 8000),
+
+  // Blocked verdicts return this to the caller instead of the model output —
+  // never the reason, which would teach a probing caller what tripped.
+  refusalMessage:
+    process.env.REFUSAL_MESSAGE ?? "I can't help with that request.",
+{%- if data_sensitivity in ["restricted", "secret"] %}
+
+  // data_sensitivity={{ data_sensitivity }}: the output filter scrubs PII-shaped
+  // strings from model output before it reaches the caller OR the tracer.
+  // Set OUTPUT_SCRUB_PII=false only if the contract in CLAUDE.md is deliberately revisited.
+  scrubOutputPii: process.env.OUTPUT_SCRUB_PII !== "false",
+{%- endif %}
+};

@@ -1,0 +1,21 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "charliermarsh.ruff",
+    "ms-python.debugpy",
+    "editorconfig.editorconfig",
+    "eamodio.gitlens",
+    "github.vscode-pull-request-github",
+    "ms-toolsai.jupyter",
+    "ms-toolsai.datawrangler",
+    "tamasfe.even-better-toml",
+    "humao.rest-client",
+    "redhat.vscode-yaml"
+  ],
+  "unwantedRecommendations": [
+    "ms-python.black-formatter",
+    "ms-python.isort",
+    "ms-python.flake8"
+  ]
+}

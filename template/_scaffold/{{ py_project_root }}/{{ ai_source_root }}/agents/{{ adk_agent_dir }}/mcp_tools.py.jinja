@@ -1,0 +1,37 @@
+"""ADK's native MCPToolset (McpToolset — MCPToolset is deprecated as of the
+current SDK) wiring — the ADK-side counterpart to the LangGraph agent's model/
+mcp.py.jinja's MultiServerMCPClient. Same MCP server, two frameworks' native
+client mechanisms."""
+
+from __future__ import annotations
+
+import os
+
+from dotenv import load_dotenv
+from google.adk.tools.base_toolset import BaseToolset
+from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
+from google.adk.tools.mcp_tool.mcp_toolset import McpToolset
+from mcp import StdioServerParameters
+
+load_dotenv()
+
+_MCP_ENABLED = os.getenv("MCP_ENABLED", "true").strip().lower() == "true"
+_DEFAULT_MCP_DIR = "mcp_servers/{{ mcp_server_slug | default(project_slug) }}"
+_MCP_SERVER_DIR = os.getenv("MCP_SERVER_DIR", _DEFAULT_MCP_DIR)
+_MCP_SERVER_SLUG = "{{ mcp_server_slug | default(project_slug) }}"
+
+
+def get_mcp_toolset() -> BaseToolset | None:
+    """Returns None (rather than raising) when MCP is disabled — callers treat
+    it as an optional entry in an agent's tools=[...] list."""
+    if not _MCP_ENABLED:
+        return None
+    return McpToolset(
+        connection_params=StdioConnectionParams(
+            server_params=StdioServerParameters(
+                command="uv",
+                args=["run", "--project", _MCP_SERVER_DIR, _MCP_SERVER_SLUG],
+            ),
+            timeout=30.0,
+        )
+    )

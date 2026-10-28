@@ -1,0 +1,29 @@
+import { createBrowserClient } from "@supabase/ssr";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+
+// createBrowserClient (from @supabase/ssr), not the plain createClient, so
+// the session persists in cookies rather than localStorage only -- the
+// middleware (src/middleware.ts) reads those same cookies server-side to
+// gate routes. A localStorage-only client logs the user in client-side but
+// the next navigation redirects back to /login, since the server never sees
+// the session.
+export const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createBrowserClient(supabaseUrl, supabaseAnonKey)
+    : null;
+
+/** Returns the current session's access token, or null if not authenticated. */
+export async function getAccessToken(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+/** Returns the current user, or null if not authenticated. */
+export async function getCurrentUser() {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getUser();
+  return data.user ?? null;
+}

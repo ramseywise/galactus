@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class IntegrationSettings(BaseSettings):
+    """Shared settings for external-service connectors under integrations/ —
+    separate from each agent's own Settings class since these aren't
+    agent-specific (any present agent's FastAPI app can mount the same routes)."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    n8n_webhook_secret: str = ""
+{%- if include_calendar_integration %}
+
+    google_calendar_client_id: str = ""
+    google_calendar_client_secret: str = ""
+    google_calendar_refresh_token: str = ""
+    google_calendar_id: str = "primary"
+{%- endif %}
+{%- if include_marketing_integrations %}
+
+    eventbrite_api_token: str = ""
+    eventbrite_organization_id: str = ""
+    linkedin_access_token: str = ""
+    linkedin_author_urn: str = ""
+    canva_api_token: str = ""
+{%- endif %}
+{%- if include_meeting_intelligence %}
+
+    anthropic_api_key: str = ""
+    meeting_intelligence_model: str = "claude-haiku-4-5-20251001"
+    # Explicit, like every other connector in this package (canva/eventbrite/
+    # linkedin all pin timeout=30.0). The SDK retries 408/409/429/5xx with
+    # exponential backoff — do NOT add another retry loop on top.
+    llm_timeout_seconds: float = 30.0
+    llm_max_retries: int = 2
+{%- endif %}
+{%- if include_composio %}
+
+    composio_api_key: str = ""
+{%- endif %}
+
+
+settings = IntegrationSettings()

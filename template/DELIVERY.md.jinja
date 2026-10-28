@@ -1,0 +1,100 @@
+# Delivery — {{ project_name }}
+
+Phase 2 of the lifecycle: **Discovery → Delivery → Deployment**. This is the
+record of what got *built* between an approved design (G1) and a shippable
+build (G2): milestone outcomes, the eval evidence that clears the gate, which
+deferred capabilities landed, and — the point of this file — **what delivery
+hands to deployment**.
+
+Phase and gate state live in `LIFECYCLE.md` (machine-readable, written by
+`/gate-check`). This file is the **human** delivery record and handoff. DESIGN.md
+said *what to build and why*; this says *what was built and how we know it works*;
+DEPLOYMENT.md picks up from the handoff below to ship it. Keep it current as
+milestones close — filled at G2, not reconstructed from memory afterward.
+
+> **Gate G2 is the delivery → deployment handoff.** `/gate-check` records the
+> verdict in `LIFECYCLE.md`; `/deploy-check` pre-flights the same criteria on
+> launch day. This file supplies the *evidence* those checks read against.
+
+---
+
+## G2 readiness — what "delivered" means
+
+Delivery is not done when the code is written — it's done when the build clears
+G2 (per the lifecycle schema in `LIFECYCLE.md`). Each row below is the evidence
+`/gate-check` audits:
+
+| G2 check | Evidence (fill in / link the artifact) |
+|---|---|
+| `eval_gate_green` | `make eval-gate` passes against `{{ eval_root }}/targets.yaml`, incl. the margin-over-naive-baseline row. Last run: <!-- date + result --> |
+| `security_review_clean` | `/security-review` run for the shipping commit, no unresolved findings. Artifact: <!-- link --> |
+| `deployment_target_resolved` | DESIGN.md's deployment decision is `Resolved` (`{{ deployment_target }}`), not Open/Deferred. |
+| `runbook_monitoring_documented` | `DEPLOYMENT.md` Rollout/Rollback/Monitoring sections filled + DESIGN.md operator-model row set. |
+
+---
+
+## What was built (per milestone)
+
+One row per closed milestone — the delivery record that DESIGN.md's roadmap and
+`TASKS.md` planned. "Done when" comes from `/sprint-kickoff` / the milestone doc.
+
+| Milestone | Shipped | Done-when met? | PRs / eval runs | Notes |
+|---|---|---|---|---|
+| <!-- M1 --> | <!-- what it delivered --> | <!-- yes/partial + what deferred --> | <!-- links --> | |
+
+---
+
+## Eval evidence
+
+The delivery phase is where **experimentation happens before deployment is even
+discussed** — grow the golden set, run `make eval-heuristic` / `eval-grade` /
+`eval-calibrate`, tune thresholds in `targets.yaml`. Record where it landed:
+
+- **Golden set:** <!-- size, how curated, what it covers -->
+- **Gate result:** <!-- the `make eval-gate` scoreboard at G2 — metric vs. target per row -->
+- **Margin over naive baseline:** <!-- the number that justifies the AI over the DESIGN.md baseline -->
+
+---
+
+## Deferred capabilities landed here
+
+Capabilities G1 deliberately parked (DESIGN.md Key Decisions marked
+`Deferred(<trigger>)`) enter during delivery via `/add-capability` when their
+trigger fires — never by hand-copying template files.
+
+| Capability | Trigger that fired | Added via | Milestone |
+|---|---|---|---|
+| <!-- e.g. MCP adapter --> | <!-- first MCP host consumer appeared --> | `/add-capability <name>` | |
+
+---
+
+## Handoff to deployment
+
+The reason this file exists: deployment should be able to start from here without
+re-reading the whole delivery history. Fill this before advancing `phase` to
+deployment.
+
+- **Shippable commit / tag:** <!-- the exact ref G2 was audited against -->
+- **What deployment inherits:** <!-- the build, the eval baseline it must not regress,
+      the deployment target and its constraints -->
+- **Guardrail metrics for the canary:** <!-- which eval metrics become rollback
+      triggers in DEPLOYMENT.md, and their current control values -->
+- **Known gaps carried into deployment:** <!-- anything G2 waived as inapplicable,
+      or deferred past launch with a trigger -->
+- **Operator handoff:** <!-- who owns this in production (DESIGN.md operator-model
+      row), who is paged -->
+
+---
+
+## Notes
+
+- This phase is re-entrant: a G2 failure (eval regression, a new security
+  finding) keeps `phase` at `delivery`; a post-launch rollback returns
+  deployment *to* delivery. `/gate-check` re-audits rather than assuming forward
+  progress — that's normal, not a failure.
+- Layered onto an existing repo? Template-owned G2 checks (eval-gate) may
+  be inapplicable — `/gate-check` marks them `true` with a note rather than
+  blocking on machinery the project never adopted. Record that here too.
+- The invariant: **nothing advances to deployment without the eval gate
+  green and the handoff above filled.** Every number and threshold is tunable
+  per project.

@@ -60,7 +60,7 @@ target-version = "py312"
 # rendered payload whose canon lives upstream, not code this project lints.
 # `ml/` is the same case: vendored from ai-project-template's ML payload. Fix lint
 # findings upstream and re-vendor, rather than diverging the copy here.
-extend-exclude = [".claude", "ml"]
+extend-exclude = [".claude", "ml", "template"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "BLE"]

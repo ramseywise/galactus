@@ -1,0 +1,65 @@
+# Skills Guide
+
+This directory holds the command-style workflows used in this repo.
+
+## The lifecycle
+
+This project moves **Discovery → Delivery → Deployment**, with a gate between
+each phase. The map — phases, gates, handoffs, and which skill drives each — is
+`RELEASE.md` at the repo root. Per-phase records: `DESIGN.md`, `DELIVERY.md`,
+`DEPLOYMENT.md`; machine-readable state in `LIFECYCLE.md` (written by
+`/gate-check` only). These are how you *walk* the project, not files to copy.
+
+## Quick map
+
+### Design pipeline
+
+| Skill | Use when | What it does |
+|---|---|---|
+| `design-initiative` | Blank-page initiative — "what should we build?" | PM + EM + Designer: deconstructs the problem space into HMW statements, named initiatives, and a design doc |
+| `design-product` | Initiative is framed, need a PRD | PM + EM + Designer: produces deliverables, requirements, constraints, quality ladder |
+| `design-system` | PRD ratified, need an architecture | Architect: produces tabbed HTML design of record + deep component specs |
+| `design-roadmap` | Design agreed, need GitHub issues | EM: files milestones and issues with acceptance criteria, dependency wiring |
+
+### Code skills
+
+| Skill | Use when | What it does |
+|---|---|---|
+| `code-review` | Implementation complete and needs review | Reviews diff against standards |
+| `code-pr` | An open PR needs review | Reviews a PR against project standards and acceptance criteria |
+| `code-debug` | Specific traceback or failing test | Focused diagnose/fix/verify loop |
+| `code-refactor` | Quality-driven refactor | Proposes improvements, applies them one at a time |
+
+### Project lifecycle
+
+| Skill | Use when | What it does |
+|---|---|---|
+| `gate-check` | Phase handover — "are we ready to build/ship?" | Audits exit gates against real artifacts and updates LIFECYCLE.md |
+| `deploy-check` | Launch pre-flight — "are we ready to deploy?" | Audits G2 (delivery → deployment) readiness; does not write LIFECYCLE.md |
+| `add-capability` | A deferred component needs scaffolding post-genesis | Wraps `copier update -d include_<x>=true` so a parked component enters via copier |
+
+### Framework references
+
+| Skill | Use when |
+|---|---|
+| `framework-selection` | Deciding between ADK, LangGraph, or Vercel AI SDK |
+| `adk-scaffold` / `adk-dev-guide` | Building or enhancing an ADK agent |
+| `langgraph-scaffold` / `langgraph-fundamentals` | Building a new LangGraph agent |
+| `langgraph-persistence` / `langgraph-human-in-the-loop` | Adding memory, checkpointing, or approval gates |
+| `vercel-ai-sdk-scaffold` | Building a TS-native Vercel AI SDK agent |
+
+{%- if include_agent_reference_library %}
+
+## Agent framework reference
+
+The ADK/LangGraph framework knowledge also lives in `.agents/skills/` — a
+tool-agnostic library readable by ADK's own tooling or any other agent harness
+in this project. See `.agents/skills/README.md` for the map.
+{%- endif %}
+
+## Skills not shipped with the template
+
+Workflow skills (`/workflow-plan`, `/workflow-execute`, `/workflow-review`, etc.)
+and git skills (`/git-commit`, `/git-pr`) live in the repo that owns their stage
+of work — not in the template. If your project needs them, invoke from the owning
+repo or vendor them in.

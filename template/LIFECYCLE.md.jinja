@@ -1,0 +1,57 @@
+# Lifecycle — {{ project_name }}
+
+Phase and gate state for this project: **Discovery → Delivery → Deployment**.
+This file is the machine-readable status contract — DSSG's project-mgmt-ai
+(and any other tooling) reads it from the repo to draft project updates.
+
+Written by `/gate-check` only. Do not hand-edit the block below — it is an
+audit result, not an aspiration. The one exception is `rfc_approved`, which
+mirrors a human-set `Status: APPROVED` line in RFC.md; `/gate-check` only
+copies it.
+
+```yaml
+schema: 1
+project: {{ project_slug }}
+phase: discovery # discovery | delivery | deployment
+updated: null # ISO date of last /gate-check run
+milestone: null # current milestone from TASKS.md, e.g. "M1"
+blocking_open_questions: null # count from DESIGN.md Open Questions (deferred excluded)
+gates:
+  G1_discovery_exit:
+    design_no_blocking_open_questions: false # DESIGN.md: every open question resolved or Deferred(<trigger>)
+    eval_targets_defined: false # DESIGN.md Evaluation table seeded into evals/targets.yaml
+    golden_set_authored: false # DESIGN.md Behavioral Cases → data/evals/cases.jsonl, ≥10 cases (WARN under 20) each citing a source risk
+    non_functionals_and_breakage_stated: false # DESIGN.md: load/latency/spend/observability answered (a tier default counts) + ≥1 What Breaks First row
+    base_scaffold_ci_green: false # project rendered; CI/test workflow passing
+    milestones_and_m1_tasks_reviewed: false # /define-milestones + /sprint-kickoff artifacts exist, /plan-review done
+    rfc_approved: false # RFC.md Status: APPROVED (human-set; mirrored here)
+  G2_delivery_exit:
+    eval_gate_green: false # `make eval-gate` passes against targets.yaml
+    security_review_clean: false # /security-review findings resolved
+    deployment_target_resolved: false # DESIGN.md deployment decision no longer Open/Deferred
+    runbook_monitoring_documented: false # operator model + monitoring plan written
+```
+
+## Status summary
+
+<!-- /gate-check maintains 2–4 sentences here: what phase, what's blocking the
+     next gate, what changed since the last check. -->
+
+Not yet checked — run `/gate-check` once discovery artifacts exist.
+
+## Notes
+
+- Phases are re-entrant: going back to discovery to resolve a deferred
+  decision is normal; `/gate-check` re-audits rather than assuming
+  monotonic progress.
+- Each phase has a human record alongside this machine state: `DESIGN.md`
+  (discovery), `DELIVERY.md` (delivery — what was built, eval evidence, the
+  handoff to deployment), `DEPLOYMENT.md` (deployment runbook). `RELEASE.md` is
+  the overview that ties the three together.
+- Once G2 is green and `phase` is `deployment`, the runbook is `DEPLOYMENT.md`
+  (staged rollout, rollback criteria, monitoring). `/deploy-check` is the
+  launch pre-flight that audits G2 readiness; it reports blockers but never
+  writes this file — `/gate-check` records the verdict.
+- Layered onto an existing repo? Some G1 checks (evals, CI) may not apply —
+  `/gate-check` marks inapplicable checks `true` with a note in the summary
+  rather than blocking the gate on artifacts the project never adopted.

@@ -1,0 +1,138 @@
+"""Span wrapping, feedback capture, and cost tracking.
+
+The three roles call sites actually use. All of them go through `get_tracer()`
+so no module but `observability.py` ever touches a provider SDK.
+{% if data_sensitivity in ["restricted", "secret"] %}
+Ordering contract (data_sensitivity={{ data_sensitivity }}): `redact()` runs
+BEFORE anything reaches the tracer. CLAUDE.md and DESIGN.md both state that raw
+field values must never reach observability tooling — the redaction below is
+that guarantee, not a convenience. Do not add a span path that bypasses it.
+{%- endif %}
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
+
+from .observability import get_tracer
+{%- if data_sensitivity in ["restricted", "secret"] %}
+from .settings import settings
+{%- endif %}
+
+log = logging.getLogger(__name__)
+
+
+{% if data_sensitivity in ["restricted", "secret"] -%}
+# Field names whose values are replaced before they reach a span. Extend this
+# for domain fields -- it is the enforcement point for the redact-before-trace
+# contract, so err toward over-redacting.
+REDACTED_FIELDS = frozenset(
+    {
+        "email",
+        "phone",
+        "address",
+        "ssn",
+        "dob",
+        "name",
+        "user_input",
+        "query",
+        "document",
+        "passage",
+    }
+)
+
+_PLACEHOLDER = "[REDACTED]"
+
+
+def redact(payload: dict[str, Any]) -> dict[str, Any]:
+    """Replace sensitive values before they reach the tracing backend.
+
+    Recurses into nested dicts and lists. Returns a new dict -- never mutates
+    the caller's payload, so redaction can't corrupt live agent state.
+    """
+    if settings.trace_raw_payloads:
+        return payload
+
+    clean: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key.lower() in REDACTED_FIELDS:
+            clean[key] = _PLACEHOLDER
+        elif isinstance(value, dict):
+            clean[key] = redact(value)
+        elif isinstance(value, list):
+            clean[key] = [redact(v) if isinstance(v, dict) else v for v in value]
+        else:
+            clean[key] = value
+    return clean
+{% else -%}
+def redact(payload: dict[str, Any]) -> dict[str, Any]:
+    """No-op at data_sensitivity={{ data_sensitivity }} -- kept so call sites and
+    the restricted/secret variant share one shape. Raise data_sensitivity to
+    turn this into real redaction."""
+    return payload
+{% endif %}
+
+@contextmanager
+def trace_span(name: str, **attributes: Any) -> Iterator[Any]:
+    """Wrap a unit of work in a provider span.
+
+    Attributes are redacted before the span is opened. Tracing failures are
+    swallowed with a warning: an observability backend being down must never
+    take the agent down with it.
+    """
+    tracer = get_tracer()
+    safe_attributes = redact(attributes)
+    try:
+        with tracer.span(name, **safe_attributes) as span:
+            yield span
+    except Exception as exc:  # tracing must not break the caller
+        log.warning("observability.span.failed", extra={"span": name, "error": str(exc)})
+        yield None
+
+
+def record_feedback(
+    trace_id: str,
+    score: float,
+    *,
+    comment: str | None = None,
+    name: str = "user_feedback",
+) -> None:
+    """Attach a user-feedback score (0.0-1.0) to a completed trace.
+
+    Call from the thumbs-up/down handler in your API layer, passing the trace_id
+    surfaced with the response.
+    """
+    try:
+        get_tracer().score(name=name, value=score, trace_id=trace_id, comment=comment)
+    except Exception as exc:  # feedback is best-effort
+        log.warning(
+            "observability.feedback.failed", extra={"trace_id": trace_id, "error": str(exc)}
+        )
+
+
+def record_cost(
+    model: str,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    trace_id: str | None = None,
+) -> None:
+    """Record token usage for a model call.
+
+    Token counts, not raw text -- this path is safe at every data_sensitivity
+    level. Providers derive spend from the model name plus these counts.
+    """
+    try:
+        with trace_span(
+            "llm.cost",
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            trace_id=trace_id,
+        ):
+            pass
+    except Exception as exc:  # cost tracking is best-effort
+        log.warning("observability.cost.failed", extra={"model": model, "error": str(exc)})

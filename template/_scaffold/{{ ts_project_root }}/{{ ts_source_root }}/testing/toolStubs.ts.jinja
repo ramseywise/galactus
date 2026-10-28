@@ -1,0 +1,51 @@
+/**
+ * Test helpers for the two tool-registry wrappers (`wrapToolsWithSpans`,
+ * `wrapToolsWithContentFilter`).
+ *
+ * Both wrappers are typed against the AI SDK's `ToolSet`, whose members carry
+ * `inputSchema` and a two-argument `execute(input, options)`. Neither wrapper
+ * reads any of that — they iterate keys, pull `.execute` off each entry, and
+ * hand the rest through untouched. So the minimal stub a wiring test wants
+ * (`{ execute: async () => "result" }`) is behaviourally exact and
+ * structurally invalid, and every call site grew its own inline
+ * `as unknown as` to say so.
+ *
+ * These two helpers say it once, in a place where the reasoning fits. If a
+ * wrapper ever starts reading `inputSchema` or the second `execute` argument,
+ * the fix is to build real `tool()` values here rather than to widen the cast.
+ */
+
+import { type ToolSet } from "ai";
+
+/** A tool stub carrying only what the wrappers actually read. */
+export type ToolStub = {
+  execute?: (...args: unknown[]) => Promise<unknown>;
+  description?: string;
+  inputSchema?: unknown;
+};
+
+/**
+ * Presents a record of stubs as a `ToolSet` for a wrapper under test.
+ *
+ * The double assertion is load-bearing: `ToolStub` and the SDK's `Tool` have no
+ * overlap TypeScript will accept directly, because `Tool` requires
+ * `inputSchema` and a two-arg `execute`.
+ */
+export function asToolSet(stubs: Record<string, ToolStub>): ToolSet {
+  return stubs as unknown as ToolSet;
+}
+
+/**
+ * Pulls `execute` back off a wrapped entry so a test can invoke it.
+ *
+ * Returns the loose two-arg shape the wrappers produce, rather than the SDK's
+ * `ToolExecuteFunction` — the wrapped function is called here with synthetic
+ * `({}, {})` arguments, never with a real `ToolCallOptions`.
+ */
+export function executeOf(wrapped: ToolSet[string]): (...args: unknown[]) => Promise<unknown> {
+  const execute = (wrapped as unknown as ToolStub).execute;
+  if (typeof execute !== "function") {
+    throw new Error("wrapped tool has no execute — the wrapper dropped it");
+  }
+  return execute;
+}

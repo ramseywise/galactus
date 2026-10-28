@@ -1,0 +1,139 @@
+# %% [markdown]
+# # 00 — Data contract
+#
+# **Question this notebook answers:** does the frame match its declared contract?
+#
+# First notebook because it is the only one entitled to be surprised. Every later
+# stage assumes the columns exist, carry the dtypes claimed, and are not mostly
+# null. This notebook is where those assumptions become assertions instead.
+#
+# Logic lives in `ml/ingest/`; this notebook narrates and calls.
+# If you find yourself writing a validation rule here, it belongs in the module.
+#
+# Cells are `# %%` — open with Jupytext or run as a script.
+
+# %%
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path.cwd().parent if Path.cwd().name == "nbks" else Path.cwd()
+sys.path.insert(0, str(REPO_ROOT / "{{ py_project_root }}"))
+sys.path.insert(0, str(REPO_ROOT / "nbks"))
+
+import pandas as pd
+from _sample_data import TARGET, load_frame
+
+from ml.ingest import check_contract, infer_contract
+from ml.schemas import ColumnContract, DataContract
+
+pd.set_option("display.max_columns", 200)
+
+# %%
+frame, is_real = load_frame()
+print(
+    f"{'real' if is_real else 'synthetic'} frame: {frame.shape[0]:,} rows x {frame.shape[1]} cols"
+)
+frame.head()
+
+# %% [markdown]
+# ## Step 1 — draft a contract from the frame
+#
+# `infer_contract` reads the frame and writes down what it currently is. This is a
+# **starting draft, not a validation**: a contract inferred from the data can only
+# ever say "the data is what it is". Its value is that it is editable.
+
+# %%
+draft = infer_contract(frame, target=TARGET)
+pd.DataFrame(
+    [
+        {
+            "column": c.name,
+            "dtype": c.dtype,
+            "nullable": c.nullable,
+            "max_null_fraction": c.max_null_fraction,
+        }
+        for c in draft.columns
+    ]
+)
+
+# %% [markdown]
+# ## Step 2 — tighten it by hand
+#
+# This is the cell that carries the value, and the only one worth spending real
+# time on. The draft above is permissive by construction; a useful contract states
+# what you *require*, which is a judgement the data cannot make for you.
+#
+# Below: the target must never be null, the identifier must always be present, and
+# income is allowed to be missing but not mostly missing. Edit these to match your
+# frame — a threshold you did not think about is not a gate.
+
+# %%
+contract = DataContract(
+    columns=(
+        ColumnContract(name="customer_id", dtype="object", nullable=False),
+        ColumnContract(name="age", dtype="float64", max_null_fraction=0.01),
+        ColumnContract(name="income", dtype="float64", max_null_fraction=0.25),
+        ColumnContract(name="utilisation", dtype="float64", max_null_fraction=0.01),
+        ColumnContract(name="region", dtype="object", nullable=False),
+        ColumnContract(name=TARGET, dtype="int64", nullable=False),
+    ),
+    target=TARGET,
+    min_rows=500,
+)
+
+check = check_contract(frame, contract)
+print(f"contract holds: {check.ok}")
+print(f"rows: {check.row_count:,} (minimum {contract.min_rows:,}) -> {check.row_count_ok}")
+
+# %% [markdown]
+# ## Step 3 — read the violations
+#
+# Every violation is collected in one pass rather than raising on the first, so
+# one run tells you the whole story instead of one symptom per re-run.
+
+# %%
+if check.missing_columns:
+    print(f"MISSING COLUMNS:   {sorted(check.missing_columns)}")
+for column, detail in sorted(check.wrong_dtype.items()):
+    print(f"WRONG DTYPE:       {column}: {detail}")
+for column, detail in sorted(check.null_violations.items()):
+    print(f"NULL POLICY:       {column}: {detail}")
+if check.unexpected_columns:
+    print(f"UNDECLARED (ok):   {check.unexpected_columns}")
+if check.ok:
+    print("no violations")
+
+# %% [markdown]
+# ### Undeclared columns are advisory, deliberately
+#
+# An extra column is usually a wider extract upstream, not a broken feed — so it
+# does not fail the contract. It *is* worth reading: `collections_flag` in the
+# synthetic frame is a leak, and this is the first place it shows up. A column you
+# did not declare is a column nobody decided about.
+
+# %% [markdown]
+# ## Step 4 — fail the run, or record why you did not
+#
+# `raise_if_failed()` is the gate. In a scheduled pipeline this is what should stop
+# the run: a missing column caught here is one legible message, and the same
+# missing column caught in `training/` is a `KeyError` sixty lines deep.
+#
+# Note what this stage does *not* do: no imputation, no coercion, no repair. A
+# stage that fixes its input cannot tell you whether the input was ever valid —
+# repair belongs to `transform/`, fitted inside a fold.
+
+# %%
+try:
+    check.raise_if_failed()
+    print("contract satisfied — safe to hand to transform/")
+except Exception as error:
+    print(f"CONTRACT VIOLATED: {error}")
+
+# %% [markdown]
+# ## Handoff
+#
+# **Output of this notebook:** a `DataContract` you have edited and believe, plus
+# the knowledge of which columns are undeclared. Next: `01_eda.py` for shape,
+# missingness pattern, and target balance.

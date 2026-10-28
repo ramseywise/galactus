@@ -1,0 +1,160 @@
+# %% [markdown]
+# # 02 — Bivariate signal
+#
+# **Question this notebook answers:** which features carry signal against the
+# target, and which of them carry it *suspiciously* well?
+#
+# `01_eda.py` looked at columns. This notebook looks at columns **against the
+# target**, which is where the modelling decisions actually get made. It runs
+# before any feature engineering: building derived features before knowing which
+# raw ones matter is how you end up with a hundred columns and no understanding.
+#
+# The leakage audit comes first and is not optional. A leaked feature does not
+# raise an error — it returns an excellent score and reads as success.
+
+# %%
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path.cwd().parent if Path.cwd().name == "nbks" else Path.cwd()
+sys.path.insert(0, str(REPO_ROOT / "{{ py_project_root }}"))
+sys.path.insert(0, str(REPO_ROOT / "nbks"))
+
+import matplotlib
+
+matplotlib.use("Agg")  # headless-safe; drop this line when working interactively
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from _sample_data import TARGET, load_frame
+
+from ml.transform import infer_column_types
+
+pd.set_option("display.max_columns", 200)
+
+frame, is_real = load_frame()
+print(f"{'real' if is_real else 'synthetic'} frame: {frame.shape}")
+
+# %% [markdown]
+# ## Column plan
+#
+# `infer_column_types` buckets by dtype and cardinality. Read its output rather
+# than trusting it: cardinality is a heuristic, and the identifier it puts in
+# `high_cardinality` is the column most likely to be a leak.
+
+# %%
+IDENTIFIERS = ["customer_id"]
+features = [c for c in frame.columns if c not in {TARGET, *IDENTIFIERS}]
+
+plan = infer_column_types(frame[features])
+print(f"numeric:          {plan.numeric}")
+print(f"categorical:      {plan.categorical}")
+print(f"high cardinality: {plan.high_cardinality}")
+
+# %% [markdown]
+# ## Leakage audit — run this before anything else
+#
+# A feature that predicts the target almost perfectly on its own is far more
+# likely to be a leak than a discovery. The rule of thumb: any single raw column
+# with AUC above ~0.95 deserves an explanation of *how it could be known before
+# the outcome*, and the burden of proof is on keeping it.
+
+# %%
+from sklearn.metrics import roc_auc_score
+
+suspicion = []
+for column in plan.numeric:
+    values = frame[column].fillna(frame[column].median())
+    auc = roc_auc_score(frame[TARGET], values)
+    suspicion.append({"feature": column, "auc": max(auc, 1 - auc), "kind": "numeric"})
+
+for column in plan.categorical:
+    rates = frame.groupby(column, observed=True)[TARGET].mean()
+    mapped = frame[column].map(rates).astype(float)
+    auc = roc_auc_score(frame[TARGET], mapped)
+    suspicion.append({"feature": column, "auc": max(auc, 1 - auc), "kind": "categorical"})
+
+audit = pd.DataFrame(suspicion).sort_values("auc", ascending=False)
+audit["verdict"] = np.where(
+    audit["auc"] > 0.95, "SUSPECT — explain or drop", np.where(audit["auc"] > 0.7, "strong", "")
+)
+audit
+
+# %% [markdown]
+# ### What to do with a suspect
+#
+# In the synthetic frame `collections_flag` scores near 1.0 because it is derived
+# from the outcome. The question to ask of any suspect is a timing question:
+# **would this value be known at the moment the prediction must be made?** If it
+# is recorded after the outcome, it is a leak regardless of how good it looks.
+#
+# Drop it, and record the reason — `ColumnPlan.excluded` takes a reason per column
+# precisely so this decision survives.
+
+# %%
+LEAKS = {"collections_flag": "recorded after the outcome — post-hoc collections status"}
+modelling_features = [c for c in features if c not in LEAKS]
+print(f"dropped {list(LEAKS)}; {len(modelling_features)} features remain")
+
+# %% [markdown]
+# ## Numeric features vs the target
+#
+# Distribution per class, not a single summary statistic. Two classes with the
+# same mean and different spread are separable; a table of means says they are not.
+
+# %%
+numeric_features = [c for c in plan.numeric if c in modelling_features]
+if numeric_features:
+    fig, axes = plt.subplots(
+        1, len(numeric_features), figsize=(4 * len(numeric_features), 3.2), squeeze=False
+    )
+    for axis, column in zip(axes[0], numeric_features, strict=False):
+        for label, group in frame.groupby(TARGET):
+            axis.hist(
+                group[column].dropna(), bins=30, alpha=0.55, density=True, label=f"{TARGET}={label}"
+            )
+        axis.set_title(column)
+        axis.legend(fontsize=7)
+    fig.tight_layout()
+    plt.show()
+
+# %% [markdown]
+# ## Categorical features vs the target
+#
+# Rate per level **with its support**. A level with a 100% rate and four rows is
+# noise; the count column is what stops you acting on it.
+
+# %%
+for column in [c for c in plan.categorical if c in modelling_features]:
+    summary = (
+        frame.groupby(column, observed=True)[TARGET]
+        .agg(rate="mean", rows="size")
+        .sort_values("rate", ascending=False)
+    )
+    summary["rate"] = summary["rate"].round(4)
+    print(f"\n{column} (base rate {frame[TARGET].mean():.4f}):")
+    print(summary.to_string())
+
+# %% [markdown]
+# ## Monotonicity check
+#
+# Binned rate across a numeric feature's range. A monotone relationship is what a
+# linear model can use directly; a U-shape means the linear baseline will
+# underperform for a reason that is about the feature, not the model.
+
+# %%
+for column in numeric_features:
+    bins = pd.qcut(frame[column], q=8, duplicates="drop")
+    binned = frame.groupby(bins, observed=True)[TARGET].agg(rate="mean", rows="size")
+    print(f"\n{column}:")
+    print(binned.round(4).to_string())
+
+# %% [markdown]
+# ## Handoff
+#
+# **Output of this notebook:** `LEAKS` (with reasons) and the surviving
+# `modelling_features`, plus a sense of which features are monotone. Next:
+# `03_features.py` to decide which derived features earn their place.

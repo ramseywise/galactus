@@ -1,0 +1,74 @@
+"""{{ project_name }} MCP server.
+
+Run in STDIO mode (for Claude Desktop, Claude Code, or any MCP client):
+  uv run python -m src.server
+
+Or install and run the entrypoint:
+  uv run {{ mcp_server_slug }}
+"""
+
+from __future__ import annotations
+
+import os
+import uuid
+
+import httpx
+from dotenv import load_dotenv
+from fastmcp import FastMCP
+
+load_dotenv()
+
+_HTTP_TIMEOUT = float(os.getenv("MCP_HTTP_TIMEOUT", "30"))
+_RAG_AGENT_URL = os.getenv("RAG_AGENT_URL", "http://localhost:8011")
+
+mcp = FastMCP("{{ mcp_server_name }}")
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def search_articles(query: str) -> str:
+    """Search the project's knowledge base for relevant articles.
+
+    Calls the retrieval backend's /api/v1/retrieval endpoint (retrieval only,
+    no answer synthesis) — see .claude/skills/mcp-builder/SKILL.md's "Consuming
+    your server" section.{% if include_rag_agent %} Requires rag_agent running (`make rag-up`);
+    RAG_AGENT_URL overrides the default http://localhost:8011.{% else %} include_rag_agent=false:
+    point RAG_AGENT_URL (default http://localhost:8011) at your custom RAG
+    service's compatible endpoint.{% endif %}
+
+    Args:
+        query: Natural language search query.
+
+    Returns:
+        Retrieved article context, or an error message if the retrieval backend is unreachable.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+            r = await client.post(
+                f"{_RAG_AGENT_URL}/api/v1/retrieval",
+                json={"thread_id": f"mcp-{uuid.uuid4()}", "query": query},
+            )
+            r.raise_for_status()
+    except httpx.HTTPError as exc:
+        return f"[retrieval backend unavailable: {exc}]"
+
+    data = r.json()
+    context = data.get("context") or "(no matching articles found)"
+    return f"{context}\n\n[confidence: {data.get('confidence', 0.0):.2f}]"
+
+
+# ---------------------------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:
+    mcp.run()
+
+
+if __name__ == "__main__":
+    main()

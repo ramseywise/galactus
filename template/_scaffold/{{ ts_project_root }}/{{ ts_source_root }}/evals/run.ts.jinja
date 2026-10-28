@@ -1,0 +1,186 @@
+/**
+ * Answer-only smoke eval for the TS agent — NOT retrieval grading.
+ *
+ * {{ eval_root }}/pipelines/run.py.jinja grades retrieval quality (hit_rate/
+ * MRR) via each Python backend's in-process search_fn against golden_qa.jsonl.
+ * The TS agent has no retrieval step of its own (it's a tool-calling
+ * assistant, not a RAG backend) — grading it against a hit_rate metric would
+ * be meaningless. This instead hits the real running /agent/chat endpoint
+ * over HTTP for every golden-QA question and scores token overlap between
+ * the generated answer and the golden expected_answer — the same coarse,
+ * LLM-free heuristic as citation.py's grade_answer_overlap, ported here so
+ * this script has no dependency on the Python side. Requires the TS server
+ * already running (`make ts-dev` first) and ANTHROPIC_API_KEY set.
+ *
+ * Usage: GOLDEN_QA_PATH=/abs/path/golden_qa.jsonl npx tsx agent/eval/run.ts
+ * (the ts-agent-eval Makefile target sets GOLDEN_QA_PATH for you)
+ */
+
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const AGENT_URL = process.env.TS_AGENT_EVAL_URL ?? "http://localhost:3000/agent/chat";
+const GOLDEN_QA_PATH = process.env.GOLDEN_QA_PATH;
+const REPORTS_DIR = join(__dirname, "..", "..", "..", "..", "{{ eval_root }}", "reports", "output");
+
+const STOPWORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "by", "can", "do", "for", "from",
+  "has", "have", "if", "in", "into", "is", "it", "its", "of", "on", "or",
+  "over", "should", "that", "the", "to", "use", "using", "was", "were",
+  "will", "with", "you", "your",
+]);
+
+function contentTokens(text: string): Set<string> {
+  const tokens = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return new Set(tokens.filter((t) => !STOPWORDS.has(t)));
+}
+
+function overlapRatio(generated: string, expected: string): number {
+  const expectedTokens = contentTokens(expected);
+  if (expectedTokens.size === 0) {
+    return 1.0;
+  }
+  const generatedTokens = contentTokens(generated);
+  let matched = 0;
+  for (const token of expectedTokens) {
+    if (generatedTokens.has(token)) {
+      matched += 1;
+    }
+  }
+  return matched / expectedTokens.size;
+}
+
+interface GoldenQARow {
+  id: string;
+  question: string;
+  expected_answer: string;
+  source_article: string;
+  category: string;
+}
+
+interface RowResult {
+  id: string;
+  question: string;
+  category: string;
+  answer_overlap_ratio: number | null;
+  error: string | null;
+}
+
+async function askAgent(question: string): Promise<string> {
+  const res = await fetch(AGENT_URL, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      messages: [{ role: "user", parts: [{ type: "text", text: question }] }],
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+
+  const text = await res.text();
+  // UI message stream (toUIMessageStreamResponse) is SSE-shaped: one
+  // `data: {...}` line per chunk. Parse each line as real JSON and keep only
+  // `type: "text-delta"` chunks' `delta` field — matching every `data:` line
+  // indiscriminately would also pick up tool-input-delta/reasoning-delta
+  // chunks that aren't part of the visible answer text. A stream-level error
+  // chunk (e.g. missing ANTHROPIC_API_KEY -> 401 from the provider) arrives
+  // as `type: "error"` with HTTP 200 already sent — the SSE protocol reports
+  // failures inside the stream, not via status code, so this must be checked
+  // explicitly or a failed generation silently scores as "answered nothing"
+  // instead of surfacing as the row error it actually is.
+  let answer = "";
+  for (const line of text.split("\n")) {
+    if (!line.startsWith("data: ")) {
+      continue;
+    }
+    const payload = line.slice("data: ".length).trim();
+    if (payload === "[DONE]") {
+      continue;
+    }
+    try {
+      const chunk = JSON.parse(payload);
+      if (chunk.type === "error") {
+        throw new Error(`agent stream error: ${chunk.errorText ?? JSON.stringify(chunk)}`);
+      }
+      if (chunk.type === "text-delta" && typeof chunk.delta === "string") {
+        answer += chunk.delta;
+      }
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        continue; // non-JSON or partial line — skip rather than crash the eval run
+      }
+      throw err;
+    }
+  }
+  return answer;
+}
+
+async function main() {
+  if (!GOLDEN_QA_PATH) {
+    console.error("error: GOLDEN_QA_PATH env var not set.");
+    process.exit(1);
+  }
+
+  const lines = readFileSync(GOLDEN_QA_PATH, "utf-8").split("\n").filter((l) => l.trim());
+  const goldenQA: GoldenQARow[] = lines.map((l) => JSON.parse(l));
+
+  const rows: RowResult[] = [];
+  for (const entry of goldenQA) {
+    try {
+      const answer = await askAgent(entry.question);
+      const ratio = overlapRatio(answer, entry.expected_answer);
+      rows.push({
+        id: entry.id,
+        question: entry.question,
+        category: entry.category,
+        answer_overlap_ratio: ratio,
+        error: null,
+      });
+    } catch (err) {
+      rows.push({
+        id: entry.id,
+        question: entry.question,
+        category: entry.category,
+        answer_overlap_ratio: null,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  const scored = rows.filter((r) => r.answer_overlap_ratio !== null);
+  const meanOverlap =
+    scored.length > 0
+      ? scored.reduce((sum, r) => sum + (r.answer_overlap_ratio ?? 0), 0) / scored.length
+      : null;
+
+  const report = {
+    backend: "ts_agent",
+    generated_at: new Date().toISOString(),
+    total_queries: rows.length,
+    mean_answer_overlap: meanOverlap,
+    rows,
+  };
+
+  console.error("id       overlap  category");
+  for (const row of rows) {
+    const overlap = row.answer_overlap_ratio === null ? "err" : row.answer_overlap_ratio.toFixed(2);
+    console.error(`${row.id.padEnd(9)}${overlap.padEnd(9)}${row.category}`);
+  }
+  console.error(`\nqueries: ${report.total_queries}`);
+  console.error(
+    `mean_answer_overlap: ${meanOverlap !== null ? meanOverlap.toFixed(3) : "n/a (all requests errored — check ANTHROPIC_API_KEY and that the server is running)"}`,
+  );
+
+  mkdirSync(REPORTS_DIR, { recursive: true });
+  const outPath = join(REPORTS_DIR, "heuristic_results_ts_agent.json");
+  writeFileSync(outPath, JSON.stringify(report, null, 2));
+  console.error(`\nWrote results to ${outPath}`);
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

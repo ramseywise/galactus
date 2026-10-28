@@ -1,0 +1,34 @@
+import { createClient } from "@supabase/supabase-js";
+
+// Vite exposes only VITE_-prefixed vars to the client bundle, and via
+// import.meta.env rather than process.env — a Next.js-style
+// NEXT_PUBLIC_/process.env pair reads as undefined here and the client
+// silently degrades to null.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
+
+// createClient, not @supabase/ssr's createBrowserClient: this is a
+// client-rendered SPA with no server to read cookies, so the session lives in
+// localStorage and route gating happens in the router (see routes.tsx), not in
+// middleware. The API is what actually enforces access — it verifies the JWT
+// on every request. Client-side gating is UX, never a security boundary.
+export const supabase =
+  supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
+
+/** Returns the current session's access token, or null if not authenticated. */
+export async function getAccessToken(): Promise<string | null> {
+  if (!supabase) {
+    return null;
+  }
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+/** Returns the current user, or null if not authenticated. */
+export async function getCurrentUser() {
+  if (!supabase) {
+    return null;
+  }
+  const { data } = await supabase.auth.getUser();
+  return data.user ?? null;
+}

@@ -1,0 +1,126 @@
+# %% [markdown]
+# # 04 — Selection
+#
+# **Question this notebook answers:** which candidates exist for this
+# `(family, output)` pair, and which will actually run here?
+#
+# Short notebook, and the only one that answers a question about the *toolkit*
+# rather than the data. Its value is that it makes availability explicit before a
+# training run rather than after: a candidate missing because its optional
+# dependency is absent should be a fact you know now, not a gap you notice in the
+# results table.
+
+# %%
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path.cwd().parent if Path.cwd().name == "nbks" else Path.cwd()
+sys.path.insert(0, str(REPO_ROOT / "{{ py_project_root }}"))
+sys.path.insert(0, str(REPO_ROOT / "nbks"))
+
+import pandas as pd
+
+from ml.config import settings
+from ml.schemas import RunConfig
+from ml.selection.registry import REGISTRY, get_models, valid_pairs
+
+pd.set_option("display.max_columns", 200)
+
+# %% [markdown]
+# ## The whole matrix
+#
+# Every registered spec, with its availability. Reserved entries are registered
+# deliberately so `get_models("prediction", "continuous")` returns something and
+# the family dimension stays honest — a `KeyError` reads like a typo.
+
+# %%
+pd.DataFrame(
+    [
+        {
+            "name": s.name,
+            "family": s.family,
+            "outputs": ", ".join(s.outputs),
+            "baseline": s.is_baseline,
+            "categorical_native": s.supports_categorical,
+            "optional_dep": s.optional_dep or "",
+            "available": s.available,
+        }
+        for s in REGISTRY.specs
+    ]
+)
+
+# %% [markdown]
+# ## Valid pairs
+
+# %%
+for family, output in valid_pairs():
+    names = [s.name for s in REGISTRY.specs if s.family == family and output in s.outputs]
+    print(f"({family}, {output}): {names}")
+
+# %% [markdown]
+# ## Unavailable candidates
+#
+# Read this cell before training. A missing optional dependency degrades a run
+# rather than breaking it — one fewer candidate, with a warning — which is the
+# right behaviour and also the easy thing to miss.
+
+# %%
+missing = [(s.name, s.optional_dep) for s in REGISTRY.specs if not s.available]
+if missing:
+    for name, dependency in missing:
+        print(f"UNAVAILABLE {name}: install {dependency!r} to include it")
+else:
+    print("every registered candidate is available")
+
+# %% [markdown]
+# ## Declare the run
+#
+# `RunConfig` is the contract the training stage consumes. It validates that the
+# output matches the family, so an incoherent pair fails here rather than deep in
+# a fit loop.
+#
+# The `parked` list is the part worth taking seriously: an unresolved question
+# travels **with the config** and gets printed by every report that cites it,
+# instead of living in a markdown file nobody re-reads.
+
+# %%
+config = RunConfig(
+    family="classification",
+    output="binary",
+    target="target",
+    models=(),  # empty = every available candidate
+    sampling="none",
+    seed=settings.random_seed,
+    parked=(),
+)
+print(config.model_dump_json(indent=2))
+
+# %% [markdown]
+# ## What will be built
+#
+# `get_models` with the run's seed — the same call the training workflow makes.
+# Baselines are appended regardless of the `include` filter, so a comparison
+# always has a floor to beat.
+
+# %%
+models = get_models(config.family, config.output, random_state=config.seed)
+for name, estimator in models.items():
+    print(f"{name:20s} {type(estimator).__name__}")
+
+# %% [markdown]
+# ### On the seed and the estimators above
+#
+# Every estimator here was built with `random_state=seed`. That call shape is the
+# one that used to drop CatBoost silently: its factory set `random_seed` while the
+# workflow passed `random_state`, CatBoost treats them as aliases and rejects both
+# at `fit()` — so it built fine, failed on every fit, and was logged as "skipped".
+# `tests/unit/ml/selection/test_registry_seed.py` now fits every candidate to keep
+# that closed.
+
+# %% [markdown]
+# ## Handoff
+#
+# **Output of this notebook:** a validated `RunConfig` and the knowledge of which
+# candidates are available. Next: `05_training.py`.

@@ -1,0 +1,256 @@
+/**
+ * Wiring integration tests for agent.ts.
+ *
+ * Each test below verifies that agent.ts actually imports and invokes a
+ * support module.  The test FAILS if the corresponding import or callback
+ * wiring is removed from agent.ts — a passing test with the import deleted
+ * does not satisfy the acceptance criterion.
+ *
+ * Strategy: mock `streamText` from the `ai` package to capture the options
+ * object passed by runAgent (which contains the onStepFinish / onFinish
+ * callbacks), then fire those callbacks with synthetic data and assert the
+ * wired module functions were called.
+ *
+ * Hoisting note (vitest): `vi.mock` calls are hoisted above the imports, so a
+ * factory may not close over a normal `const` — it would read the binding
+ * before initialisation. Mock functions are therefore declared inside
+ * `vi.hoisted()`, which runs before the mock factories and returns them for use
+ * in both the factories and the assertions below. This replaces jest's
+ * `unstable_mockModule` + dynamic-import-in-beforeAll dance (AIT-70); the
+ * subject can now be imported statically.
+ */
+
+import { vi, describe, it, expect } from "vitest";
+
+import { runAgent } from "../agent.js";
+
+// ---------------------------------------------------------------------------
+// Synthetic events used to fire the streamText callbacks
+// ---------------------------------------------------------------------------
+
+const SYNTHETIC_STEP = {
+  text: "hello",
+  toolCalls: [{ toolName: "getTime", input: {} }],
+  toolResults: [],
+  finishReason: "stop",
+  usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+};
+const SYNTHETIC_FINISH = {
+  ...SYNTHETIC_STEP,
+  steps: [SYNTHETIC_STEP],
+  totalUsage: SYNTHETIC_STEP.usage,
+};
+
+// ---------------------------------------------------------------------------
+// Mock functions — hoisted so the vi.mock factories below can close over them
+// ---------------------------------------------------------------------------
+
+const mocks = vi.hoisted(() => {
+  const recordOutput = vi.fn();
+  const recordToolCall = vi.fn();
+  // Captures the options object passed to streamText on each runAgent() call.
+  // Boxed in an object because vi.hoisted's return is destructured by reference
+  // — a bare `let` would not be shared with the factories.
+  const captured: { opts: Record<string, unknown> } = { opts: {} };
+  return {
+    captured,
+    // The parameter lists here are not decoration: vi.fn(() => …) types its
+    // `mock.calls` as `[]`, so the argument assertions below cannot index into
+    // call[0]. Declaring what agent.ts actually passes is what makes
+    // `calls[0][0]` well-typed — and it documents the call contract each of
+    // these wiring tests exists to pin.
+    startChatSpan: vi.fn((_usage: { inputTokens: number; outputTokens: number }) => ({
+      end: vi.fn(),
+    })),
+    recordOutput,
+    recordToolCall,
+    createStallDetector: vi.fn(() => ({
+      recordOutput,
+      recordToolCall,
+      reset: vi.fn(),
+    })),
+    trackUsage: vi.fn((_usage: { promptTokens: number; completionTokens: number }) => ({
+      totalInput: 10, totalOutput: 5, system: 0, history: 0, tools: 0, scratch: 10, utilisationPct: 0.1,
+    })),
+    shouldCompact: vi.fn(() => false),
+    wrapToolsWithSpans: vi.fn((t: unknown) => t),
+    wrapToolsWithContentFilter: vi.fn((t: unknown) => t),
+    streamText: vi.fn((opts: Record<string, unknown>) => {
+      captured.opts = opts;
+      return { toUIMessageStreamResponse: vi.fn() };
+    }),
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Module mocks — hoisted above the imports by vitest
+// ---------------------------------------------------------------------------
+
+vi.mock("ai", () => ({
+  // Only stub the symbols agent.ts imports from "ai"
+  streamText: mocks.streamText,
+  // async in AI SDK v7 — the stub must return a promise or agent.ts's `await`
+  // resolves to undefined and streamText receives no messages.
+  convertToModelMessages: vi.fn(async () => []),
+  stepCountIs: vi.fn(() => () => false),
+}));
+
+vi.mock("../../../model/gateway.js", () => ({
+  getModel: vi.fn(() => ({ modelId: "stub-model" })),
+}));
+
+vi.mock("../settings.js", () => ({
+  settings: { maxSteps: 5, maxRetries: 3 },
+}));
+
+vi.mock("../tools/index.js", () => ({
+  tools: {},
+}));
+
+vi.mock("../../../observability/traceTools.js", () => ({
+  wrapToolsWithSpans: mocks.wrapToolsWithSpans,
+}));
+
+vi.mock("../../../guardrails/tools.js", () => ({
+  wrapToolsWithContentFilter: mocks.wrapToolsWithContentFilter,
+}));
+
+vi.mock("../../../observability/tracing.js", () => ({
+  startChatSpan: mocks.startChatSpan,
+  // startExecuteToolSpan is used by traceTools.ts, not agent.ts directly —
+  // it is tested in the wrapToolsWithSpans describe block below.
+  startExecuteToolSpan: vi.fn(() => ({ end: vi.fn(), setStatus: vi.fn(), setAttribute: vi.fn() })),
+  inputHash: vi.fn(() => "deadbeef"),
+}));
+
+vi.mock("../stallDetector.js", () => ({
+  createStallDetector: mocks.createStallDetector,
+  StallDetectedError: class StallDetectedError extends Error {},
+}));
+
+vi.mock("../contextBudget.js", () => ({
+  trackUsage: mocks.trackUsage,
+  shouldCompact: mocks.shouldCompact,
+  budgetSettings: {
+    maxContextTokens: 180_000,
+    compactionThreshold: 0.8,
+    logTokenCategories: false,
+  },
+}));
+
+// ---------------------------------------------------------------------------
+// Helper: call runAgent and fire both callbacks with synthetic data
+// ---------------------------------------------------------------------------
+
+async function invokeCallbacks() {
+  mocks.captured.opts = {};
+  await runAgent([]);
+  if (typeof mocks.captured.opts["onStepFinish"] === "function") {
+    await (mocks.captured.opts["onStepFinish"] as (s: unknown) => Promise<void>)(SYNTHETIC_STEP);
+  }
+  if (typeof mocks.captured.opts["onFinish"] === "function") {
+    await (mocks.captured.opts["onFinish"] as (e: unknown) => Promise<void>)(SYNTHETIC_FINISH);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("agent.ts — request params", () => {
+  it("sends no sampling params: they 400 on thinking-by-default models", async () => {
+    // Claude Opus 5, Fable 5, Opus 4.8/4.7 and Sonnet 5 reject
+    // temperature/top_p/top_k with a 400. The default model (Haiku 4.5) still
+    // accepts them, so this only breaks once TS_AGENT_MODEL points at a current
+    // model — a runtime-only failure no linter catches. Re-add
+    // `temperature: settings.generationTemperature` to agent.ts and this fails.
+    mocks.captured.opts = {};
+    await runAgent([]);
+
+    for (const param of ["temperature", "topP", "topK"]) {
+      expect(mocks.captured.opts).not.toHaveProperty(param);
+    }
+  });
+});
+
+describe("agent.ts wiring — tracing (chat span)", () => {
+  it("startChatSpan is called in onFinish with token counts from event.usage", async () => {
+    mocks.startChatSpan.mockClear();
+    await invokeCallbacks();
+    expect(mocks.startChatSpan).toHaveBeenCalledTimes(1);
+    const arg = mocks.startChatSpan.mock.calls[0][0];
+    expect(arg.inputTokens).toBe(10);
+    expect(arg.outputTokens).toBe(5);
+  });
+});
+
+describe("agent.ts wiring — traceTools (execute_tool span)", () => {
+  it("wrapToolsWithSpans is called by runAgent so tool spans bracket real execution", async () => {
+    mocks.wrapToolsWithSpans.mockClear();
+    await runAgent([]);
+    // agent.ts must call wrapToolsWithSpans(tools) — if the call is removed the
+    // mock is never invoked and this assertion fails.
+    // Duration / error-marking proof lives in traceTools.test.ts which exercises
+    // the real implementation with a controlled span mock.
+    expect(mocks.wrapToolsWithSpans).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("agent.ts wiring — guard layer 2 (tool-result content filter)", () => {
+  // AIT-70: until this test existed, agent.ts imported
+  // wrapToolsWithContentFilter and never called it. The import survived review
+  // because the module header documented the wiring, and guardrails' own suite
+  // passed because it exercises the wrapper directly — so the one guard against
+  // indirect prompt injection was tested, documented, and not running. A
+  // no-unused-vars warning was the only signal.
+  it("wrapToolsWithContentFilter is called by runAgent", async () => {
+    mocks.wrapToolsWithContentFilter.mockClear();
+    await runAgent([]);
+    expect(mocks.wrapToolsWithContentFilter).toHaveBeenCalledTimes(1);
+  });
+
+  it("the span wrapper encloses the filter, not the other way round", async () => {
+    // FAILS IF: the two wrappers are swapped in agent.ts. Span-outside is what
+    // makes execute_tool's duration cover the filtering work and marks the span
+    // is_error when the filter throws; filter-outside would report the tool as
+    // fast and clean while the filter was still running.
+    mocks.wrapToolsWithSpans.mockClear();
+    mocks.wrapToolsWithContentFilter.mockClear();
+    await runAgent([]);
+
+    const filterOrder = mocks.wrapToolsWithContentFilter.mock.invocationCallOrder[0];
+    const spanOrder = mocks.wrapToolsWithSpans.mock.invocationCallOrder[0];
+    expect(filterOrder).toBeLessThan(spanOrder);
+  });
+});
+
+describe("agent.ts wiring — stall detector", () => {
+  it("recordOutput is called in onStepFinish with step.text", async () => {
+    mocks.recordOutput.mockClear();
+    await invokeCallbacks();
+    expect(mocks.recordOutput).toHaveBeenCalledWith("hello");
+  });
+
+  it("recordToolCall is called in onStepFinish for each tool call", async () => {
+    mocks.recordToolCall.mockClear();
+    await invokeCallbacks();
+    expect(mocks.recordToolCall).toHaveBeenCalledWith("getTime", {});
+  });
+});
+
+describe("agent.ts wiring — context budget", () => {
+  it("trackUsage is called in onFinish with adapted promptTokens / completionTokens", async () => {
+    mocks.trackUsage.mockClear();
+    await invokeCallbacks();
+    expect(mocks.trackUsage).toHaveBeenCalledTimes(1);
+    const arg = mocks.trackUsage.mock.calls[0][0];
+    expect(arg.promptTokens).toBe(10);
+    expect(arg.completionTokens).toBe(5);
+  });
+
+  it("shouldCompact is called in onFinish", async () => {
+    mocks.shouldCompact.mockClear();
+    await invokeCallbacks();
+    expect(mocks.shouldCompact).toHaveBeenCalledTimes(1);
+  });
+});

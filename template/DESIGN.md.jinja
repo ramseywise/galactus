@@ -1,0 +1,176 @@
+# System Design — {{ project_name }}
+
+**Date:** <!-- fill in -->
+**Status:** Draft
+
+> This file is your project's authoritative design record. Populate it before
+> or alongside scaffolding — ideally by running `/scope-poc` first, which runs
+> a structured interview and writes this file for you. If you're starting here
+> directly, fill in each section before sprint 1. A blank DESIGN.md is a signal
+> that key decisions haven't been made yet, not that they don't matter.
+
+---
+
+## Problem + Success Criteria
+
+<!-- 1–2 sentences: what problem, who has it, what's the current workaround -->
+
+**POC demo target:** <!-- What does someone see in a 5-minute demo that makes them say yes? -->
+
+**Naive baseline:** <!-- What's the non-AI alternative (do nothing / keyword search /
+manual process), and what must the AI beat, by how much, to justify itself? -->
+
+---
+
+## Actors
+
+| Actor | Type | What they do today | What the AI does for them |
+|-------|------|--------------------|--------------------------|
+| <!-- name --> | {{ primary_users }} <!-- from scaffold: refine --> | <!-- current state --> | <!-- AI's role --> |
+
+---
+
+## System Context
+
+<!-- One paragraph or lightweight mermaid diagram: people + systems + connections.
+     Draw only what exists or will exist in this POC — not the full future state. -->
+
+**External systems (from scaffold):** {{ external_systems | join(', ') if external_systems else 'none declared' }}
+
+---
+
+## MVP Scope
+
+**In:**
+-
+
+**Out (explicitly):**
+-
+
+**Open (decide before sprint 1):**
+-
+
+---
+
+## Key Decisions
+
+The rows between the markers below are generated from `design.yaml` and rewritten
+in place on every `copier update`. To change one of those decisions, edit
+`design.yaml` — edits made inside the markers are overwritten. Rows outside the
+markers, and every other section of this file, are yours.
+
+<!-- BEGIN design-table (generated from design.yaml — do not edit by hand) -->
+| Decision | Status | Choice | Rationale |
+|----------|--------|--------|-----------|
+| AI approach | Resolved | {{ project_type }} | Set at scaffold time — revisit if the shape changes |
+| Python backend | Resolved | {{ ('yes — ' ~ primary_chat_agent if primary_chat_agent != 'none' else 'yes — no agent loop') if primary_backend_language in ['python', 'both'] else 'no' }} | From `design.yaml` `backends.python` |
+| TypeScript backend | Resolved | {{ ('yes — ' ~ ts_agent_framework if ts_agent_framework and ts_agent_framework != 'none' else 'yes — no agent loop') if primary_backend_language in ['typescript', 'both'] else 'no' }} | From `design.yaml` `backends.typescript` |
+| Frontend | Resolved | {{ 'nextjs (' ~ frontend_backend_topology ~ ')' if include_frontend else 'none' }} | From `design.yaml` `web` |
+| Retrieval | Resolved | {{ (rag_impl ~ ' / ' ~ vector_backend) if include_rag_agent else 'none' }} | From `design.yaml` `rag` |
+| Cloud | Resolved | {{ cloud }} | From `design.yaml` `cloud` |
+| Deployment target | Resolved | {{ deployment_target }} | From `design.yaml` `deployment_target` |
+| Data sensitivity | Resolved | {{ data_sensitivity }} | From `design.yaml` `data_sensitivity` |
+| Interaction evals | Resolved | {{ [('escalation' if include_metric_escalation else none), ('friction' if include_metric_friction else none), ('intent' if include_metric_intent else none), ('language' if include_metric_language else none)] | select | join(', ') or 'none' }} | From `design.yaml` `evals.interaction` |
+<!-- END design-table -->
+
+| Decision | Status | Choice | Rationale |
+|----------|--------|--------|-----------|
+| Auth / identity | <!-- Resolved / Open / Deferred(<trigger>) --> | | |
+| Data model ownership | <!-- Resolved / Open / Deferred(<trigger>) --> | | |
+| Multi-tenancy | <!-- Resolved / Open / Deferred(<trigger>) --> | | |
+| Service surface | Deferred(first external consumer identified) | REST `/api/v1/*` is the boundary | MCP is a logic-free adapter over REST — add one when an MCP host actually consumes this project; revisit at that trigger |
+{%- if is_agent_shaped %}
+| Agent tools | Resolved | {{ agent_tools | join(', ') if agent_tools else 'none' }} | Set at scaffold time |
+| Agent memory | Resolved | {{ agent_memory }} | Set at scaffold time{% if agent_memory == 'long_term' %} — postgres checkpointer dependency seeded on{% endif %} |
+| Human approval | Resolved | {{ human_approval }} | Set at scaffold time — constrains every tool that writes to an external system |
+{%- endif %}
+
+Status semantics: `Deferred(<trigger>)` records the default choice now and names the
+concrete event that reopens the decision — a Deferred without a real trigger counts
+as Open. Open items block the discovery-exit gate (see LIFECYCLE.md / `/gate-check`);
+Deferred items don't.
+
+---
+
+## Behavioral Cases
+
+| Given | Agent must | Must not | Source risk |
+|-------|-----------|----------|-------------|
+| <!-- e.g. user asks about a topic outside the corpus --> | <!-- e.g. say it does not know --> | <!-- e.g. invent a plausible answer --> | <!-- e.g. MVP Scope In: "answers only from the indexed corpus" --> |
+
+<!-- The executable spec: what the agent must do, written BEFORE it exists.
+     /workflow-plan turns these rows into data/evals/cases.jsonl; `make eval-grade`
+     runs them. Rules:
+       - 20–50 rows, not hundreds. Over-speccing at discovery is the known failure
+         mode; early cases have large effect size, so small sets are fine.
+       - Balance positive and negative: the `Must not` column is not optional. A suite
+         with no refusal cases does not measure safety.
+       - Every row's `Source risk` quotes an MVP Scope `In:` or `Open:` bullet verbatim.
+         A row that traces to nothing is a row nobody asked for.
+       - Unambiguous: two readers must agree on pass/fail without arguing.
+     Add cases freely as you learn — but authoring the golden set BEFORE
+     implementation is the part that must not move. -->
+
+---
+
+## Evaluation
+
+| Metric | Target | How measured |
+|--------|--------|--------------|
+| <!-- e.g. hit_rate --> | <!-- e.g. ≥ 0.8 --> | <!-- e.g. `make eval-heuristic` vs golden set --> |
+
+<!-- These targets become evals/targets.yaml — `make eval-gate` fails when a metric
+     drops below target. Derive at least one row from each top risk in MVP Scope,
+     and one from the naive baseline (what margin over it justifies the AI).
+     Threshold VALUES are tunable freely in targets.yaml (no deploy needed);
+     "the eval gate must run before release" is the part that must not move —
+     enforce it in CI. -->
+
+---
+
+## Non-Functional Constraints
+
+These are the trade-off axes — every architecture decision above is a choice made
+*against* these numbers. An accepted POC-tier default is a real answer; write it down
+as one ("free tier only (weekend-sprint default, unvalidated)"), not as a blank.
+
+- **Data classification:** {{ data_sensitivity }}
+{%- if data_sensitivity in ["restricted", "secret"] %}
+  (RESTRICTED: never log, print, or trace raw field values — redact before stdout/observability)
+{%- endif %}
+- **Multi-tenancy:** <!-- required / not required; if required: enforcement mechanism -->
+- **Operator model:** <!-- who runs this after POC, budget, volunteer vs. dedicated team -->
+- **Load:** <!-- requests/day at POC, and at the realistic 6-month state -->
+- **Latency target:** <!-- a response time someone would notice, e.g. "p95 < 10s", or "batch — minutes fine" -->
+- **Spend ceiling:** <!-- monthly model/API budget that must not be crossed, or "free tier only" -->
+- **Observability:** <!-- what a trace must capture to diagnose a bad answer{% if data_sensitivity in ["restricted", "secret"] %}, and what is redacted before it gets there — required at this classification{% endif %} -->
+
+<!-- These four mirror design.yaml's `non_functional:` block. /scope-poc Tier 4
+     (Q11b, Q11c) fills them; tier defaults are listed there. -->
+
+---
+
+## What Breaks First
+
+<!-- Name your design's weaknesses before a reviewer does. Two rows is the bar for a
+     POC — this is a design record, not a full bottleneck analysis. Product risks
+     (what the POC must prove) belong in MVP Scope and the Evaluation table; this
+     section is about what the architecture costs you. -->
+
+| Component | Failure mode | How you'd notice | Cheap mitigation | In POC scope? |
+|-----------|--------------|------------------|------------------|---------------|
+| <!-- e.g. LLM API --> | <!-- rate-limited, requests queue --> | <!-- p95 latency spike / 429s in traces --> | <!-- retry with backoff + cache --> | <!-- yes / after POC --> |
+
+---
+
+## Open Questions
+
+<!-- Things that surfaced during design but weren't resolved. Resolve these before sprint 1,
+     not during. Each unresolved question here is a risk to POC delivery. -->
+
+-
+
+---
+
+*Populated by `/scope-poc`. Updated as decisions resolve. Never deleted — this is the record
+of what the project is for, not just what it does.*

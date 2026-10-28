@@ -1,0 +1,47 @@
+/**
+ * {{ project_name }} — Express app factory.
+ *
+ * Separated from index.ts (the entrypoint) so tests can import createApp()
+ * directly without triggering the server to actually listen on a port.
+ */
+
+import express, { type Request, type Response } from "express";
+{%- if ts_agent_framework == "vercel_ai_sdk" %}
+import { chatHandler } from "./handler.js";
+{%- endif %}
+
+export function createApp() {
+  const app = express();
+  app.use(express.json());
+
+  app.get("/health", (_req: Request, res: Response) => {
+    res.json({ status: "ok" });
+  });
+
+  {%- if ts_agent_framework == "vercel_ai_sdk" %}
+  // chatHandler is a framework-agnostic (Request) => Response function (see
+  // agent/handler.ts) — this route just adapts Express's req/res to it, so
+  // the same handler drops straight into a Next.js route handler unchanged
+  // in a Vercel-hosted project.
+  app.post("/agent/chat", async (req: Request, res: Response) => {
+    const request = new Request(`http://localhost${req.url}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    const response = await chatHandler(request);
+    res.status(response.status);
+    response.headers.forEach((value, key) => res.setHeader(key, value));
+    if (!response.body) {
+      res.end();
+      return;
+    }
+    for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+      res.write(chunk);
+    }
+    res.end();
+  });
+  {%- endif %}
+
+  return app;
+}

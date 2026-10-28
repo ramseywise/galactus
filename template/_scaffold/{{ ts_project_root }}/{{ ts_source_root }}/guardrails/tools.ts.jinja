@@ -1,0 +1,89 @@
+/**
+ * {{ project_name }} — tool-output content filter (guard layer 2).
+ *
+ * `wrapToolsWithContentFilter` takes the Vercel AI SDK tool registry and returns
+ * an identical-shape registry where each `execute` result passes through
+ * `filterContent` before it can re-enter the prompt.
+ *
+ * This is the indirect-injection seam: a poisoned document or API response is
+ * not a user turn, so `checkInput` never sees it. Wrapping the registry rather
+ * than each tool means a tool added to tools/index.ts is filtered by
+ * construction, with no second edit to remember.
+ *
+ * Usage (agent.ts):
+ *   import { wrapToolsWithContentFilter } from "./tools.js";
+ *   import { wrapToolsWithSpans } from "../observability/traceTools.js";
+ *   // ...
+ *   tools: wrapToolsWithSpans(wrapToolsWithContentFilter(tools))
+ *
+ * Order matters: the content filter wraps first (inner), spans wrap outer, so
+ * the execute_tool span brackets real tool execution AND the filtering it
+ * feeds, rather than the filter running outside the traced region.
+ *
+ * Mirrors traceTools.ts by design — same registry-wrapper shape, so the two
+ * compose without either knowing about the other.
+ */
+
+import type { ToolSet } from "ai";
+import { filterContent } from "./guards.js";
+
+/**
+ * Return a copy of `toolSet` where every tool's result is content-filtered.
+ *
+ * Neutralizes rather than blocks (see filterContent): a document with one
+ * injection line keeps its other content. Non-string results are filtered via
+ * their JSON form so instruction text hiding in a nested string field is caught
+ * too; when filtering changes nothing the ORIGINAL value is returned untouched,
+ * so tools keep their structured shape in the common case.
+ *
+ * Tools without an `execute` function are passed through unchanged.
+ */
+export function wrapToolsWithContentFilter(toolSet: ToolSet): ToolSet {
+  const result: ToolSet = {};
+
+  for (const name of Object.keys(toolSet)) {
+    const tool = toolSet[name];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const originalExecute = (tool as any).execute as
+      | ((...args: unknown[]) => Promise<unknown>)
+      | undefined;
+
+    if (typeof originalExecute !== "function") {
+      result[name] = tool;
+      continue;
+    }
+
+    result[name] = {
+      ...tool,
+      execute: async (...args: unknown[]) => {
+        const output = await originalExecute(...args);
+
+        if (typeof output === "string") {
+          return filterContent(output, name).text;
+        }
+
+        const serialized = JSON.stringify(output);
+        if (serialized === undefined) {
+          // Not JSON-representable (undefined, a bare function) — nothing a
+          // text filter can inspect, and nothing that carries prose either.
+          return output;
+        }
+
+        const filtered = filterContent(serialized, name);
+        if (filtered.text === serialized) {
+          return output;
+        }
+        try {
+          return JSON.parse(filtered.text);
+        } catch {
+          // Neutralization broke the JSON shape — return the filtered text
+          // rather than fall back to the unfiltered object.
+          return filtered.text;
+        }
+      },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+  }
+
+  return result;
+}

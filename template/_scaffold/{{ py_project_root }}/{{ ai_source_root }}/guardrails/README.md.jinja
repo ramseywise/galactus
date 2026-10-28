@@ -1,0 +1,83 @@
+# {{ py_project_root }}/{{ ai_source_root }}/guardrails/ — input guard, content filter, output filter
+
+Three deterministic guard layers around the agent loop. No provider flag and no
+SDK: these are regex and length checks, independent of `observability_provider`
+(guards don't trace).
+
+- `guards.py` — the three layers: `check_input()`, `filter_content()`,
+  `check_output()`, plus `guard_turn()` showing the reference ordering.
+- `settings.py` — pydantic-settings, reads `.env`. Per-layer off-switches,
+  `max_input_chars`, `refusal_message`.
+
+## Which layer catches what
+
+| Layer | Runs on | On a hit |
+|---|---|---|
+| `check_input` | the untrusted user turn, before the model call | **blocks** — returns `refusal_message` |
+| `filter_content` | tool/retrieval output, before it enters a prompt | **neutralizes** — replaces the matched span, keeps the rest |
+| `check_output` | model output, before caller *and* tracer | **scrubs** — replaces leaked values, still delivers the answer |
+
+`filter_content` is the indirect-injection seam: a poisoned document is not a
+user turn, so `check_input` never sees it.
+
+## Where each layer is already wired
+
+The graph calls all three — this is not a library waiting to be adopted. Call
+sites, so you know what to change rather than what to add:
+
+| Layer | Call site | What it guards |
+|---|---|---|
+| `check_input` | `agents/{{ lg_agent_dir }}/nodes/guardrail.py` | the user turn, before any model call — a blocked turn costs no tokens |
+| `filter_content` | `agents/{{ lg_agent_dir }}/nodes/retrieve.py` | retrieved title + body, as the snippet is built |
+| `filter_content` | `agents/{{ lg_agent_dir }}/nodes/generate.py` | MCP tool results, before they re-enter the prompt |
+| `check_output` | `agents/{{ lg_agent_dir }}/nodes/generate.py` | the answer, before it leaves the graph |
+{% if has_corpus_pipeline %}
+Retrieval is filtered at `retrieve_node` rather than at `generate_node` so that
+any future consumer of `context_snippets` inherits the filtering — the guard
+sits where untrusted text first becomes prompt material.
+{% endif %}
+`guardrail_node` owns the graph-shaped decision (verdict → `blocked` /
+`block_reason` state); the guard itself only returns a verdict. `guard_turn()`
+is the reference ordering for a new agent, not a function these nodes call —
+they need to branch between layers, which `guard_turn` does not allow.
+
+`tests/unit/agents/test_guards_wiring.py` holds the wiring tests. They are
+distinct from behavioural guard tests: each docstring names the exact edit that
+makes it fail, so deleting a call site turns the suite red rather than leaving
+a passing suite around dead code. Add a case there whenever you add a call site.
+
+### Adding a fourth call site
+
+1. Call the layer at the point where untrusted text crosses a boundary, not
+   where it is convenient.
+2. Use `.text` — it is the safe value whether or not the verdict blocked.
+3. Never surface `.reasons` to the caller.
+4. Add a wiring test whose docstring names the deletion that breaks it.
+
+## Fail-open vs fail-closed
+
+A layer switched **off** in settings fails **open** (text passes through
+untouched) — that is an operator decision. A layer that **raises** fails
+**closed** (refusal, or empty content for layer 2) — a crashing guard must not
+become an availability hole that passes traffic unchecked. The two cases are
+deliberately different; keep it that way when extending.
+
+`GuardResult.text` is always the safe value — original when allowed, scrubbed or
+refusal text when not. A call site that ignores `blocked` and uses `text` still
+behaves safely.
+
+Blocked verdicts return `refusal_message`, never `reasons`. The rule ids are for
+logs, traces, and evals — surfacing them teaches a probing caller what tripped.
+{% if data_sensitivity in ["restricted", "secret"] %}
+**Order: filter before trace (data_sensitivity={{ data_sensitivity }}).**
+`check_output()` runs **before** `observability/tracing.py`'s `redact()`, so the
+scrubbed string is what reaches the tracing backend — a value the model leaked
+never lands in observability tooling even in redacted form (CLAUDE.md,
+DESIGN.md). Never trace the pre-filter string.
+
+The two mechanisms are complementary, not redundant: `redact()` matches
+**field names** in span attributes; `check_output()` matches **value shapes** in
+free prose, where there is no key to match on. Extend `_PII_PATTERNS` here for
+domain formats (member ids, case numbers) and `REDACTED_FIELDS` there for domain
+field names.
+{%- endif %}

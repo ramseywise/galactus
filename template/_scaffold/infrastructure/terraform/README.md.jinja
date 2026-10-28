@@ -1,0 +1,117 @@
+# infrastructure/terraform
+
+A minimal AWS deployment skeleton for the `{{ lg_agent_dir }}` chat-agent service
+(Terraform resource labels keep the internal `lg_agent` name): ECS Fargate
+task behind an Application Load Balancer, an ECR repo to push images to, and a
+Secrets Manager secret for `ANTHROPIC_API_KEY`.
+
+**This is a starting skeleton, not battle-tested production infrastructure.**
+Read this file and the comments in `main.tf` before pointing it at anything real.
+Specifically, this stack does NOT include:
+
+- HTTPS or a custom domain (the ALB listens on plain HTTP :80 only — adding TLS
+  means an ACM certificate + Route 53 record + an HTTPS listener + probably a
+  redirect from :80, none of which is here)
+- Any autoscaling policy — `desired_count` is a fixed number, not a target driven
+  by CPU/request metrics
+- A dedicated VPC — it reuses the account's default VPC/subnets, and ECS tasks get
+  public IPs directly (`assign_public_ip = true`) rather than sitting in private
+  subnets behind a NAT gateway
+- Secret rotation, WAF, blue/green deploys, multi-service/multi-module structure,
+  or persistent storage for the DuckDB index (see the `vectordb_path` variable —
+  on Fargate that path is ephemeral container disk; a real deployment would need
+  an EFS volume or would bake a pre-built index into the image)
+
+Treat this as a first draft to extend, the same way you'd treat a scaffolded app —
+not something to `terraform apply` against a production AWS account unmodified.
+
+## Layout
+
+```
+main.tf                  # provider, networking (default VPC), ECR, IAM, SGs, ALB, ECS
+variables.tf              # project_name, aws_region, sizing, image, secret ARN, ...
+outputs.tf                 # ALB DNS name / service URL, ECR repo URL, secret ARN
+environments/dev.tfvars    # small sizing, desired_count = 1
+environments/prod.tfvars   # larger sizing, desired_count = 2 (still no autoscaling)
+```
+
+## Prerequisites
+
+- Terraform >= 1.5, AWS provider `~> 5.0` (pinned in `main.tf`)
+- AWS credentials configured (env vars, `~/.aws/credentials`, or SSO) with
+  permissions to create VPC lookups, ECR, ECS, IAM, ALB, Secrets Manager, and
+  CloudWatch Logs resources
+- Set up remote state before using this for anything beyond a one-off experiment
+  — this skeleton has no `backend` block, so it defaults to local state
+
+## Deploying
+
+```sh
+cd infrastructure/terraform
+terraform init
+
+# Review the plan against the dev sizing/vars:
+terraform plan -var-file=environments/dev.tfvars -var="project_name=YOUR_PROJECT"
+
+terraform apply -var-file=environments/dev.tfvars -var="project_name=YOUR_PROJECT"
+```
+
+Then, before the service can actually serve traffic:
+
+1. **Push an image.** `terraform apply` above creates the ECR repo but the ECS
+   task definition falls back to `<repo_url>:latest`, which doesn't exist yet.
+   Build and push:
+   ```sh
+   aws ecr get-login-password --region eu-central-1 | \
+     docker login --username AWS --password-stdin <account_id>.dkr.ecr.eu-central-1.amazonaws.com
+   docker build -f infrastructure/containers/{{ lg_agent_dir }}/Dockerfile -t <repo_url>:latest .
+   docker push <repo_url>:latest
+   ```
+   Then re-run `terraform apply` (or force a new deployment:
+   `aws ecs update-service --force-new-deployment ...`) to pick it up. To pin a
+   specific tag instead of `latest`, pass `-var="container_image=<repo_url>:<tag>"`.
+
+2. **Populate the secret.** `terraform apply` creates an empty Secrets Manager
+   secret (see the `anthropic_api_key_secret_arn` output). The task definition's
+   `secrets` block in `main.tf` sets `valueFrom = <arn>` (no JSON key suffix),
+   which means ECS expects the *entire* secret value to be the raw API key
+   string — not a `{"ANTHROPIC_API_KEY": "..."}` JSON blob. Set it as a plain
+   string:
+   ```sh
+   aws secretsmanager put-secret-value \
+     --secret-id "$(terraform output -raw anthropic_api_key_secret_arn)" \
+     --secret-string 'sk-ant-...'
+   ```
+   If you'd rather store it as JSON (e.g. to bundle multiple keys in one
+   secret), change `valueFrom` in `main.tf` to `"<arn>:ANTHROPIC_API_KEY::"`
+   instead. **Double-check the exact `valueFrom` suffix syntax against current
+   AWS ECS docs before relying on it** — this is one of the pieces flagged as
+   worth verifying yourself (see below).
+   Alternatively, if you already manage this secret elsewhere, skip secret
+   creation entirely by passing `-var="anthropic_api_key_secret_arn=<existing arn>"`.
+
+3. Get the URL: `terraform output service_url`.
+
+## Tearing down
+
+```sh
+terraform destroy -var-file=environments/dev.tfvars -var="project_name=YOUR_PROJECT"
+```
+
+## Things flagged for you to double-check
+
+`terraform validate` (v1.10.3) passes against this configuration, and
+`terraform fmt` reports no diffs — both were run locally. That confirms the HCL
+is syntactically valid and internally consistent (resource references resolve,
+types match, etc.), but validate does NOT check against live AWS API behavior.
+Before relying on this, verify:
+
+- The ECS `secrets` block's `valueFrom` format for a plain-string vs. JSON
+  Secrets Manager secret (noted in step 2 above) — get this wrong and the
+  container will fail to start with a secret-resolution error.
+- Fargate `cpu`/`memory` pairings (256/512 is a valid combination as of this
+  writing, but AWS's allowed pairings do change).
+- Whether your account's default VPC actually has subnets in enough AZs for the
+  ALB (ALBs require >= 2 AZs) — some older/cleaned-up accounts don't have a
+  usable default VPC at all, in which case `data "aws_vpc" "default"` will fail
+  and you'll need to point this at a real VPC.

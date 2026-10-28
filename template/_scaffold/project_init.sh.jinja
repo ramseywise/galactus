@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Idempotent project bootstrap — safe to re-run.
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+  exit 1
+fi
+
+if [ ! -d .git ]; then
+  git init
+  echo "Initialized a new git repository."
+fi
+
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "Created .env from .env.example — fill in your API keys before running the agent."
+fi
+
+echo "Syncing dependencies with uv..."
+uv sync --group dev --group notebooks
+
+mkdir -p data/processed data/stores
+
+echo "Done. Next steps:"
+echo "  1. Edit .env with your ANTHROPIC_API_KEY"
+{%- if primary_chat_agent in ["lg_agent", "both"] %}
+{%- if has_corpus_pipeline %}
+echo "  2. make corpus-ingest   # build the example FTS index from data/raw_corpus/"
+echo "  3. make {{ lg_agent_dir | replace('_', '-') }}-up   # start the {{ lg_agent_dir }} chat agent (LangGraph)"
+echo "  4. make {{ lg_agent_dir | replace('_', '-') }}-chat # smoke-test it"
+{%- else %}
+echo "  2. make {{ lg_agent_dir | replace('_', '-') }}-up   # start the {{ lg_agent_dir }} chat agent (LangGraph)"
+echo "  3. make {{ lg_agent_dir | replace('_', '-') }}-chat # smoke-test it"
+{%- endif %}
+{%- elif primary_chat_agent == "adk_agent" %}
+echo "  2. make {{ adk_agent_dir | replace('_', '-') }}-up   # start the {{ adk_agent_dir }} chat agent (Google ADK)"
+echo "  3. make {{ adk_agent_dir | replace('_', '-') }}-chat # smoke-test it"
+{%- elif include_rag_agent %}
+echo "  2. make rag-corpus-ingest  # build rag_agent's embedding index from data/raw_corpus/"
+echo "  3. make rag-up             # start the rag_agent retrieval service"
+echo "  4. make rag-chat           # smoke-test it"
+{%- endif %}

@@ -1,0 +1,44 @@
+# Promptfoo eval config — runs alongside (not replacing) the Python heuristic
+# eval suite in evals/. Targets rag_agent's /chat endpoint (the default-on
+# shared retrieval backend{% if not include_rag_agent %} — NOT scaffolded here: include_rag_agent=false,
+# so point this config at your custom RAG service's /chat instead{% endif %}) via promptfoo's
+# http provider. Start the server first, then run the eval:
+#   {% if include_rag_agent %}make rag-up{% else %}<start your custom RAG service on port 8011>{% endif %}
+#   make promptfoo-eval
+#
+# Port matches rag_agent/settings.py's rag_port default (8011) — update both
+# if you change one.
+
+description: "{{ project_name }} — promptfoo eval against rag_agent's /chat endpoint"
+
+providers:
+  - id: http
+    config:
+      url: http://localhost:8011/chat
+      method: POST
+      headers:
+        Content-Type: application/json
+      body:
+        message: {% raw %}"{{prompt}}"{% endraw %}
+        thread_id: "promptfoo-eval"
+      transformResponse: "json.message"
+
+prompts:
+  - {% raw %}"{{question}}"{% endraw %}
+
+tests:
+  - vars:
+      question: "How often should I descale the machine?"
+    assert:
+      - type: contains
+        value: "descale"
+  - vars:
+      question: "Can I use vinegar to descale my machine?"
+    assert:
+      - type: contains
+        value: "vinegar"
+  - vars:
+      question: "How do I clean the steam wand?"
+    assert:
+      - type: contains
+        value: "steam wand"

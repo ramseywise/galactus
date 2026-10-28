@@ -1,0 +1,30 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+
+import { Dashboard } from "./components/Dashboard";
+import { Login } from "./components/Login";
+import { RequireAuth } from "./components/RequireAuth";
+
+/**
+ * Route table for {{ project_name }}.
+ *
+ * Gating here is UX only — it decides what to render, not what a user may
+ * reach. The API verifies the JWT on every request; a hand-crafted fetch from
+ * the console must still 401. Never move an authorization decision into this
+ * file.
+ */
+export function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/"
+        element={
+          <RequireAuth>
+            <Dashboard />
+          </RequireAuth>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}

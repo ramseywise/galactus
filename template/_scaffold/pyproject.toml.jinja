@@ -1,0 +1,167 @@
+[project]
+name = "{{ project_slug }}"
+version = "0.1.0"
+description = "{{ project_description }}"
+requires-python = ">={{ python_version }}"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "langgraph>=0.2.60",
+    "langchain-core>=0.3.28",
+{%- if primary_chat_agent in ["lg_agent", "both"] %}
+    "langchain-mcp-adapters>=0.1.0",
+{%- endif %}
+    "langchain-anthropic>=0.3.0",
+{%- if has_corpus_pipeline or (include_rag_agent and vector_backend == "duckdb") %}
+    "duckdb>=1.1.0",
+{%- endif %}
+{%- if include_rag_agent %}
+    "sentence-transformers>=3.0.0",
+{%- endif %}
+{%- if include_rag_agent and vector_backend == "opensearch" %}
+    "opensearch-py>=2.7.0",
+{%- endif %}
+{%- if include_rag_agent and vector_backend == "postgres" %}
+    "psycopg[binary]>=3.2.0",
+    "pgvector>=0.3.6",
+{%- endif %}
+{%- if enable_postgres_checkpointer %}
+    "langgraph-checkpoint-postgres>=2.0.0",
+{%- endif %}
+{%- if include_calendar_integration %}
+    "google-api-python-client>=2.150.0",
+    "google-auth-oauthlib>=1.2.0",
+{%- endif %}
+{%- if include_ragas_grader %}
+    # KNOWN ISSUE (verified 2026-07-14): ragas 0.4.3's import currently crashes
+    # due to an upstream packaging bug — see evals/graders/ragas_grader.py.
+    # uv sync succeeds; `import ragas` doesn't, until ragas ships a fix.
+    "ragas>=0.4.3",
+    "datasets>=2.14.0",
+{%- endif %}
+{%- if include_composio %}
+    "composio>=0.17.0",
+{%- endif %}
+{%- if include_web_research %}
+    "gpt-researcher>=0.15.0",
+{%- endif %}
+{%- if primary_chat_agent in ["adk_agent", "both"] %}
+    "google-adk>=1.0.0",
+{%- endif %}
+{%- if primary_chat_agent != "none" %}
+    # mcp 2.0 (2026-07-28) drops 1.x APIs that langchain-mcp-adapters and google-adk import
+    "mcp>=1.0.0,<2.0.0",
+{%- endif %}
+{%- if frontend_backend_topology == "split_service" %}
+    "pyjwt[crypto]>=2.9.0",
+{%- endif %}
+{%- if has_corpus_pipeline %}
+    "wandb>=0.18.0",
+{%- endif %}
+    "pyyaml>=6.0.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "httpx>=0.27.0",
+    "anthropic>=0.40.0",
+    "python-dotenv>=1.0.0",
+{%- if is_agent_shaped %}
+    # OTel span instrumentation (agent-observability.md) — console exporter by
+    # default, OTLP via OTEL_EXPORTER_OTLP_ENDPOINT for prod.
+    "opentelemetry-api>=1.27.0",
+    "opentelemetry-sdk>=1.27.0",
+    # OTLP exporter is optional — only needed when OTEL_EXPORTER_OTLP_ENDPOINT
+    # is set. Install with: uv add opentelemetry-exporter-otlp-proto-grpc
+    # "opentelemetry-exporter-otlp-proto-grpc>=1.27.0",
+{%- endif %}
+{%- if include_ml %}
+    "scikit-learn>=1.5.0",
+    "statsmodels>=0.14.0",
+    "scipy>=1.13.0",
+    "pandas>=2.2.0",
+    "matplotlib>=3.9.0",
+    "lightgbm>=4.5.0",
+    "statsforecast>=1.7.0",
+    # CatBoost — native categorical handling; the registry's default boosting
+    # candidate on mixed-type data. imbalanced-learn — SMOTE/SMOTENC and the
+    # under/over samplers. Both are imported behind try/except and degrade with
+    # a logged warning, so a stripped install still runs.
+    "catboost>=1.2.5",
+    "imbalanced-learn>=0.12.0",
+    # joblib arrives transitively with scikit-learn, but ml/persistence.py imports
+    # it directly — a direct import belongs in the direct dependencies.
+    "joblib>=1.4.0",
+{%- elif include_run_registry %}
+    # {{ run_registry_root }}/fingerprint.py hashes the fitted frame — pandas is
+    # needed even when include_ml is false, since the run registry is a
+    # top-level shared root, not an ml_source_root subtree.
+    "pandas>=2.2.0",
+{%- endif %}
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "pyright>=1.1.390",
+]
+notebooks = [
+    "marimo>=0.13.3",
+]
+
+# This is an app, not a library — skip building/installing it as a package.
+# "agents" (from {{ py_project_root }}/{{ ai_source_root }}/agents), "core", and "{{ eval_root }}" are made
+# importable via pythonpath below (pytest) and PYTHONPATH in the Makefile (everything
+# else) — mirrors playground's actual PYTHONPATH convention rather than fighting
+# hatchling's editable-install semantics for multiple disjoint package roots.
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["{{ py_project_root }}/{{ ai_source_root }}"{% if include_ml or include_run_registry %}, "{{ py_project_root }}"{% endif %}, "."]
+asyncio_mode = "auto"
+addopts = "-v --ignore=tests/integration"
+markers = ["integration: real external calls, opt-in only"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py{{ python_version.replace('.', '') }}"
+
+# .claude/ is vendored tooling payload (skills/agents shipped by the template) —
+# not project code, and skill eval fixtures contain deliberate lint findings.
+# force-exclude keeps the exclusion when hooks/CI pass files to ruff by name.
+extend-exclude = [".claude"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF"]
+# RUF001-003: typographic unicode in prose; N803/N806: ML naming (X, y, X_train)
+ignore = ["E501", "RUF001", "RUF002", "RUF003", "N803", "N806"]
+
+# Every package under {{ py_project_root }}/{{ ai_source_root }}/ is pinned first-party. Two reasons,
+# both of which otherwise flip I001 between render configs:
+#   - Conditional presence: middleware/ (split_service) and integrations/
+#     (n8n webhook) only exist in some renders, and ruff classifies an absent
+#     directory as third-party.
+#   - Nested source root: these live under {{ py_project_root }}/{{ ai_source_root }}/, not the project
+#     root, so ruff's src-based resolution misses them whenever py_project_root
+#     is a real directory (e.g. 'backend') rather than '.'.
+# Pinning the whole set makes import order identical across every layout.
+{% if include_ml %}
+[tool.ruff.lint.per-file-ignores]
+# nbks/ are percent-style notebooks, not modules. Two idioms are intrinsic to the
+# format and are not defects here:
+#   B018 — a bare DataFrame on the last line of a cell IS the cell's output; the
+#          "useless expression" is the display mechanism.
+#   E402 — imports appear after the sys.path bootstrap and inside later cells,
+#          which is how a notebook introduces a dependency where it is used.
+"nbks/*" = ["B018", "E402"]
+
+{% endif %}
+[tool.ruff.lint.isort]
+known-first-party = ["agents", "context_budget", "core", "guardrails", "integrations", "middleware", "observability", "{{ eval_root }}"{% if include_ml %}, "{{ ml_source_root }}"{% endif %}{% if include_run_registry %}, "{{ run_registry_root }}"{% endif %}]
+
+[tool.pyright]
+include = ["{{ py_project_root }}/{{ ai_source_root }}", "core", "{{ eval_root }}", "tests"{% if include_ml %}, "{{ py_project_root }}/{{ ml_source_root }}"{% endif %}{% if include_run_registry %}, "{{ py_project_root }}/{{ run_registry_root }}"{% endif %}]
+extraPaths = ["{{ py_project_root }}/{{ ai_source_root }}"{% if include_ml or include_run_registry %}, "{{ py_project_root }}"{% endif %}]
+pythonVersion = "{{ python_version }}"

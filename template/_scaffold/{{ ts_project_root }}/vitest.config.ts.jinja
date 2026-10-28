@@ -1,0 +1,17 @@
+import { defineConfig } from "vitest/config";
+
+// Vitest, not jest (AIT-70). The backend is a plain Node service with no
+// bundler, so this config exists only for the test runner — but it is the same
+// runner the frontend render uses, and it reads TS directly with no ts-jest ESM
+// shim. The jest setup this replaced needed `extensionsToTreatAsEsm`, a
+// `moduleNameMapper` to strip `.js` specifiers, and `--experimental-vm-modules`
+// on every invocation; none of that is needed here.
+export default defineConfig({
+  test: {
+    environment: "node",
+    // Colocated: tests live in __tests__/ beside the code they cover, per
+    // ~/.claude/refs/naming.md §1. The centralized tests/ tree is a Python
+    // convention and is deliberately not mirrored here.
+    include: ["{{ ts_source_root }}/**/__tests__/**/*.test.ts"],
+  },
+});

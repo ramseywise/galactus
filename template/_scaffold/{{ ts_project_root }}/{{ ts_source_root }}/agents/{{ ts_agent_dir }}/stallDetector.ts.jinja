@@ -1,0 +1,93 @@
+/**
+ * {{ project_name }} — stall detection for the Vercel AI SDK agent loop.
+ *
+ * Detects repeated identical tool calls or outputs within a single agent run
+ * and throws a StallDetectedError to trigger escalation/termination before
+ * `maxSteps` is exhausted.
+ *
+ * Usage:
+ *   const detector = createStallDetector(3);
+ *   // After each tool call in a custom onStepFinish callback:
+ *   detector.recordToolCall("search", { query: "foo" });
+ *   // After each LLM output:
+ *   detector.recordOutput(stepText);
+ */
+
+export class StallDetectedError extends Error {
+  constructor(
+    public readonly kind: "tool_call" | "output",
+    public readonly key: string,
+    public readonly count: number,
+  ) {
+    super(
+      `Stall detected: ${kind} repeated ${count}x — key=${JSON.stringify(key)}. ` +
+        "Terminating loop to prevent infinite recursion.",
+    );
+    this.name = "StallDetectedError";
+  }
+}
+
+function fingerprint(data: unknown): string {
+  try {
+    const serialised = JSON.stringify(data, Object.keys(data as object).sort());
+    // FNV-1a 32-bit: fast, good distribution, no crypto needed for stall detection
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < serialised.length; i++) {
+      hash ^= serialised.charCodeAt(i);
+      hash = (hash * 0x01000193) >>> 0;
+    }
+    return hash.toString(16).padStart(8, "0");
+  } catch {
+    return String(data);
+  }
+}
+
+export interface StallDetector {
+  recordToolCall(toolName: string, toolInput: unknown): void;
+  recordOutput(output: string): void;
+  reset(): void;
+}
+
+/**
+ * Create a stall detector.
+ *
+ * @param threshold - Number of identical observations that constitutes a stall.
+ *                   Must be >= 2. Defaults to 3.
+ */
+export function createStallDetector(threshold = 3): StallDetector {
+  if (threshold < 2) {
+    throw new Error(`threshold must be >= 2, got ${threshold}`);
+  }
+
+  const toolCalls = new Map<string, number>();
+  const outputs = new Map<string, number>();
+
+  function increment(map: Map<string, number>, key: string): number {
+    const next = (map.get(key) ?? 0) + 1;
+    map.set(key, next);
+    return next;
+  }
+
+  return {
+    recordToolCall(toolName: string, toolInput: unknown): void {
+      const key = `${toolName}:${fingerprint(toolInput)}`;
+      const count = increment(toolCalls, key);
+      if (count >= threshold) {
+        throw new StallDetectedError("tool_call", key, count);
+      }
+    },
+
+    recordOutput(output: string): void {
+      const key = fingerprint(output);
+      const count = increment(outputs, key);
+      if (count >= threshold) {
+        throw new StallDetectedError("output", key, count);
+      }
+    },
+
+    reset(): void {
+      toolCalls.clear();
+      outputs.clear();
+    },
+  };
+}

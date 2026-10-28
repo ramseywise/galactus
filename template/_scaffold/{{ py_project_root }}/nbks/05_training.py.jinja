@@ -1,0 +1,167 @@
+# %% [markdown]
+# # 05 — Training
+#
+# **Question this notebook answers:** how do the candidates score out-of-fold, and
+# does any of them beat the baseline?
+#
+# The stage boundary matters here. `workflows/` fits models and produces out-of-fold
+# predictions. It does **not** choose a threshold — that consumes costs, which are a
+# business input, and mixing the two is what makes a pipeline un-reviewable. The
+# threshold work lives in `ml/evaluation/threshold.py` (`choose_threshold`), which
+# reports whether the operating point was picked in-sample.
+#
+# Read the skipped-models cell. A candidate absent from a comparison table is
+# either a decision or a bug, and the table alone cannot tell you which.
+
+# %%
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path.cwd().parent if Path.cwd().name == "nbks" else Path.cwd()
+sys.path.insert(0, str(REPO_ROOT / "{{ py_project_root }}"))
+sys.path.insert(0, str(REPO_ROOT / "nbks"))
+
+import pandas as pd
+from _sample_data import TARGET, load_frame
+
+from ml.config import settings
+from ml.evaluation.splitting import make_splitter
+from ml.workflows.classification import run_classification
+
+pd.set_option("display.max_columns", 200)
+
+frame, is_real = load_frame()
+
+# Carried over from 02_bivariate: the leak, and the identifiers that are not
+# features. Dropping them here rather than relying on the toolkit to guess.
+DROP = ["collections_flag", "customer_id", "opened_at"]
+modelling = frame.drop(columns=[c for c in DROP if c in frame.columns])
+print(f"{'real' if is_real else 'synthetic'} frame: {modelling.shape}")
+print(f"class balance: {modelling[TARGET].value_counts(normalize=True).round(4).to_dict()}")
+
+# %% [markdown]
+# ## The split plan comes first
+#
+# Metrics computed over a leaky split are precise measurements of nothing, so the
+# split is decided before anything is fitted.
+#
+# `household_id` repeats across rows here, which makes a plain `StratifiedKFold`
+# wrong: two rows from one household are not independent, and a random split puts
+# some of a household in train and the rest in test. Grouped folds fix that.
+#
+# Note the group column is passed to the **splitter**, not left in the feature
+# frame. A group key is usually a near-perfect predictor of itself, and letting it
+# be encoded as a feature is how the toolkit once created a leak while honouring
+# its own grouping contract.
+
+# %%
+GROUP_COL = "household_id"
+split_plan = make_splitter(
+    n_splits=settings.n_splits,
+    group_col=GROUP_COL,
+    random_state=settings.random_seed,
+)
+print(f"split: {split_plan.kind}, {split_plan.n_splits} folds, grouped on {GROUP_COL!r}")
+print(f"reason: {split_plan.reason}")
+
+# %% [markdown]
+# ## Run every candidate on identical folds
+#
+# `calibrate=False` and no costs — this stage reports discrimination, not
+# decisions. Calibration and thresholds arrive in notebooks 07.
+
+# %%
+result = run_classification(
+    modelling,
+    target=TARGET,
+    output="binary",
+    sampling="class_weight",
+    splitter=split_plan,
+    calibrate=False,
+    seed=settings.random_seed,
+)
+
+print(f"rows: {result.n_rows:,}  features: {result.n_features}")
+print(f"sampling: {result.sampling}")
+
+# %% [markdown]
+# ## Skipped models — read this before the results table
+#
+# `RunResult.skipped` records why a candidate did not run. This field exists
+# because a model that vanishes from a comparison with no recorded reason is
+# indistinguishable from one that was never registered.
+
+# %%
+if result.skipped:
+    for name, reason in result.skipped.items():
+        print(f"SKIPPED {name}: {reason}")
+else:
+    print("no candidates were skipped")
+
+# %% [markdown]
+# ## Out-of-fold results
+#
+# Spread, not just the mean. A model that is excellent on four folds and broken on
+# the fifth has a respectable mean and is not deployable — the standard deviation
+# is what tells you so.
+
+# %%
+HEADLINE_FIELDS = ["average_precision", "roc_auc", "brier", "f1", "recall", "precision"]
+
+rows = []
+for run in result.models:
+    metric_name, headline = run.metrics.headline(imbalanced=True)
+    row = {
+        "model": run.name,
+        "baseline": run is result.baseline,
+        "headline_metric": metric_name,
+        "headline": round(headline, 4) if headline is not None else None,
+    }
+    for field_name in HEADLINE_FIELDS:
+        value = getattr(run.metrics, field_name, None)
+        row[field_name] = round(value, 4) if isinstance(value, float) else None
+    row["fit_seconds"] = round(run.fit_seconds, 2)
+    rows.append(row)
+pd.DataFrame(rows)
+
+# %% [markdown]
+# ## Against the baseline
+#
+# The comparison that decides whether the run produced anything. If boosting
+# cannot beat logistic regression meaningfully, that is a finding about feature
+# quality — not a failed run, and not a reason to try more models.
+#
+# `beats_baseline` uses a tolerance band (`settings.baseline_tolerance`) rather
+# than a strict `>`: a near-tie is the most common real outcome of a model
+# comparison, and a 0.0002 margin reported as a win is a false positive.
+
+# %%
+baseline = result.baseline
+best = result.best
+if baseline is not None and best is not None:
+    print(f"baseline: {baseline.name}")
+    print(f"best:     {best.name}")
+    print(f"tolerance band: {settings.baseline_tolerance}")
+    print(f"\nbeats baseline: {result.beats_baseline(settings.baseline_tolerance)}")
+else:
+    print("no baseline available — nothing to compare against")
+
+# %% [markdown]
+# ## The fold-safety claim
+#
+# `RunResult` can prove that every transform was fitted inside the fold rather
+# than on the full frame. It raises `TransformLeakageError` naming the offending
+# estimator, so the failure tells you which candidate to fix — a claim checked
+# here and in `tests/unit/ml/test_workflows.py`.
+
+# %%
+result.assert_no_transform_outside_pipeline()
+print(f"fold-safe: all {len(result.models)} candidates fitted inside the pipeline")
+
+# %% [markdown]
+# ## Handoff
+#
+# **Output of this notebook:** out-of-fold scores per candidate, the skipped list,
+# and a verdict against the baseline. Next: `06_evaluation.py` for metric spread.

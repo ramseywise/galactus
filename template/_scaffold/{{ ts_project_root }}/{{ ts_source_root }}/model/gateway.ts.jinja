@@ -1,0 +1,23 @@
+/**
+ * {{ project_name }} — the only place allowed to construct the Anthropic
+ * provider instance (mirrors the Python convention in
+ * the LangGraph chat agent's clients/llm.py, enforced there by .claude/hooks/sdk_lint.sh's
+ * sdk-factory check — that hook is Python-only today; keep this file as the
+ * TS-side equivalent by convention until/unless sdk_lint.sh grows a TS branch).
+ */
+
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { settings } from "../agents/{{ ts_agent_dir }}/settings.js";
+
+let _provider: ReturnType<typeof createAnthropic> | undefined;
+
+export function getProvider() {
+  if (!_provider) {
+    _provider = createAnthropic({ apiKey: settings.anthropicApiKey });
+  }
+  return _provider;
+}
+
+export function getModel() {
+  return getProvider()(settings.agentModel);
+}

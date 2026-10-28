@@ -1,0 +1,18 @@
+# tests/ — three tiers
+
+Run everything with `make test`; tiered targets: `make test-smoke`,
+`make test-integration`.
+
+- `unit/` — fast, no network, no live services. Mirrors the source layout:
+  {%- if has_corpus_pipeline %} `unit/core/` (corpus ingestion/preprocessing/index){% endif %}
+  {%- if primary_chat_agent in ["lg_agent", "both"] %}{% if has_corpus_pipeline %}, {% endif %}`unit/agents/` (the chat agent's nodes + API){% endif %}
+  {%- if include_interaction_evals %}, `unit/evals/` (interaction-eval graders/pipelines){% endif %}
+  {%- if include_meeting_intelligence %}, `unit/integrations/`{% endif %}
+  {%- if include_ml %}, `unit/ml/`{% endif %}.
+- `smoke/` — cheap end-to-end sanity checks (see `smoke/README.md`).
+- `integration/` — tests against live services (see `integration/README.md`).
+
+Conventions: the root `conftest.py` holds only generic fixtures; anything
+specific to an optional component lives in a nested `conftest.py` inside that
+component's test dir (so removing the component removes its fixtures). Test
+dirs have no `__init__.py`.

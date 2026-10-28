@@ -1,0 +1,13 @@
+# Integration tests
+
+This tier makes real calls to external services — most notably the Anthropic API via
+`agents.{{ lg_agent_dir }}.model.gateway.generate` — rather than mocking them. These tests are
+opt-in only: they cost money, require a real `ANTHROPIC_API_KEY` in `.env`, and are
+excluded from `make test` (`pyproject.toml`'s `addopts` ignores `tests/integration`
+by default). Mark every test in this tier with `@pytest.mark.integration` (the marker
+is registered in `pyproject.toml`) and run them explicitly with `make test-integration`
+(`pytest tests/integration -q -m integration`). There are no tests here yet because a
+freshly generated template has no API key configured in CI; add them once the project
+has budget and credentials for real end-to-end LLM calls, e.g. asserting
+`generate_node`'s non-blocked path produces a non-empty, on-topic answer against the
+live model.

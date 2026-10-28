@@ -1,0 +1,97 @@
+# %% [markdown]
+# # Sample-frame helper (shared by the stage notebooks)
+#
+# Every stage notebook points at `data/raw/dataset.csv` and falls back to a
+# synthetic frame when that file is absent. The fallback exists so the notebooks
+# are **executable on a fresh clone** — `make nbks-check` runs them top-to-bottom
+# in CI, and a notebook that can only run once someone has manually dropped a CSV
+# in place is a notebook that silently rots.
+#
+# The synthetic frame is deliberately awkward: imbalanced target, a leaky column,
+# missing values, a high-cardinality identifier, and a group column with repeats.
+# A frame that is too clean would let every stage pass without demonstrating what
+# the stage is for.
+#
+# This is not a module — it is imported by the notebooks via `load_frame()` and
+# kept here rather than in `{{ ml_source_root }}/` because generating fake data is
+# not a stage of the pipeline.
+
+# %%
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+DATA = Path("data/raw/dataset.csv")
+TARGET = "target"
+SEED = 42
+
+
+def sample_frame(n: int = 1200, seed: int = SEED) -> pd.DataFrame:
+    """A deliberately awkward tabular frame for demonstrating each stage."""
+    rng = np.random.default_rng(seed)
+
+    # Signal-carrying features, then a target built from them so the pipeline has
+    # something real to find.
+    income = rng.lognormal(10.5, 0.6, n)
+    age = rng.integers(21, 78, n).astype(float)
+    utilisation = np.clip(rng.beta(2, 5, n) + rng.normal(0, 0.05, n), 0, 1.5)
+    region = rng.choice(["north", "south", "east", "west"], n, p=[0.4, 0.3, 0.2, 0.1])
+    tier = rng.choice(["bronze", "silver", "gold"], n, p=[0.6, 0.3, 0.1])
+
+    logit = (
+        -1.2
+        + 2.4 * utilisation
+        - 0.9 * (np.log(income) - 10.5)
+        - 0.015 * (age - 45)
+        + np.where(region == "west", 0.5, 0.0)
+    )
+    probability = 1 / (1 + np.exp(-logit))
+    target = (rng.random(n) < probability).astype(int)
+
+    frame = pd.DataFrame(
+        {
+            "customer_id": [f"c{i:06d}" for i in range(n)],
+            "household_id": rng.integers(0, n // 3, n),
+            "age": age,
+            "income": income,
+            "utilisation": utilisation,
+            "region": region,
+            "tier": pd.Categorical(tier, categories=["bronze", "silver", "gold"], ordered=True),
+            "opened_at": pd.to_datetime("2024-01-01")
+            + pd.to_timedelta(rng.integers(0, 730, n), "D"),
+            TARGET: target,
+        }
+    )
+
+    # Missingness that is not uniform — income is likelier to be missing for the
+    # young, which is what makes median imputation a decision rather than a detail.
+    missing = rng.random(n) < (0.12 * (frame["age"] < 30) + 0.03)
+    frame.loc[missing, "income"] = np.nan
+
+    # A leak, on purpose: this column is derived from the outcome. Every leakage
+    # check in these notebooks should find it, and if one does not, that check is
+    # not working.
+    frame["collections_flag"] = np.where(
+        frame[TARGET] == 1, rng.random(n) < 0.93, rng.random(n) < 0.02
+    ).astype(int)
+
+    return frame
+
+
+def load_frame(path: Path = DATA, target: str = TARGET) -> tuple[pd.DataFrame, bool]:
+    """Return `(frame, is_real)`. Falls back to the synthetic frame when `path`
+    does not exist, and says which it gave you — a notebook that cannot tell you
+    whether it read your data is worse than one that fails."""
+    if path.exists():
+        return pd.read_csv(path), True
+    return sample_frame(), False
+
+
+# %%
+if __name__ == "__main__":
+    frame, is_real = load_frame()
+    print(f"{'real' if is_real else 'synthetic'} frame: {frame.shape}")
+    print(frame.dtypes)
