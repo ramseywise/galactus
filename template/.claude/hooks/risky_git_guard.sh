@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-source .claude/hooks/lib.sh
+source "$(dirname "$0")/lib.sh"
 
 command=$(claude_command)
 echo "$command" | grep -qE '(^|[[:space:]])git([[:space:]]|$)' || exit 0

@@ -2,7 +2,7 @@
 # PostToolUse hook for Write|Edit — warns about public functions without tests
 # Advisory only (exit 0) — does not block edits
 
-path=$(echo "$CLAUDE_TOOL_INPUT" | jq -r '.file_path // empty')
+path=$(jq -r '.tool_input.file_path // .file_path // empty' <<<"${CLAUDE_TOOL_INPUT:-$(cat)}")
 [ -z "$path" ] && exit 0
 echo "$path" | grep -qE '/{{ py_project_root }}/{{ ai_source_root }}/.*\.py$' || exit 0
 

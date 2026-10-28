@@ -3,7 +3,7 @@
 # Skips gracefully when node_modules/.bin/eslint is absent (deps not installed).
 # Blocks (exit 2) on lint errors so the agent must fix them before proceeding.
 
-path=$(echo "$CLAUDE_TOOL_INPUT" | jq -r '.file_path // empty')
+path=$(jq -r '.tool_input.file_path // .file_path // empty' <<<"${CLAUDE_TOOL_INPUT:-$(cat)}")
 [ -z "$path" ] && exit 0
 echo "$path" | grep -qE '\.(tsx?|ts)$' || exit 0
 

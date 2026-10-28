@@ -2,7 +2,7 @@
 # PostToolUse hook for Write|Edit — enforces AI SDK best practices in {{ py_project_root }}/{{ ai_source_root }}/
 # Covers: Anthropic SDK, Google Gemini SDK
 
-path=$(echo "$CLAUDE_TOOL_INPUT" | jq -r '.file_path // empty')
+path=$(jq -r '.tool_input.file_path // .file_path // empty' <<<"${CLAUDE_TOOL_INPUT:-$(cat)}")
 [ -z "$path" ] && exit 0
 echo "$path" | grep -qE '/{{ py_project_root }}/{{ ai_source_root }}/.*\.py$' || exit 0
 

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-source .claude/hooks/lib.sh
+source "$(dirname "$0")/lib.sh"
 
 path=$(claude_path)
 [ -z "$path" ] && exit 0

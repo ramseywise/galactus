@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-source .claude/hooks/lib.sh
+source "$(dirname "$0")/lib.sh"
 
 path=$(claude_path)
 [ -z "$path" ] && exit 0
@@ -25,7 +25,13 @@ for node in ast.walk(tree):
         if length > 40:
             name = getattr(node, "name", "<anonymous>")
             print(f"Function complexity warning in {path}: {name} spans {length} lines", file=sys.stderr)
-            break
+            sys.exit(10)
 PY
 
+status=$?
+if [ "$status" -eq 10 ]; then
+  log_event "function_complexity_warning" 0 "$path"
+else
+  log_event "function_complexity_warning" 0 "pass: $path"
+fi
 exit 0

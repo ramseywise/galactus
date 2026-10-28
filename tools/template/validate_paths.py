@@ -1191,6 +1191,41 @@ def run_catalog_checks() -> list[dict[str, Any]]:
     return findings
 
 
+def run_shared_link_checks() -> list[dict[str, Any]]:
+    """
+    Verify the template ships shared skills and hooks as symlinks into the root .claude/.
+
+    A template entry whose name also exists at the root must be a symlink that resolves
+    there; a real file or directory is a silent re-fork that drifts from canon.
+    """
+    findings: list[dict[str, Any]] = []
+    for kind in ("skills", "hooks"):
+        root_dir = REPO_ROOT / ".claude" / kind
+        for entry in sorted((TEMPLATE_DIR / ".claude" / kind).iterdir()):
+            rel = str(entry.relative_to(REPO_ROOT))
+            if entry.is_symlink():
+                if not entry.exists():
+                    findings.append(
+                        {
+                            "type": "SHARED_LINK_BROKEN",
+                            "severity": "ERROR",
+                            "path": rel,
+                            "detail": f"Symlink target missing: {entry.readlink()}",
+                        }
+                    )
+                continue
+            if (root_dir / entry.name).exists():
+                findings.append(
+                    {
+                        "type": "SHARED_FORKED",
+                        "severity": "ERROR",
+                        "path": rel,
+                        "detail": f"Duplicates .claude/{kind}/{entry.name}; replace with a symlink",
+                    }
+                )
+    return findings
+
+
 def _print_report(findings: list[dict[str, Any]]) -> None:
     errors = [f for f in findings if f["severity"] == "ERROR"]
     warnings = [f for f in findings if f["severity"] == "WARNING"]
@@ -1265,6 +1300,7 @@ def main() -> int:
 
     print("Running static analysis...")
     findings.extend(run_static_analysis())
+    findings.extend(run_shared_link_checks())
 
     if args.catalog_check:
         print("Running capabilities catalog checks...")
