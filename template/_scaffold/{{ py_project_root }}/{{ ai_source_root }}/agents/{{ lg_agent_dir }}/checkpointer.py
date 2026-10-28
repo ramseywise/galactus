@@ -14,7 +14,7 @@ def get_checkpointer() -> BaseCheckpointSaver:
     """InMemorySaver for local dev — data is lost on restart.
 
     Set LG_CHECKPOINTER=postgres + POSTGRES_DSN for production persistence — see
-    .agents/skills/langgraph-persistence/SKILL.md for the tradeoffs. Keep the swap
+    .claude/skills/langgraph-persistence/SKILL.md for the tradeoffs. Keep the swap
     confined to this one factory function so nothing downstream needs to change.
 
     Cached (@lru_cache) since PostgresSaver's connection pool is meant to live for
@@ -41,5 +41,5 @@ def get_checkpointer() -> BaseCheckpointSaver:
         return checkpointer
     raise NotImplementedError(
         f"Checkpointer '{settings.lg_checkpointer}' is not wired up yet — "
-        "see .agents/skills/langgraph-persistence/SKILL.md and extend this factory."
+        "see .claude/skills/langgraph-persistence/SKILL.md and extend this factory."
     )

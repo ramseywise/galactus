@@ -4,10 +4,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
+{%- if has_python %}
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv not found — install it: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
   exit 1
 fi
+{%- endif %}
+{%- if not has_python %}
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm not found — install Node 22+ (https://nodejs.org)" >&2
+  exit 1
+fi
+{%- endif %}
 
 if [ ! -d .git ]; then
   git init
@@ -19,8 +27,14 @@ if [ ! -f .env ]; then
   echo "Created .env from .env.example — fill in your API keys before running the agent."
 fi
 
+{%- if has_python %}
 echo "Syncing dependencies with uv..."
 uv sync --group dev --group notebooks
+{%- endif %}
+{%- if has_typescript and primary_backend_language in ["typescript", "both"] and frontend_backend_topology != "split_service" %}
+echo "Installing {{ ts_project_root }}/ dependencies with npm..."
+make ts-install
+{%- endif %}
 
 mkdir -p data/processed data/stores
 
@@ -42,4 +56,7 @@ echo "  3. make {{ adk_agent_dir | replace('_', '-') }}-chat # smoke-test it"
 echo "  2. make rag-corpus-ingest  # build rag_agent's embedding index from data/raw_corpus/"
 echo "  3. make rag-up             # start the rag_agent retrieval service"
 echo "  4. make rag-chat           # smoke-test it"
+{%- elif not has_python %}
+echo "  2. make ts-dev   # start the {{ ts_project_root }}/ service"
+echo "  3. make test     # vitest suite"
 {%- endif %}

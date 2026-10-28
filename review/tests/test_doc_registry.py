@@ -77,7 +77,7 @@ def test_stage3_dispatch_table_covers_every_dimension():
     registered everywhere else and still never runs."""
     section = _section(
         ORCHESTRATOR.read_text(),
-        "The eleven dimensions, their skills, and what activates each:",
+        "The eleven dimensions, their files under `review-shared/dimensions/`, and what activates each:",
         "### Recording dispatch outcomes",
     )
     assert section, "Stage 3 dispatch table not found — did its heading change?"

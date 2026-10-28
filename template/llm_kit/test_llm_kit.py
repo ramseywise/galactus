@@ -69,10 +69,10 @@ def test_call_returns_raw_response_with_usage_intact():
     assert response is expected
     assert text_of(response) == "ready"
     assert usage_of(response) == {"input_tokens": 100, "output_tokens": 50}
-    assert cost_of(response) == pytest.approx((100 * 5.00 + 50 * 25.00) / 1_000_000)
+    assert cost_of(response) == pytest.approx((100 * 4.00 + 50 * 20.00) / 1_000_000)
 
     sent = client.messages.received
-    assert sent["model"] == "claude-opus-5"
+    assert sent["model"] == "claude-opus-5-5"
     assert sent["system"] == "be terse"
     assert sent["messages"] == [{"role": "user", "content": "ping"}]
     assert "temperature" not in sent  # 400s on thinking-by-default models
@@ -109,7 +109,7 @@ def test_guard_tokens_raises_before_spending(caplog):
         guard_tokens("a long prompt", limit=1_000, client=client)
 
     assert "llm_kit.over_budget" in caplog.text
-    assert client.messages.received["model"] == "claude-opus-5"
+    assert client.messages.received["model"] == "claude-opus-5-5"
 
 
 def test_cost_of_unknown_model_warns_rather_than_reporting_zero(caplog):

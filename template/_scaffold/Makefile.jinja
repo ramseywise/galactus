@@ -17,7 +17,7 @@
 {%- if include_promptfoo %}
         promptfoo-eval \
 {%- endif %}
-        {% if has_corpus_pipeline %}nbks-corpus {% endif %}test test-smoke test-integration \
+        {% if has_corpus_pipeline %}nbks-corpus {% endif %}test{% if has_python %} test-smoke test-integration{% endif %} \
         lint lint-check check-imports typecheck \
 {%- if primary_backend_language in ["typescript", "both"] %}
         ts-install ts-lint ts-typecheck ts-test ts-build ts-dev \
@@ -28,12 +28,13 @@
         docker-up docker-down \
         status pull push quick-pr ship
 
+{% if has_python -%}
 # {{ py_project_root }}/{{ ai_source_root }}/ holds "agents" (imported bare, e.g. `agents.{{ lg_agent_dir }}`); "core"
 # and "{{ eval_root }}" live at the project root — both need to be on PYTHONPATH
 # for anything invoked outside of pytest (which reads pythonpath from pyproject.toml).
 PY := PYTHONPATH={% if not is_ml_shaped %}{{ py_project_root }}/{{ ai_source_root }}:{% endif %}{% if include_ml %}{{ py_project_root }}:{% endif %}. uv run python
 UVICORN := PYTHONPATH={{ py_project_root }}/{{ ai_source_root }}:. uv run uvicorn
-
+{% endif %}
 setup:
 	./project_init.sh
 
@@ -170,6 +171,7 @@ nbks-corpus:
 
 {% endif -%}
 # --- Tests ---
+{% if has_python -%}
 test:
 	uv run pytest tests/unit -q
 
@@ -178,10 +180,13 @@ test-smoke:
 
 test-integration:
 	uv run pytest tests/integration -q -m integration
-
+{% else -%}
+# typescript-only: the suite lives in {{ ts_project_root }}/ (see ts-test).
+test: ts-test
+{% endif %}
 # --- Lint / typecheck ---
-# Scoped to this project's own source, not the whole repo root — .claude/.agents/
-# ship vendored reference material (e.g. mcp-builder's example scripts) that
+# Scoped to this project's own source, not the whole repo root — .claude/
+# ships vendored reference material (e.g. mcp-builder's example scripts) that
 # isn't held to this project's lint config and was never meant to be.
 {% if primary_backend_language in ["python", "both"] -%}
 LINT_PATHS := {% if not is_ml_shaped or include_rag_agent %}{{ py_project_root }}/{{ ai_source_root }} {% endif %}{% if include_core_etl %}core {% endif %}{% if include_eval_suite %}{{ eval_root }} {% endif %}tests{% if include_ml %} {{ py_project_root }}/{{ ml_source_root }}{% endif %}{% if include_notebooks %} nbks{% endif %}

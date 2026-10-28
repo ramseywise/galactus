@@ -11,7 +11,7 @@ Three layers, because the rules need all three to hold:
 2. The verdict ladder reads a question as *not* an approval-with-nothing-found,
    and specifically does not let it gate the merge (`review/verdict.py`).
 3. The skill actually carries both rules, with the resolution trigger that turns
-   a question into something closable (`.claude/skills/review-leakage/SKILL.md`).
+   a question into something closable (`.claude/skills/review-shared/dimensions/review-leakage.md`).
 
 Layer 3 is prose assertion, which is weak on its own — a skill file can satisfy
 a substring check and still be incoherent. It is included because the skill is
@@ -39,7 +39,7 @@ from review.validate import validate_finding
 from review.verdict import compute_verdict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SKILL = REPO_ROOT / ".claude" / "skills" / "review-leakage" / "SKILL.md"
+SKILL = REPO_ROOT / ".claude" / "skills" / "review-shared" / "dimensions" / "review-leakage.md"
 FIXTURE = Path(__file__).parent / "fixtures" / "unscanned_pipeline.py"
 
 _SCORE_SPAN = "return model.score(X_test, y_test)"

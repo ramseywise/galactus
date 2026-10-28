@@ -7,57 +7,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; python3 -m py_compile \"$path\" 2>&1 && uv run ruff format --quiet \"$path\" 2>/dev/null; uv run ruff check --quiet --fix \"$path\" 2>/dev/null; exit 0",
+            "command": "path=$(jq -r '.tool_input.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; python3 -m py_compile \"$path\" 2>&1 && uv run ruff format --quiet \"$path\" 2>/dev/null; uv run ruff check --quiet --fix \"$path\" 2>/dev/null; exit 0",
             "timeout": 15,
             "statusMessage": "Checking syntax and formatting..."
-          }
-          , {
-            "type": "command",
-            "command": "bash .claude/hooks/code_quality.sh",
-            "timeout": 10,
-            "statusMessage": "Enforcing code standards..."
-          }
-          {% if has_typescript %}, {
-            "type": "command",
-            "command": "bash .claude/hooks/ts_quality.sh",
-            "timeout": 10,
-            "statusMessage": "Enforcing TS standards..."
-          }{% endif %}
-          {% if has_typescript %}, {
-            "type": "command",
-            "command": "bash .claude/hooks/ts_typecheck.sh",
-            "timeout": 30,
-            "statusMessage": "Type-checking TypeScript..."
-          }{% endif %}
-          {% if scaffold_full_project and primary_backend_language in ["typescript", "both"] %}, {
-            "type": "command",
-            "command": "bash .claude/hooks/ts_lint.sh",
-            "timeout": 15,
-            "statusMessage": "Linting TypeScript backend..."
-          }{% endif %}
-          , {
-            "type": "command",
-            "command": "bash .claude/hooks/function_complexity_warning.sh",
-            "timeout": 10,
-            "statusMessage": "Checking function complexity..."
-          }
-          , {
-            "type": "command",
-            "command": "bash .claude/hooks/sdk_lint.sh",
-            "timeout": 10,
-            "statusMessage": "Checking SDK patterns..."
-          }
-          , {
-            "type": "command",
-            "command": "bash .claude/hooks/test_coverage.sh",
-            "timeout": 15,
-            "statusMessage": "Checking test coverage..."
-          }
-          , {
-            "type": "command",
-            "command": "bash .claude/hooks/public_api_test_check.sh",
-            "timeout": 15,
-            "statusMessage": "Checking public API tests..."
           }
           , {
             "type": "command",
@@ -73,19 +25,7 @@
           }
           , {
             "type": "command",
-            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; result=$(uv run pyright \"$path\" 2>&1); rc=$?; [ $rc -ne 0 ] && echo \"Pyright: $(echo \"$result\" | grep -E 'error|warning' | head -5)\" >&2; exit 0",
-            "timeout": 30,
-            "statusMessage": "Type checking..."
-          }
-          , {
-            "type": "command",
-            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); [ -z \"$path\" ] && exit 0; echo \"$path\" | grep -qE '\\.py$' || exit 0; lines=$(wc -l < \"$path\" 2>/dev/null || echo 0); [ \"$lines\" -gt 400 ] && echo \"Warning: $path is $lines lines (>400) — consider splitting\" >&2; exit 0",
-            "timeout": 5,
-            "statusMessage": "Checking file size..."
-          }
-          , {
-            "type": "command",
-            "command": "path=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.file_path // empty'); echo \"$path\" | grep -qE '\\.claude/docs/(CHANGELOG\\.md|research/|plans/|reviews/)' && touch .claude/.phase_complete; exit 0",
+            "command": "path=$(jq -r '.tool_input.file_path // empty'); echo \"$path\" | grep -qE '\\.claude/docs/(CHANGELOG\\.md|research/|plans/|reviews/)' && touch .claude/.phase_complete; exit 0",
             "timeout": 5
           }
         ]
@@ -112,7 +52,7 @@
           }
           {% if enable_macos_notifications %}, {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command // empty'); echo \"$cmd\" | grep -qE 'pytest' || exit 0; duration=$(echo \"$CLAUDE_TOOL_RESPONSE\" | jq -r '.duration // 0' 2>/dev/null); [ \"${duration:-0}\" -gt 30000 ] 2>/dev/null && osascript -e 'display notification \"Tests finished (>30s)\" with title \"Claude Code\"' 2>/dev/null; exit 0",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -qE 'pytest' || exit 0; duration=$(echo \"$CLAUDE_TOOL_RESPONSE\" | jq -r '.duration // 0' 2>/dev/null); [ \"${duration:-0}\" -gt 30000 ] 2>/dev/null && osascript -e 'display notification \"Tests finished (>30s)\" with title \"Claude Code\"' 2>/dev/null; exit 0",
             "timeout": 5
           }{% endif %}
         ]
@@ -122,8 +62,13 @@
     "Stop": [
       {
         "hooks": [
-          {% if enable_macos_notifications %}
           {
+            "type": "command",
+            "command": "bash .claude/hooks/stop_checks.sh",
+            "timeout": 90,
+            "statusMessage": "Checking changed files..."
+          }
+          {% if enable_macos_notifications %}, {
             "type": "command",
             "command": "osascript -e 'display notification \"Claude has finished\" with title \"Claude Code\"' 2>/dev/null; exit 0",
             "timeout": 5
@@ -168,19 +113,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; uv run pytest tests/ --tb=short -q 2>&1; rc=$?; [ $rc -eq 0 ] && exit 0; echo 'Tests are failing. Fix them before committing.' >&2; exit 2",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; uv run pytest tests/ --tb=short -q 2>&1; rc=$?; [ $rc -eq 0 ] && exit 0; echo 'Tests are failing. Fix them before committing.' >&2; exit 2",
             "timeout": 120,
             "statusMessage": "Running tests before commit..."
           }
           , {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; uv lock --check 2>&1; rc=$?; [ $rc -eq 0 ] && exit 0; echo 'uv.lock is out of sync with pyproject.toml — run: uv lock' >&2; exit 2",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; uv lock --check 2>&1; rc=$?; [ $rc -eq 0 ] && exit 0; echo 'uv.lock is out of sync with pyproject.toml — run: uv lock' >&2; exit 2",
             "timeout": 15,
             "statusMessage": "Checking lockfile sync..."
           }
           {% if scaffold_full_project and has_typescript and primary_backend_language in ["typescript", "both"] %}, {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; [ -d {{ ts_project_root }}/node_modules ] || exit 0; (cd {{ ts_project_root }} && npm test --silent 2>&1); rc=$?; [ $rc -eq 0 ] && exit 0; echo 'TS backend tests are failing. Fix them before committing.' >&2; exit 2",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -qE 'git commit' || exit 0; [ -d {{ ts_project_root }}/node_modules ] || exit 0; (cd {{ ts_project_root }} && npm test --silent 2>&1); rc=$?; [ $rc -eq 0 ] && exit 0; echo 'TS backend tests are failing. Fix them before committing.' >&2; exit 2",
             "timeout": 120,
             "statusMessage": "Running TS backend tests before commit..."
           }{% endif %}
@@ -192,18 +137,18 @@
           }
           {% if expensive_command_patterns %}, {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE '{{ expensive_command_patterns }}' || exit 0; echo \"$cmd\" | grep -qE '\\-\\-dry-run|\\-\\-max-tokens' && exit 0; echo 'Cost reminder: consider --dry-run or --max-tokens for this command' >&2; exit 0",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -qE '{{ expensive_command_patterns }}' || exit 0; echo \"$cmd\" | grep -qE '\\-\\-dry-run|\\-\\-max-tokens' && exit 0; echo 'Cost reminder: consider --dry-run or --max-tokens for this command' >&2; exit 0",
             "timeout": 5,
             "statusMessage": "Cost guard..."
           }{% endif %}
           , {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE '^pip install|^pip3 install' && { echo 'Use uv, not pip. Run: uv add <package>' >&2; exit 2; } || exit 0",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -qE '^pip install|^pip3 install' && { echo 'Use uv, not pip. Run: uv add <package>' >&2; exit 2; } || exit 0",
             "timeout": 5
           }
           , {
             "type": "command",
-            "command": "cmd=$(echo \"$CLAUDE_TOOL_INPUT\" | jq -r '.command'); echo \"$cmd\" | grep -qE 'rm -rf /|rm -rf ~|DROP TABLE|TRUNCATE TABLE' && { echo 'Blocked: destructive command.' >&2; exit 2; } || exit 0",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); echo \"$cmd\" | grep -qE 'rm -rf /|rm -rf ~|DROP TABLE|TRUNCATE TABLE' && { echo 'Blocked: destructive command.' >&2; exit 2; } || exit 0",
             "timeout": 5
           }
         ]

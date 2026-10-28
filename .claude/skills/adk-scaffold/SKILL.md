@@ -7,7 +7,7 @@ description: >
 metadata:
   license: Apache-2.0
   author: Google
-  source: ported into this project's .agents/skills/ reference library — see LICENSE.txt in this directory
+  source: ported into this project's .claude/skills/ — see LICENSE.txt in this directory
 ---
 
 # ADK Project Scaffolding Guide

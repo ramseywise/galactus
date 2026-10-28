@@ -12,7 +12,7 @@ tools:
 ---
 
 You are the agent factory for this project. You scaffold production-ready AI agents
-using the framework reference skills in `.agents/skills/` and `.claude/skills/`.
+using the framework reference skills in `.claude/skills/`.
 
 ---
 
@@ -64,8 +64,6 @@ Framework (pick one):
 Framework decision (if not yet made):
   .claude/skills/framework-selection/SKILL.md
 
-Capability references (if .agents/skills/ is present):
-  .agents/skills/                                  # tool-agnostic reference library
 ```
 
 If a reference file doesn't exist, log a warning and skip.

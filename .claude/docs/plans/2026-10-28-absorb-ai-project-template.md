@@ -77,9 +77,9 @@ skill copies for now; step 3 removes the duplicates.
 |---|---|---|
 | Scoping interview | `proto-scope` (superset: has `discovery` mode) | `scope-poc` |
 | Front door | one `/new` skill: AI vs ML routing (from `prototype-genesis`) + language pick + copier run (from `project-genesis`) | both old genesis skills |
-| Review | `review-*` + `review-shared` | template `code-review`, or keep it as the light single-pass review for the `/spike` lane (step 5) |
+| Review | `review-*` + `review-shared`; template `code-review` kept as the light single-pass review for the `/spike` lane (D2) | nothing |
 | Hooks | `.claude/hooks/` canonical; `template/.claude/hooks/*.jinja` source `lib.sh` from it | reconcile the 4 drifted hooks; delete `hook_parity_check.sh` |
-| Specs | one doc per topic: `langgraph.md` vs `framework-lg.md`, `google-adk.md` vs `framework-adk.md` | the loser of each pair |
+| Specs | both of each pair — not duplicates: `specs/langgraph.md` / `google-adk.md` are convention→surface binding tables, `new-agent/references/framework-{lg,adk}.md` are the codegen file templates `/new-agent` writes from | nothing (re-checked 2026-10-28) |
 | `experiments/` | root `experiments/` | template copy → symlink (identical today) |
 | `ml/` | template's (newer superset), moved to root `ml/` | galactus's stale copy; template keeps only its `.jinja` docs and links the code |
 
@@ -117,6 +117,27 @@ skill copies for now; step 3 removes the duplicates.
   local clone until atlas updates cleanly.
 - Open AIT issues: move the live ones to galactus, close the rest with a link.
 
+## Progress (branch `GAL-43-absorb-template`, nothing pushed)
+
+- Steps 0–4: done.
+- 5.1 hook diet: done (d813531). Per edit: ruff format/fix, docs hygiene, memory guard.
+  Checks run once at Stop via `stop_checks.sh`. Inline guards read stdin; they were dead
+  (`$CLAUDE_TOOL_INPUT` is never set). The friction-log hook still reads env vars.
+- 5.2 `/spike`: done (a3737fa).
+- 5.3 models: done (13df64e). `[models]` in `versions.toml`; stale-ID scan in CI.
+- 5.4 TS-only renders: done (cf9dddc). New derived `has_python`; TS render has its own CI job.
+- 5.5 context diet: done (101e73a). 11 dimensions moved to `review-shared/dimensions/`;
+  `proto-scope` description capped. `new-agent` left: 114-line SKILL.md, refs load on demand.
+- 5.6 dangling refs: done (47e1949).
+- 5.7 `/new` from anywhere: done. `~/.claude/skills/new` → this repo (local machine only).
+- 6 cutover (2026-10-28): galactus made public so public consumers can call its reusable
+  workflows. Rendered `ci.yml` now calls `ramseywise/galactus/.github/workflows/python-ci.yml@main`.
+  librarian, listen-wiseer, guacamayo and atlas repointed on their own branches; atlas's
+  `_src_path` → galactus. ai-project-template is deliberately **not archived** yet (owner's
+  call, later); its issues have not been moved.
+
 ## Open decisions
 - D1: Land the staged work via PR before merging (recommended) or park it on `preserve/`?
-- D2: Ship `code-review` as the `/spike` light review, or drop it?
+- D2: ~~Ship `code-review` as the `/spike` light review, or drop it?~~ Ship it (2026-10-28).
+- D3: guacamayo's `.claude/skills/new-agent/` is a stale fork of galactus's (galactus adds the
+  voice/duplex rows; nothing flows the other way). Delete it there, or symlink it to galactus?

@@ -15,7 +15,7 @@ from evals.models import EvalInteraction, GraderResult
 
 log = logging.getLogger(__name__)
 
-DEFAULT_JUDGE_MODEL = "claude-opus-4-8"
+DEFAULT_JUDGE_MODEL = "claude-opus-5-5"
 
 
 def judge_model() -> str:
@@ -52,7 +52,7 @@ class LLMJudge:
             client = anthropic.Anthropic()
             response = client.messages.create(
                 model=self.model,
-                max_tokens=1024,
+                max_tokens=4096,  # Opus 5.5 always thinks; thinking shares this budget
                 system=self.system_prompt,
                 messages=[{"role": "user", "content": self.format_user_message(interaction)}],
             )

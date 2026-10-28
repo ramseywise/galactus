@@ -14,7 +14,7 @@ Parse `$ARGUMENTS` (order-independent tokens):
 - `repo:<name-or-path>` — target one repo (bare name → `~/workspace/<name>`)
 - `sweep` — target every `~/workspace/*` repo where `git -C <repo> status --porcelain`
   is non-empty (list them and confirm before running if more than 4)
-- `level:1|2|3` — review depth (default 2). Each level contains the previous:
+- `level:1|2|3` — review depth (default 1 while 2-3 are non-functional). Each level contains the previous:
   - **1** (cheap): diff scope + mechanical lint + doc flags. No agents, no tests,
     no sanyi.
   - **2** (standard): + tests + SANYI diff review + akira-scan + machine-doc

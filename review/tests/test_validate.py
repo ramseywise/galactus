@@ -1,13 +1,14 @@
 """One accept, one reject per mechanism, and the reject reasons are tagged.
 
-Fixtures are anchored on `runs/ai/marketing-comms/src/model/gateway.py:125`, which
+Fixtures are anchored on `review/tests/fixtures/anchor_source.py:14`, which
 really does read `import anthropic` — the `quoted_span` check is only meaningful
-against real source.
+against real source on disk. The anchor is a frozen fixture rather than
+marketing-comms' `gateway.py` (the original anchor), because runs are live code
+and the line kept moving.
 
-That coupling is the point and also the maintenance cost: when the anchor line
-moves, these tests fail by design. `test_anchor_line_is_the_expected_source`
-below fails *first* and says so, so the next drift reads as "the anchor moved",
-not as "the validator broke".
+If the anchor file is ever edited, `test_anchor_line_is_the_expected_source`
+below fails *first* and says so, so the drift reads as "the anchor moved", not
+as "the validator broke".
 """
 
 from __future__ import annotations
@@ -23,8 +24,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-ANCHOR_PATH = "runs/ai/marketing-comms/src/model/gateway.py"
-ANCHOR_LINE = 125
+ANCHOR_PATH = "review/tests/fixtures/anchor_source.py"
+ANCHOR_LINE = 14
 ANCHOR_TEXT = "import anthropic"
 
 

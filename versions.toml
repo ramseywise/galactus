@@ -1,4 +1,4 @@
-# Canonical dependency versions across ai-project-template, galactus, and
+# Canonical dependency versions across galactus (incl. its copier template) and
 # dssg/project-mgmt-ai.
 #
 # Why this file exists (AIT-70): the three repos drifted to `ai@^5` vs `ai@^7`
@@ -17,7 +17,7 @@
 # pinning it here buys churn, not safety.
 
 [meta]
-updated = "2026-08-12"
+updated = "2026-10-28"
 issue = "https://github.com/ramseywise/ai-project-template/issues/70"
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,32 @@ pydantic = ">=2.9"
 "pydantic-settings" = ">=2.6.0"
 
 # ---------------------------------------------------------------------------
+# Claude models
+# ---------------------------------------------------------------------------
+#
+# Not a dependency, but the same failure shape: a model ID hardcoded in a
+# scaffold goes stale silently, and the newer models reject parameters the
+# older ones accepted (sampling params, `thinking: disabled`, forced
+# tool_choice). Roles, not a single default — the template picks per job.
+# Never append a date suffix; the bare alias is the ID.
+
+[models]
+default = "claude-opus-5-5"   # llm_kit, anything reasoning-heavy
+fast = "claude-haiku-5-5"     # scaffold agents, compaction, extraction
+balanced = "claude-sonnet-5-5"
+judge = "claude-opus-5-5"     # evals/graders/judges
+
+[models.stale]
+# check-versions.sh flags these in template/ and .claude/ (runs/ own their
+# model choice: marketing-comms stays on claude-sonnet-5 deliberately).
+ids = [
+  "claude-haiku-4-5", "claude-sonnet-4", "claude-sonnet-4-5", "claude-sonnet-4-6",
+  "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8",
+]
+# Files allowed to name a stale ID: price tables keep old rows on purpose.
+allow = ["template/llm_kit/llm_kit.py"]
+
+# ---------------------------------------------------------------------------
 # Consumers checked by tools/template/check-versions.sh
 # ---------------------------------------------------------------------------
 #
@@ -74,13 +100,13 @@ pydantic = ">=2.9"
 # repo checked out.
 
 [[consumers]]
-name = "ai-project-template (backend-ts)"
-manifest = "ai-project-template/template/_scaffold/{{ ts_project_root }}/package.json.jinja"
+name = "galactus template (backend-ts)"
+manifest = "galactus/template/_scaffold/{{ ts_project_root }}/package.json.jinja"
 kind = "npm"
 
 [[consumers]]
-name = "ai-project-template (frontend-vite)"
-manifest = "ai-project-template/template/_scaffold/frontend-vite/{{ ts_project_root }}/package.json.jinja"
+name = "galactus template (frontend-vite)"
+manifest = "galactus/template/_scaffold/frontend-vite/{{ ts_project_root }}/package.json.jinja"
 kind = "npm"
 
 [[consumers]]

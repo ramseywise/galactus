@@ -21,6 +21,12 @@ Ask real questions, confirm before acting, never silently default. This is a
 scoping-to-scaffold translator, not an onboarding ritual: no phases, growth logs or
 reflection steps.
 
+**Paths are relative to galactus** (`~/workspace/galactus`). This skill is also
+symlinked into `~/.claude/skills/new`, so it can start from any directory: when the
+session is not rooted in galactus, prefix `runs/…`, `pyproject.toml` and the `.` in
+`copier copy … .` with `~/workspace/galactus/`. A run still lands inside galactus,
+never in the current directory.
+
 ## Usage
 
 ```
@@ -69,7 +75,8 @@ spec for one.
 | Good for | a spike, a demo, a thesis to test in an afternoon | something that will be deployed, shared or kept |
 | Next | `/proto-scope` → `/proto-design` → BUILD band | Steps 0–6 below, then the project's own skills |
 
-Default to **run** when the operator says spike, demo, or try. A run can graduate to a
+Default to **run** when the operator says spike, demo, or try (and for a pure spike, hand
+off to `/spike`, which skips the plan doc). A run can graduate to a
 repo later; a repo that should have been a spike is weight carried for nothing.
 
 For a run: create `runs/ai/<slug>/{src,tests}/`, add `runs/ai/<slug>/tests` to
@@ -121,7 +128,7 @@ first, implementation only where Phase 1 makes it relevant.
    (free text, one sentence).
 2. **What type of project?** → `project_type` (`chat_app`/`agent`/`workflow`/`rag`/
    `mcp_server`/`ai_backend`/`eval_suite`/`prototype`/`existing_repo` — the last
-   one is layering-only mode: `.claude/` + whichever of `.agents/`/`mcp_servers/`
+   one is layering-only mode: `.claude/` + `mcp_servers/` if
    they want, nothing else touched). This is the derivation root — 54 vars key off it.
 3. **Who uses it?** → `primary_users` (`internal`/`customers`/`developers`/`public_api`).
    Seeds data sensitivity and deployment target.

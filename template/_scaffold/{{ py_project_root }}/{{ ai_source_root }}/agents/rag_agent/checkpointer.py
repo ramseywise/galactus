@@ -33,5 +33,5 @@ def get_checkpointer() -> BaseCheckpointSaver:
         return checkpointer
     raise NotImplementedError(
         f"Checkpointer '{settings.rag_checkpointer}' is not wired up yet — "
-        "see .agents/skills/langgraph-persistence/SKILL.md and extend this factory."
+        "see .claude/skills/langgraph-persistence/SKILL.md and extend this factory."
     )

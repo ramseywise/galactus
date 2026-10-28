@@ -9,6 +9,11 @@ The contracts every review reporter writes against. This skill holds no procedur
 own — it exists so that all eleven `review-*` dimensions emit findings a single orchestrator
 can merge without re-reading each dimension's private conventions.
 
+The dimensions themselves live here too, as `dimensions/review-<name>.md` — reference
+files read by the `review` agent, not skills, so eleven descriptions do not sit in every
+session's context. Anywhere a doc says "`review-testing` § X", read it as
+`dimensions/review-testing.md` § X.
+
 Load a reference when you need it, not preemptively:
 
 | Reference | Load when |
@@ -16,6 +21,7 @@ Load a reference when you need it, not preemptively:
 | `references/finding-schema.md` | Emitting or merging any finding |
 | `references/evidence-model.md` | Deciding how confident a finding is |
 | `references/context-brief.md` | Assembling the input every reporter receives |
+| `dimensions/review-<name>.md` | Dispatched as, or writing, that dimension |
 
 ## The two axes
 

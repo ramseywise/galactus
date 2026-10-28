@@ -48,18 +48,10 @@ each phase. The map — phases, gates, handoffs, and which skill drives each —
 | `langgraph-persistence` / `langgraph-human-in-the-loop` | Adding memory, checkpointing, or approval gates |
 | `vercel-ai-sdk-scaffold` | Building a TS-native Vercel AI SDK agent |
 
-{%- if include_agent_reference_library %}
-
-## Agent framework reference
-
-The ADK/LangGraph framework knowledge also lives in `.agents/skills/` — a
-tool-agnostic library readable by ADK's own tooling or any other agent harness
-in this project. See `.agents/skills/README.md` for the map.
-{%- endif %}
 
 ## Skills not shipped with the template
 
-Workflow skills (`/workflow-plan`, `/workflow-execute`, `/workflow-review`, etc.)
-and git skills (`/git-commit`, `/git-pr`) live in the repo that owns their stage
-of work — not in the template. If your project needs them, invoke from the owning
+Workflow skills (`/workflow-plan`, `/workflow-build`, `/workflow-review`) and git
+skills live in guacamayo; prototyping skills (`/proto-*`, `/new-agent`) live in
+galactus — the repos that own those stages of work — not in the template. If your project needs them, invoke from the owning
 repo or vendor them in.

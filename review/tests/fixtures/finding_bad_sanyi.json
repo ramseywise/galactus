@@ -6,9 +6,9 @@
   "location": {
     "files": [
       {
-        "path": "runs/ai/marketing-comms/src/model/gateway.py",
-        "start_line": 125,
-        "end_line": 125
+        "path": "review/tests/fixtures/anchor_source.py",
+        "start_line": 14,
+        "end_line": 14
       }
     ],
     "symbols": []

@@ -37,7 +37,7 @@ def extract_action_items(transcript: str) -> MeetingExtraction:
     client = get_client()
     response = client.messages.create(
         model=settings.meeting_intelligence_model,
-        max_tokens=2048,
+        max_tokens=4096,  # thinking shares this budget on current models
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": transcript}],
     )

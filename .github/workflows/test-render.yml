@@ -141,12 +141,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install copier
-        run: pip install copier
-
-      # No enable-cache: the template root has no uv.lock (it only exists after
-      # render), so cache keying on **/uv.lock fails hard with "No file matched".
+      # No enable-cache: renders resolve their own deps, so a cache keyed on the
+      # repo's uv.lock would never hit for them.
       - uses: astral-sh/setup-uv@v7
+
+      - name: Install copier
+        run: uv tool install copier
 
       # Renders have no package-lock.json, so npm caching (which keys on a
       # lockfile) is deliberately not enabled here.
@@ -364,6 +364,17 @@ jobs:
           test ! -d backend \
             || { echo "FAIL: backend/ appeared after re-render on a flat-layout project"; exit 1; }
           echo "OK: flat layout persisted across re-render without re-passing -d"
+
+      # has_python=false must drop every Python app tree, not just the agent:
+      # a TS-only render that ships pyproject.toml or a pytest suite has a
+      # `make test` and a CI job pointing at code that is not there.
+      - name: TS-only render ships no Python app code
+        if: matrix.tier == 'test-ts'
+        working-directory: out
+        run: |
+          for p in pyproject.toml backend src core evals llm_kit tests; do
+            test ! -e "$p" || { echo "FAIL: $p rendered in a typescript-only project"; exit 1; }
+          done
 
       # ts_project_root defaults to project_slug — "Render Test" → render-test.
       - name: TS backend — install/lint/typecheck/test/build

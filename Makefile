@@ -1,4 +1,5 @@
-include ~/.claude/Makefile.common
+# Personal targets (ship, pull, md-lint, ...) — optional, absent in CI.
+-include ~/.claude/Makefile.common
 
 .PHONY: help lint lint-render test new_project new_project_dev run_copier check_tools preview_defaults project
 
@@ -46,7 +47,7 @@ lint-render: check_tools
 	    *) echo "unknown profile: $$profile (valid: defaults ml)"; exit 2 ;; \
 	  esac; \
 	  if [ -n "$${DST:-}" ]; then dst="$$DST/$$profile"; keep=1; mkdir -p "$$dst"; \
-	  else dst="$$(mktemp -d -t ait_lint_$$profile)"; keep="$${KEEP:-}"; fi; \
+	  else dst="$$(mktemp -d "$${TMPDIR:-/tmp}/ait_lint_$$profile.XXXXXX")" || exit 1; keep="$${KEEP:-}"; fi; \
 	  log="$$dst.render.log"; \
 	  echo "--- $$profile: rendering to $$dst"; \
 	  if ! copier copy --overwrite --defaults --trust \
@@ -62,6 +63,7 @@ lint-render: check_tools
 	  rm -f "$$log"; \
 	  if [ ! -f "$$dst/pyproject.toml" ]; then \
 	    echo "--- $$profile: no pyproject.toml rendered — nothing to lint"; \
+	    failed="$$failed $$profile(no-pyproject)"; \
 	    [ -n "$$keep" ] || rm -rf "$$dst"; continue; \
 	  fi; \
 	  if ( cd "$$dst" && uv sync --only-group dev --quiet && UV_NO_SYNC=1 $(MAKE) lint-check ); then \
@@ -89,7 +91,7 @@ test:  ## Validate paths + catalog check
 ##        make test_render PYTEST_ARGS="tests/unit/ml/test_transform.py -v"
 ##                                         (replaces the default pytest target)
 test_render: check_tools
-	@dst="$${DST:-$$(mktemp -d -t ait_render)}"; \
+	@dst="$${DST:-$$(mktemp -d "$${TMPDIR:-/tmp}/ait_render.XXXXXX")}" && [ -n "$$dst" ] || exit 1; \
 	keep="$${KEEP:-}"; [ -n "$${DST:-}" ] && keep=1; \
 	echo "rendering to $$dst"; \
 	copier copy --overwrite --defaults --trust \

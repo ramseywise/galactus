@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from review.models import MergeImpact, Reporter, ReviewFinding
 
 # Lifted verbatim from `guacamayo/review/sanyi.py`. Authoritative source for the
-# 11 codes is `.claude/skills/review_contracts/references/violations.md`.
+# 11 codes is `.claude/skills/review-shared/dimensions/review-contracts-violations.md`.
 _MERGE_IMPACT: dict[str, MergeImpact] = {
     # 不易 Buyi — invariant violations
     "BY-1": MergeImpact.BLOCKER,

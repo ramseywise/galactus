@@ -7,17 +7,17 @@ description: >
 metadata:
   license: Apache-2.0
   author: Google
-  source: ported into this project's .agents/skills/ reference library — see LICENSE.txt in this directory
+  source: ported into this project's .claude/skills/ — see LICENSE.txt in this directory
 ---
 
 # ADK Development Workflow & Guidelines
 
 > **Note on companion skills:** the upstream version of this guide references
 > `adk-cheatsheet`, `adk-eval-guide`, `adk-deploy-guide`, and `adk-observability-guide`.
-> Only `adk-scaffold` and this guide are included in this project's `.agents/skills/`
-> library so far. Where this doc points to one of the others, fall back to the
+> Only `adk-scaffold` and this guide are ported into `.claude/skills/`
+> so far. Where this doc points to one of the others, fall back to the
 > official ADK documentation or a targeted web search — port the missing skill into
-> `.agents/skills/` if the gap comes up repeatedly.
+> `.claude/skills/` if the gap comes up repeatedly.
 
 ## Session Continuity
 

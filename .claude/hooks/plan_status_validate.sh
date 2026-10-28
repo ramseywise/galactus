@@ -8,6 +8,7 @@ path=$(claude_path)
 [ -z "$path" ] && exit 0
 [ -f "$path" ] || exit 0
 echo "$path" | grep -q '/\.claude/docs/plans/.*\.md$' || exit 0
+on_spike_branch "$path" && exit 0
 
 # `|| status=$?` keeps set -e from aborting here: the reject path still has to reach
 # log_event below before the hook exits non-zero, so the block is recorded either way.
@@ -105,7 +106,7 @@ token = ""  # stays empty when the doc has no Status: line; the state-specific
 # Absence means no review outcome is being claimed, which is honest; blocking on
 # absence would make every doc predating this rule instantly unwritable.
 #
-# The four values are the outcomes /workflow-review can reach, and they are
+# The four values are the outcomes /proto-review can reach, and they are
 # distinct on purpose: `pending` means *no review concluded*, so a concluded
 # review never writes it. Collapsing "rejected" and "could not decide" into
 # `pending` is the defect this enum exists to remove.

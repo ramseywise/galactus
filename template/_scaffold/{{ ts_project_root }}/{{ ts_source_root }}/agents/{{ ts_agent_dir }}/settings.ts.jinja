@@ -13,7 +13,7 @@
 
 export const settings = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
-  agentModel: process.env.TS_AGENT_MODEL ?? "claude-haiku-4-5-20251001",
+  agentModel: process.env.TS_AGENT_MODEL ?? "claude-haiku-5-5",
   // No temperature setting: thinking-by-default models (Opus 5, Fable 5, Opus
   // 4.8/4.7, Sonnet 5) reject temperature/top_p/top_k with a 400. Steer with
   // the system prompt instead of a sampling knob.

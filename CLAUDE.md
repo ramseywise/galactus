@@ -64,6 +64,10 @@ work lands: a run (a subdirectory under `runs/ai/` or `runs/ml/`, which then ent
 or a standalone repo rendered from this repo's copier template (`copier.yaml` +
 `template/`, Python or TypeScript). See `TEMPLATE.md` for the template itself.
 
+**`/spike` is the side door.** One question, a `spike/*` branch, no plan doc and no bands,
+then one light review. The plan-doc hooks stand down on `spike/*`; the guards and the Stop
+hook do not. Graduating a spike means entering FRAME with it as evidence.
+
 `runs/_index/` is reserved for run records — one per training execution, a different grain
 from the run directory that produced it, which is why the name is prefixed: `_index` can
 never collide with a run. **Runs do not define the record shape.** It lives in the root
@@ -90,7 +94,8 @@ appear as a pipeline step, and **never touch `Status:`** — they write to
 so the state machine cannot be tripped by a capability. They are also the only skills the
 model may reach for on its own: cheap, read-only, and exactly what should be available the
 moment a load-bearing assumption shows up. `decide-shared` is their shared contract, as
-`review-shared` is for the thirteen `review-*` dimensions.
+`review-shared` is for the eleven review dimensions, which live in it as reference files
+(`review-shared/dimensions/`), not as skills.
 
 **Tools, called from inside a band.** These are not phases and have no position:
 
@@ -128,7 +133,8 @@ looks, so they are not invocable.
 
 `.claude/skills/`, `.claude/specs/` and `.claude/hooks/` in this repo are the canonical
 copies. `~/.claude/` holds none of them (it was emptied in the 2026-09 machine move) and is
-not upstream of anything here.
+not upstream of anything here. The one exception points the other way:
+`~/.claude/skills/new` is a symlink into this repo, so `/new` works from any directory.
 
 **The template ships from the same files.** Every shared skill or hook under
 `template/.claude/` is a symlink into the root `.claude/` (copier follows symlinks, so a

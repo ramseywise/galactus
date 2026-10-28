@@ -29,7 +29,7 @@ class IntegrationSettings(BaseSettings):
 {%- if include_meeting_intelligence %}
 
     anthropic_api_key: str = ""
-    meeting_intelligence_model: str = "claude-haiku-4-5-20251001"
+    meeting_intelligence_model: str = "claude-haiku-5-5"
     # Explicit, like every other connector in this package (canva/eventbrite/
     # linkedin all pin timeout=30.0). The SDK retries 408/409/429/5xx with
     # exponential backoff — do NOT add another retry loop on top.

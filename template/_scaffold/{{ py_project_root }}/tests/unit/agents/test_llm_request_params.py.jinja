@@ -1,10 +1,8 @@
 """The request payload must not carry sampling parameters.
 
-Thinking-by-default models — Claude Opus 5, Fable 5, Opus 4.8/4.7, Sonnet 5 —
-reject ``temperature``/``top_p``/``top_k`` with a 400. The scaffold's default
-model (``claude-haiku-4-5-20251001``) still accepts them, so this failure is
-invisible until someone points ``LG_MODEL``/``RAG_MODEL`` at a current model,
-and no amount of linting catches it: the kwarg is valid Python and a valid SDK
+Since 2026-10-21 every Claude model, including the scaffold's default
+(``claude-haiku-5-5``), rejects ``temperature``/``top_p``/``top_k`` with a
+400. No amount of linting catches it: the kwarg is valid Python and a valid SDK
 signature. It only fails at the API.
 
 These tests capture the kwargs actually handed to ``messages.create`` and assert

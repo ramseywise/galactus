@@ -12,8 +12,9 @@ class ContextBudgetSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Maximum context-window tokens before compaction fires.
-    # Claude claude-haiku-4-5-20251001 / claude-sonnet-* window = 200 000;
-    # set conservatively so there is headroom for the compaction summary itself.
+    # Current Claude windows (claude-haiku-5-5, claude-sonnet-5-5) are 1M;
+    # this caps a turn well below that to bound per-turn cost,
+    # with headroom for the compaction summary itself.
     max_context_tokens: int = 180_000
 
     # Fraction of max_context_tokens at which the compaction trigger fires.

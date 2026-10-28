@@ -21,6 +21,7 @@ source "$(dirname "$0")/lib.sh"
 path=$(claude_path)
 [ -z "$path" ] && exit 0
 echo "$path" | grep -q '/\.claude/docs/plans/.*\.md$' || exit 0
+on_spike_branch "$path" && exit 0
 
 # The fragment being written. Write carries .content, Edit carries .new_string;
 # claude_content() coalesces both (verified against lib.sh:27).

@@ -1,6 +1,6 @@
 ---
 name: design-roadmap
-description: "EM role — takes an agreed backlog and files it as real GitHub issues: milestones created, issues opened with acceptance criteria, dependencies wired as task checklists, labels applied. The last design stage before /workflow-triage. Triggers on: 'file the backlog', 'create the issues', 'open tickets for this', 'set up the milestones', '/design-roadmap'."
+description: "EM role — takes an agreed backlog and files it as real GitHub issues: milestones created, issues opened with acceptance criteria, dependencies wired as task checklists, labels applied. The last design stage before /workflow-plan. Triggers on: 'file the backlog', 'create the issues', 'open tickets for this', 'set up the milestones', '/design-roadmap'."
 disable-model-invocation: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -109,7 +109,7 @@ Refuse to file if any of these hold — say which, and stop:
 | --------------------------------------------- | ------------------------------------------------------------------------------ |
 | No milestone doc                              | Issues with no milestone are orphans; the backlog is unsequenced               |
 | A task attaches to no milestone               | Either scope creep or a missing checkpoint — resolve upstream, don't orphan it |
-| A task has no acceptance criteria             | It cannot pass DoR, so `/workflow-triage` will bounce it                        |
+| A task has no acceptance criteria             | It cannot pass DoR, so `/workflow-plan` will bounce it                            |
 | A task has no deliverable, only "implement X" | Not a task, a wish                                                             |
 | The backlog was never reviewed with the user  | Filing unagreed scope is the failure this skill exists to prevent              |
 | The PRD's Q0-Q5 ladder has a level marked Required with no owner | File the owner-assignment issue first (see Step 4) — an unowned gate never runs |
@@ -305,7 +305,7 @@ Then print:
   Milestones: <n>   Issues: <n>   Skipped: <n>
   Critical path: #<a> → #<b> → #<c>
 
-Next: /workflow-triage #<first> → /workflow-build #<first>
+Next: /workflow-plan #<first> → /workflow-build #<first>
 --------------------------------------
 ```
 
@@ -339,4 +339,4 @@ It must not touch tabs owned by other skills:
 ---
 
 **Upstream**: `/design-product` (PRD + Overview tab) → `/design-system` (specs + Architecture/Components/Platform tabs).
-**Next**: `/workflow-triage #N` takes an issue to READY; `/workflow-build #N` builds it.
+**Next** (guacamayo skills, not shipped here): `/workflow-plan #N` takes an issue to READY; `/workflow-build #N` builds it.

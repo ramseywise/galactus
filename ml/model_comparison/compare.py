@@ -171,8 +171,10 @@ def default_baseline_models() -> dict[str, BaseEstimator]:
         # LGBMClassifier genuinely inherits sklearn's BaseEstimator at runtime;
         # lightgbm's bundled stub just doesn't declare it — stub gap.
         models["lightgbm"] = LGBMClassifier(random_state=42, verbosity=-1)  # type: ignore[assignment]
-    except ImportError:
-        pass  # lightgbm is an optional dependency; comparison still runs without it
+    except (ImportError, OSError):
+        # Optional dependency; the comparison still runs without it. OSError is a
+        # wheel that installed but cannot load its native lib (libomp on macOS).
+        pass
     return models
 
 

@@ -34,8 +34,9 @@ import { generateText, type LanguageModel } from "ai";
 
 export const budgetSettings = {
   /** Maximum context-window tokens before compaction fires.
-   *  Claude claude-haiku-4-5-20251001 / claude-sonnet-* window = 200 000;
-   *  set conservatively to leave headroom for the compaction summary itself. */
+   *  Current Claude windows (claude-haiku-5-5, claude-sonnet-5-5) are 1M;
+   *  this caps a turn well below that to bound per-turn cost,
+   *  with headroom for the compaction summary itself. */
   maxContextTokens: Number(process.env.MAX_CONTEXT_TOKENS ?? 180_000),
 
   /** Fraction of maxContextTokens at which the compaction trigger fires.
@@ -208,7 +209,7 @@ export async function compactHistory(
       model,
       messages: [{ role: "user", content: summaryPrompt }],
       // AI SDK v5 renamed maxTokens -> maxOutputTokens (package.json pins ^5.0.0).
-      maxOutputTokens: 512,
+      maxOutputTokens: 2048, // thinking shares this budget on current models
     });
 
     console.info("[context-budget] compacted", {

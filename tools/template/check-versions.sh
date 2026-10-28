@@ -34,6 +34,7 @@ command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 required" >&2; exit 
 python3 - "$MANIFEST" "$WORKSPACE_ROOT" "$QUIET" <<'PY'
 import json
 import re
+import subprocess
 import sys
 import tomllib
 from pathlib import Path
@@ -110,6 +111,28 @@ for consumer in spec.get("consumers", []):
 
     else:
         skipped.append(f"{name} — unknown kind {kind!r}")
+
+# Stale Claude model IDs in what this repo ships. Exact-ID match (date suffix
+# stripped), so `claude-opus-5` never matches inside `claude-opus-5-5`.
+repo_root = manifest_path.parent
+stale_cfg = spec.get("models", {}).get("stale", {})
+stale_ids, allow = set(stale_cfg.get("ids", [])), set(stale_cfg.get("allow", []))
+model_re = re.compile(r"claude-[a-z]+(?:-\d{1,2}(?!\d))+(?:-\d{8})?")
+tracked = subprocess.run(
+    ["git", "-C", str(repo_root), "ls-files", "template", ".claude"],
+    capture_output=True, text=True, check=False,
+).stdout.splitlines()
+for rel in tracked:
+    f = repo_root / rel
+    if "/archived/" in rel or rel in allow or not f.is_file():
+        continue
+    try:
+        text = f.read_text()
+    except (UnicodeDecodeError, OSError):
+        continue
+    for m in sorted(set(model_re.findall(text))):
+        if re.sub(r"-\d{8}$", "", m) in stale_ids:
+            findings.append((rel, "model", "see [models]", m))
 
 if quiet:
     sys.exit(1 if findings else 0)

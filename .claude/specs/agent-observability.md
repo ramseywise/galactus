@@ -63,7 +63,7 @@ error_message:         string (when status=error)
 
 ```
 gen_ai.system:              "anthropic" | "google" | "openai" | ...
-gen_ai.request.model:       model ID (e.g., "claude-sonnet-4-5")
+gen_ai.request.model:       model ID (e.g., "claude-sonnet-5-5")
 prompt_version:             from PROMPT_VERSION (see agent-context.md §4)
 agent_id:                   stable identifier for the agent type
 session_id:                 caller-supplied session identifier

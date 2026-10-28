@@ -20,22 +20,11 @@ import pytest
 from review.models import REPORTER_ID_PREFIX
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
+DIMENSIONS_DIR = REPO_ROOT / ".claude" / "skills" / "review-shared" / "dimensions"
 
 # `prefix:` — that exact key, in the frontmatter. No Parallax skill has such a
 # field, so it is an invention of this subsystem and needs pinning down.
 _PREFIX_KEY = re.compile(r"^prefix:\s*([A-Z]{2})\s*$", re.MULTILINE)
-
-# `review-shared` matches the glob but carries no dimension — it is the brief
-# every dispatch loads alongside its one dimension skill.
-_NON_DIMENSION_SKILLS = {"review-shared"}
-
-# CROSS-band skills (`/review-defense`) also match the glob. They attack an
-# artifact and return a judgment rather than reporting findings against a diff,
-# so they have no `Reporter` member and no prefix. They declare `job:`; the
-# dimension skills do not, so the key is the discriminator — a new CROSS skill
-# is excluded by construction rather than by being added to a list here.
-_JOB_KEY = re.compile(r"^job:\s*\S+", re.MULTILINE)
 
 
 def _frontmatter(text: str) -> str:
@@ -46,21 +35,22 @@ def _frontmatter(text: str) -> str:
 
 
 def _declared_prefixes() -> dict[str, str]:
-    """Map skill dimension name → declared prefix, read from SKILL.md frontmatter."""
+    """Map dimension name → declared prefix, read from each dimension file's frontmatter.
+
+    Dimensions are reference files under review-shared/dimensions/, not skills.
+    Supporting files there (review-contracts-violations.md) carry no frontmatter
+    and are skipped. CROSS-band review skills (/review-defense) stay skills and
+    never live in this directory.
+    """
     found: dict[str, str] = {}
-    for skill_dir in sorted(SKILLS_DIR.glob("review-*")):
-        if skill_dir.name in _NON_DIMENSION_SKILLS:
-            continue
-        skill_md = skill_dir / "SKILL.md"
-        if not skill_md.is_file():
-            continue
-        frontmatter = _frontmatter(skill_md.read_text())
-        if _JOB_KEY.search(frontmatter):
+    for md in sorted(DIMENSIONS_DIR.glob("review-*.md")):
+        frontmatter = _frontmatter(md.read_text())
+        if not frontmatter:
             continue
         match = _PREFIX_KEY.search(frontmatter)
-        # Skill names are hyphenated (the loader rejects underscores); Reporter
-        # values are underscored. `silent-failure` → `silent_failure`.
-        dimension = skill_dir.name.removeprefix("review-").replace("-", "_")
+        # File names are hyphenated; Reporter values are underscored.
+        # `silent-failure` → `silent_failure`.
+        dimension = md.stem.removeprefix("review-").replace("-", "_")
         found[dimension] = match.group(1) if match else ""
     return found
 
@@ -68,10 +58,7 @@ def _declared_prefixes() -> dict[str, str]:
 def test_skill_set_matches_reporter_enum():
     declared = _declared_prefixes()
     if not declared:
-        pytest.fail(
-            "no .claude/skills/review-*/SKILL.md files found — expected until "
-            "Step 7 of the prototyping-review-subsystem plan lands"
-        )
+        pytest.fail("no dimension files found under .claude/skills/review-shared/dimensions/")
     expected = {r.value for r in REPORTER_ID_PREFIX}
     assert set(declared) == expected
 
@@ -79,10 +66,7 @@ def test_skill_set_matches_reporter_enum():
 def test_declared_prefixes_match_models_exactly():
     declared = _declared_prefixes()
     if not declared:
-        pytest.fail(
-            "no .claude/skills/review-*/SKILL.md files found — expected until "
-            "Step 7 of the prototyping-review-subsystem plan lands"
-        )
+        pytest.fail("no dimension files found under .claude/skills/review-shared/dimensions/")
     expected = {r.value: prefix for r, prefix in REPORTER_ID_PREFIX.items()}
     assert declared == expected
 
