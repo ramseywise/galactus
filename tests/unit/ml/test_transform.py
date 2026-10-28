@@ -34,7 +34,8 @@ def mixed_frame() -> pd.DataFrame:
             "balance": rng.gamma(2.0, 500.0, n),
             "segment": rng.choice(["a", "b", "c"], n),
             "account_id": [f"acct_{i % 200}" for i in range(n)],
-            "opened_at": pd.to_datetime("2024-01-01") + pd.to_timedelta(rng.integers(0, 700, n), "D"),
+            "opened_at": pd.to_datetime("2024-01-01")
+            + pd.to_timedelta(rng.integers(0, 700, n), "D"),
             "is_active": rng.random(n) > 0.3,
             "constant_col": ["same"] * n,
             "target": rng.integers(0, 2, n),
@@ -72,6 +73,42 @@ def test_infer_records_cardinality_and_missingness(mixed_frame):
 def test_unknown_target_raises(mixed_frame):
     with pytest.raises(KeyError, match="not_a_column"):
         infer_column_types(mixed_frame, target="not_a_column")
+
+
+def test_excluded_columns_are_kept_out_of_every_feature_bucket(mixed_frame):
+    """`account_id` is the shape a group column has — 200 near-unique levels. Left
+    to inference it lands in `high_cardinality` and gets target-encoded, which
+    encodes account identity against the label. Excluding it is the fix."""
+    plan = infer_column_types(mixed_frame, target="target", exclude=["account_id"])
+
+    assert "account_id" not in plan.features
+    assert "account_id" not in plan.high_cardinality
+    assert plan.excluded == ("account_id",)
+
+
+def test_excluded_is_distinct_from_unused(mixed_frame):
+    """A bookkeeping column and a useless one are different facts about a column,
+    and a report that conflates them tells the reader the wrong thing."""
+    plan = infer_column_types(mixed_frame, target="target", exclude=["account_id"])
+
+    assert "account_id" not in plan.unused
+    assert "constant_col" in plan.unused
+    assert "excluded by the caller" in plan.reasons["account_id"]
+
+
+def test_excluding_an_absent_column_raises(mixed_frame):
+    """A typo in a group column name would otherwise silently exclude nothing and
+    leave the leak in place."""
+    with pytest.raises(KeyError, match="not_a_column"):
+        infer_column_types(mixed_frame, target="target", exclude=["not_a_column"])
+
+
+def test_describe_reports_excluded_columns(mixed_frame):
+    plan = infer_column_types(mixed_frame, target="target", exclude=["account_id"])
+    described = plan.describe()
+
+    row = described[described["column"] == "account_id"].iloc[0]
+    assert row["bucket"] == "excluded"
 
 
 def test_all_null_column_is_unused():

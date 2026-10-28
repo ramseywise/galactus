@@ -72,9 +72,7 @@ def detect_outliers(
         predictions = forest.fit_predict(numeric.fillna(numeric.median()))
         mask = pd.Series(predictions == -1, index=df.index)
     else:
-        raise ValueError(
-            f"unknown method {method!r}; valid: iqr, zscore, isolation_forest"
-        )
+        raise ValueError(f"unknown method {method!r}; valid: iqr, zscore, isolation_forest")
 
     return mask.fillna(False).astype(bool)
 

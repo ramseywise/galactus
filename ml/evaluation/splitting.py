@@ -70,11 +70,40 @@ class SplitPlan:
     group_col: str | None = None
     time_col: str | None = None
 
-    def split(self, x, y=None, groups=None):
-        """Delegate to the underlying splitter, filling `groups` when the plan
-        declares a group column and the caller passed a frame."""
-        if groups is None and self.group_col is not None and isinstance(x, pd.DataFrame):
-            groups = x[self.group_col]
+    def split(self, x, y=None, groups=None, *, frame: pd.DataFrame | None = None):
+        """Delegate to the underlying splitter, resolving the declared group and
+        time columns from `frame` rather than from `x`.
+
+        `x` is the *feature* matrix, and the group column must not be in it: a
+        group column is entity identity, so encoding it as a feature is target
+        leakage (see `infer_column_types(exclude=...)`). But the splitter still
+        needs those values, so they are read from `frame` — the full source frame
+        — which is why this is a separate argument instead of an index into `x`.
+
+        Passing `groups` explicitly overrides the lookup. Falling back to `x` when
+        no frame is given keeps callers who really do have the column in their
+        feature matrix working, but that fallback is the leaky arrangement, not
+        the intended one.
+        """
+        source = frame if frame is not None else x
+
+        if groups is None and self.group_col is not None:
+            if isinstance(source, pd.DataFrame) and self.group_col in source.columns:
+                groups = source[self.group_col]
+            else:
+                raise KeyError(
+                    f"the split plan declares group_col={self.group_col!r} but it was not "
+                    "found. Pass the full source frame as `frame=` so the splitter can "
+                    "read the group column without it having to be a feature, or pass "
+                    "`groups=` directly."
+                )
+
+        if self.time_col is not None and isinstance(source, pd.DataFrame):
+            # SortedTimeSeriesSplit reads the time column off the frame it is
+            # handed, so hand it the source frame — the fold indices it yields are
+            # positional and stay valid against `x`, which shares the row order.
+            return self.splitter.split(source, y, groups)
+
         return self.splitter.split(x, y, groups)
 
     def get_n_splits(self, x=None, y=None, groups=None) -> int:
@@ -242,6 +271,25 @@ def make_splitter(
         ),
         n_splits=n_splits,
     )
+
+
+def split_columns(
+    plan: SplitPlan | None,
+    group_col: str | None = None,
+    time_col: str | None = None,
+) -> tuple[str, ...]:
+    """The columns a split needs but a model must not see.
+
+    Both sources count: the caller's `group_col`/`time_col` arguments, and the
+    declarations on a pre-built `SplitPlan` passed as `splitter=`. A caller who
+    hands over a ready-made plan has still told us those columns are structure
+    rather than signal, and forgetting the second source is exactly how the
+    column creeps back into the feature matrix.
+    """
+    declared = [group_col, time_col]
+    if plan is not None:
+        declared += [plan.group_col, plan.time_col]
+    return tuple(dict.fromkeys(col for col in declared if col is not None))
 
 
 def assert_no_group_leakage(

@@ -227,9 +227,7 @@ def build_transformer(
                     [
                         (
                             "to_float",
-                            FunctionTransformer(
-                                _bools_to_float, feature_names_out="one-to-one"
-                            ),
+                            FunctionTransformer(_bools_to_float, feature_names_out="one-to-one"),
                         ),
                         ("impute", SimpleImputer(strategy="most_frequent")),
                     ]

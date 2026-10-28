@@ -37,6 +37,7 @@ from ml.evaluation.metrics import (
 )
 from ml.evaluation.threshold import (
     choose_threshold,
+    choose_threshold_out_of_fold,
     expected_cost,
     threshold_for_capacity,
 )
@@ -214,9 +215,7 @@ def test_calibration_improves_brier_on_a_deliberately_miscalibrated_model():
         x, y, test_size=0.3, stratify=y, random_state=RANDOM_STATE
     )
 
-    base = RandomForestClassifier(
-        n_estimators=25, max_depth=4, random_state=RANDOM_STATE
-    )
+    base = RandomForestClassifier(n_estimators=25, max_depth=4, random_state=RANDOM_STATE)
     raw = base.fit(x_train, y_train).predict_proba(x_test)[:, 1]
 
     calibrated = calibrate_classifier(
@@ -229,8 +228,7 @@ def test_calibration_improves_brier_on_a_deliberately_miscalibrated_model():
     report = assess_calibration(y_test, raw, adjusted, method="isotonic")
 
     assert report.improved, (
-        f"calibration did not improve Brier: {report.brier_before:.4f} -> "
-        f"{report.brier_after:.4f}"
+        f"calibration did not improve Brier: {report.brier_before:.4f} -> {report.brier_after:.4f}"
     )
     assert report.brier_delta < 0
     assert report.brier_after == pytest.approx(brier_score_loss(y_test, adjusted))
@@ -416,6 +414,39 @@ def test_ties_break_toward_the_lower_threshold():
     assert result.n_flagged == 3
 
 
+def test_threshold_marks_itself_in_sample_by_default(imbalanced_predictions):
+    """The threshold is fitted to the rows it is then scored on, so precision and
+    recall are optimistic. The result has to say so — a caller should not have to
+    know to add the caveat, which is exactly what went unsaid before."""
+    y_true, y_prob = imbalanced_predictions
+    result = choose_threshold(y_true, y_prob, cost_fp=1.0, cost_fn=6.0)
+
+    assert result.in_sample is True
+    assert result.selection_caveat is not None
+    assert "optimistic" in result.selection_caveat
+
+
+def test_an_out_of_sample_threshold_carries_no_caveat(imbalanced_predictions):
+    """When the caller has genuinely held rows out, the numbers are honest and
+    the caveat would be wrong."""
+    y_true, y_prob = imbalanced_predictions
+    result = choose_threshold(y_true, y_prob, cost_fp=1.0, cost_fn=6.0, in_sample=False)
+
+    assert result.in_sample is False
+    assert result.selection_caveat is None
+
+
+def test_the_in_sample_flag_does_not_change_the_chosen_threshold(imbalanced_predictions):
+    """The flag is a statement about provenance, not an input to the arithmetic —
+    it must not move the optimum."""
+    y_true, y_prob = imbalanced_predictions
+    marked = choose_threshold(y_true, y_prob, cost_fp=1.0, cost_fn=6.0, in_sample=True)
+    unmarked = choose_threshold(y_true, y_prob, cost_fp=1.0, cost_fn=6.0, in_sample=False)
+
+    assert marked.threshold == unmarked.threshold
+    assert marked.expected_cost == unmarked.expected_cost
+
+
 def test_zero_cost_raises():
     """A free error class degenerates the optimum to flag-everything or
     flag-nothing — a result that looks like a decision but is an input artefact.
@@ -437,6 +468,98 @@ def test_mismatched_lengths_raise():
 def test_empty_predictions_raise():
     with pytest.raises(ValueError, match="empty"):
         choose_threshold(np.array([]), np.array([]), cost_fp=1.0, cost_fn=1.0)
+
+
+def _two_folds():
+    """Four rows, two folds, arranged so each fold's selection is hand-checkable.
+
+    Fold A test rows: probs (0.2, y=0), (0.9, y=1). Fold B: (0.4, y=0), (0.8, y=1).
+    With symmetric unit costs:
+      - selecting on B for A: grid {0.4, 0.8} — t=0.8 is cost 0, so t_A = 0.8;
+        applied to A: 0.9 flagged (TP), 0.2 not (TN) — cost 0.
+      - selecting on A for B: grid {0.2, 0.9} — t=0.9 is cost 0, so t_B = 0.9;
+        applied to B: 0.8 not flagged (FN) — cost = cost_fn.
+    """
+    y_true = np.array([0, 1, 0, 1])
+    y_prob = np.array([0.2, 0.9, 0.4, 0.8])
+    folds = [
+        (np.array([2, 3]), np.array([0, 1])),
+        (np.array([0, 1]), np.array([2, 3])),
+    ]
+    return y_true, y_prob, folds
+
+
+def test_out_of_fold_metrics_match_the_hand_computed_evaluation():
+    """Each row is scored at a threshold chosen without it, and the pooled
+    counts must equal the ones traced by hand — including the FN that the
+    in-sample sweep (which reaches cost 0 at t=0.8) would never report."""
+    y_true, y_prob, folds = _two_folds()
+    result = choose_threshold_out_of_fold(y_true, y_prob, folds, cost_fp=1.0, cost_fn=1.0)
+
+    assert result.fold_thresholds == (0.8, 0.9)
+    assert (result.true_positives, result.false_positives) == (1, 0)
+    assert (result.false_negatives, result.true_negatives) == (1, 2)
+    assert result.expected_cost == pytest.approx(1.0)
+    assert result.recall == pytest.approx(0.5)
+    assert result.n_flagged == 1
+    # The deployable threshold is still the full-data optimum...
+    assert result.threshold == pytest.approx(
+        choose_threshold(y_true, y_prob, cost_fp=1.0, cost_fn=1.0).threshold
+    )
+    # ...whose in-sample cost (0) is exactly the optimism the pooled cost corrects.
+    assert result.expected_cost > 0.0
+
+
+def test_out_of_fold_result_needs_no_caveat(imbalanced_predictions):
+    """The point of the exercise: metrics measured on rows the sweep never saw
+    are honest, so `in_sample` is False and the caveat disappears."""
+    y_true, y_prob = imbalanced_predictions
+    n = len(y_true)
+    idx = np.arange(n)
+    folds = [(np.setdiff1d(idx, test), test) for test in np.array_split(idx, 5)]
+
+    result = choose_threshold_out_of_fold(y_true, y_prob, folds, cost_fp=1.0, cost_fn=6.0)
+
+    assert result.in_sample is False
+    assert result.selection_caveat is None
+    assert len(result.fold_thresholds) == 5
+    assert result.true_positives + result.false_positives + result.false_negatives + (
+        result.true_negatives
+    ) == len(y_true)
+
+
+def test_out_of_fold_rejects_a_single_fold():
+    y_true, y_prob, folds = _two_folds()
+    with pytest.raises(ValueError, match="at least 2 folds"):
+        choose_threshold_out_of_fold(y_true, y_prob, folds[:1], cost_fp=1.0, cost_fn=1.0)
+
+
+def test_out_of_fold_rejects_overlapping_folds():
+    y_true, y_prob, _ = _two_folds()
+    folds = [(np.array([2, 3]), np.array([0, 1])), (np.array([0, 1]), np.array([1, 2, 3]))]
+    with pytest.raises(ValueError, match="overlap"):
+        choose_threshold_out_of_fold(y_true, y_prob, folds, cost_fp=1.0, cost_fn=1.0)
+
+
+def test_out_of_fold_rejects_folds_that_skip_rows():
+    """A gap would silently drop rows from the reported metrics — the same
+    missing-vs-inapplicable collapse this toolkit refuses everywhere else."""
+    y_true, y_prob, _ = _two_folds()
+    folds = [(np.array([2, 3]), np.array([0, 1])), (np.array([0, 1]), np.array([2]))]
+    with pytest.raises(ValueError, match="cover"):
+        choose_threshold_out_of_fold(y_true, y_prob, folds, cost_fp=1.0, cost_fn=1.0)
+
+
+def test_out_of_fold_selection_is_pure():
+    y_true, y_prob, folds = _two_folds()
+    true_copy, prob_copy = y_true.copy(), y_prob.copy()
+
+    first = choose_threshold_out_of_fold(y_true, y_prob, folds, cost_fp=2.0, cost_fn=5.0)
+    second = choose_threshold_out_of_fold(y_true, y_prob, folds, cost_fp=2.0, cost_fn=5.0)
+
+    assert first == second
+    np.testing.assert_array_equal(y_true, true_copy)
+    np.testing.assert_array_equal(y_prob, prob_copy)
 
 
 def test_threshold_for_capacity_flags_exactly_the_capacity():
