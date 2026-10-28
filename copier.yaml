@@ -86,7 +86,7 @@ _exclude:
 # These questions determine the scaffold. Later phases either derive their
 # defaults from these answers or are only asked when relevant. Hidden
 # (when: false) questions are still computed and still overridable with -d —
-# that's how CI and /project-genesis drive them non-interactively.
+# that's how CI and /new drive them non-interactively.
 
 project_name:
   type: str
@@ -699,7 +699,7 @@ ts_agent_framework:
 # — a Next.js frontend + a separate FastAPI backend, sharing identity via
 # Supabase Auth JWT rather than sharing a process. Mutually exclusive in
 # practice with ts_agent_framework=vercel_ai_sdk (that path assumes the
-# agent's own API routes ARE the backend); /project-genesis should flag the
+# agent's own API routes ARE the backend); /new should flag the
 # conflict rather than copier enforcing it structurally.
 frontend_backend_topology:
   type: str
@@ -1089,7 +1089,7 @@ include_lifecycle_docs:
 # nbks/ used to ride entirely on has_corpus_pipeline — the corpus_analysis.py
 # notebook was the only thing in it, so a non-corpus render dropped the whole
 # directory. An ML project is the case where notebooks matter MOST (the
-# prototype-genesis ML branch treats the EDA notebook as load-bearing: templated
+# /new ML branch treats the EDA notebook as load-bearing: templated
 # code arrives while the operator looks at real data), so the gate becomes the
 # union of the two reasons a project has notebooks. Which notebook FILES ship is
 # still decided per-reason — see the two _tasks cleanups.

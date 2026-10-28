@@ -1,41 +1,99 @@
 ---
-name: project-genesis
+name: new
 description: >
-  Scope a new AI project through a short real conversation, then run this
-  template's copier non-interactively to scaffold it — instead of answering
-  ~20 raw copier prompts blind. Triggers on: "new ai project", "scaffold a
-  project from this template", "start a new agent project", "/project-genesis".
+  Front door for starting something new. Routes AI-shaped from ML-shaped work, picks
+  where it lands (a run under galactus's runs/, or a standalone repo rendered from
+  this repo's copier template, Python or TypeScript), then walks only that path.
+  Triggers on: "new project", "new prototype", "new poc", "start something new",
+  "scaffold a project", "back at it again", "/new".
+disable-model-invocation: true
+allowed-tools: Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion
 ---
 
-# /project-genesis
+# /new
 
-Thin orchestrator around this repo's own `copier.yaml` — same spirit as
-`template/.claude/skills/new-agent/SKILL.md` (ask real questions, confirm
-before acting, don't silently default), scoped much narrower than puffin's
-`/genesis`. This is a **project-scoping-to-copier-answers translator**, not an
-identity-emergence protocol — no multi-phase engagement ritual, no identity
-files. That distinction is deliberate: see
-`.claude/docs/plans/2026-07-12-puffin-integration.md`'s "Out of Scope" section,
-which already decided against porting puffin's genesis verbatim into this
-template. If you're tempted to add phases, growth logs, or reflection steps
-here, that's scope creep back toward the thing that was explicitly ruled out —
-don't.
+Three questions decide everything downstream, so they come first and in this order:
+**what shape** (AI or ML), **where it lands** (a run here, or its own repo), and for a
+repo, **which language**. Ask the first, commit to it, then the next. Do not walk two
+paths in one session.
+
+Ask real questions, confirm before acting, never silently default. This is a
+scoping-to-scaffold translator, not an onboarding ritual: no phases, growth logs or
+reflection steps.
 
 ## Usage
 
 ```
-/project-genesis [--output path/to/dir]
+/new [--branch ai|ml] [--land run|repo] [--output path] [--execute]
 ```
 
 | Arg | Default | Description |
 |-----|---------|-------------|
-| `--output` | ask the user | Where to render the project (existing or new dir) |
+| `--branch` | ask at gate 0 | Skip the shape question when you already know |
+| `--land` | ask at gate 1 | `run` → `runs/<branch>/<slug>/` here; `repo` → copier render |
+| `--output` | derived from the name | Run directory, or the repo path to render into |
+| `--execute` | off (**dry-run**) | Without it, every step names the write and stops |
 
-## Steps
+**Dry-run is the default and it is not a formality.** Without `--execute`, write nothing:
+name the file you would write and the command you would run, then wait.
+
+## Gate 0: shape
+
+> "Is this **AI-shaped** (an agent, RAG, a generation service, an LLM in the loop) or
+> **ML-shaped** (tabular data, a target column, a model that predicts)?"
+
+When it is unclear, ask: **is there a labelled outcome column in a frame you already
+have?** If yes, it is ML, however much an LLM might appear later. A fraud model with an
+LLM narrative layer is an ML project with an AI consumer: pick the branch that owns the
+*risk* and note the other as downstream.
+
+| | AI branch | ML branch |
+|---|---|---|
+| Specs loaded | `.claude/specs/agent-*.md` (start `agent-architecture`) + `agent-uncertainty` | `python.md` only; **no `agent-*` spec** |
+| Reference run | `runs/ai/marketing-comms/` | `runs/ml/credit/` |
+| Dominant risk | ungrounded generation, silent contract breach | leakage, imbalance, uncalibrated scores |
+
+**Say which specs you are skipping and why.** Silent routing is indistinguishable from
+no routing.
+
+**ML branch:** read `reference/ml-branch.md` and walk its gates 1–7. It lands as a run
+(`runs/ml/<slug>/` on the root `ml/` toolkit). The template's `ml` add-on renders ML on
+top of an agent scaffold, so it is not a clean ML project yet. Gate 7 findings are the
+spec for one.
+
+## Gate 1: landing (AI branch)
+
+| | Run (`--land run`) | Repo (`--land repo`) |
+|---|---|---|
+| Lands in | `runs/ai/<slug>/` in galactus | its own directory, rendered by copier |
+| Good for | a spike, a demo, a thesis to test in an afternoon | something that will be deployed, shared or kept |
+| Next | `/proto-scope` → `/proto-design` → BUILD band | Steps 0–6 below, then the project's own skills |
+
+Default to **run** when the operator says spike, demo, or try. A run can graduate to a
+repo later; a repo that should have been a spike is weight carried for nothing.
+
+For a run: create `runs/ai/<slug>/{src,tests}/`, add `runs/ai/<slug>/tests` to
+`testpaths` in `pyproject.toml` (a missing entry collects zero tests and reads as
+passing), then hand off to `/proto-scope`. Stop here.
+
+## Gate 2: language (repo only)
+
+Ask it out loud. Do not let it fall through to the default:
+
+> "Python, TypeScript, or both?"
+
+- **python**: ships the working example agents, evals and `llm_kit`.
+- **typescript**: a real Node/TS backend with its own lint, typecheck and test tooling.
+  Pick it when the operator lives in TS or the thing is a Next.js / Vercel AI SDK app.
+- **both**: only when there is a concrete reason for two runtimes.
+
+Record it as `primary_backend_language` in Step 2, then continue at Step 0.
+
+## Repo steps
 
 ### Step 0 — Check for existing DESIGN.md and planning docs
 
-If a `DESIGN.md` or `.claude/docs/DESIGN.md` exists (produced by `/scope-poc`), read it first.
+If a `DESIGN.md` or `.claude/docs/DESIGN.md` exists (produced by `/proto-scope`), read it first.
 Also scan for planning docs that pre-answer infrastructure questions: `roadmap.md`,
 `.claude/docs/milestones/*.md`, `.claude/docs/plans/*.md` — milestone files sometimes contain
 the literal copier arguments (a live dry-run found `vector_backend=postgres` and
@@ -43,8 +101,8 @@ the literal copier arguments (a live dry-run found `vector_backend=postgres` and
 already answered — but ratify inherited decisions out loud ("your milestone pins X — confirm?")
 rather than silently adopting them. Surface only the questions that remain open.
 
-If no DESIGN.md exists, consider suggesting `/scope-poc` before continuing — especially if the
-user hasn't yet defined actors, MVP scope, or key architectural decisions. `/project-genesis`
+If no DESIGN.md exists, consider suggesting `/proto-scope` before continuing — especially if the
+user hasn't yet defined actors, MVP scope, or key architectural decisions. `/new`
 works without it, but infrastructure choices made without a design are guesses.
 
 If the target directory already contains a `.copier-answers.yml`, this is a
@@ -84,8 +142,8 @@ confirmations. Present: "Given your answers, I'm setting these — correct anyth
 wrong:"
 
 - `project_slug` → `{{ project_name.lower().replace(' ', '-') }}`
-- `primary_backend_language` → `python` (default; only genuinely open if the
-  user has an existing TS codebase — if they do, ask now)
+- `primary_backend_language` → already asked at gate 2. Always write it to the
+  answers file, even when it is `python`, so the choice is on record.
 - `deployment_target` → derived from `primary_users`: `internal` → `docker`;
   `customers`/`public_api` → `cloud`; `developers` → `local`. (Cheap wrong
   guess — one CD workflow + DESIGN.md row. Surface the derivation, not a blank prompt.)
@@ -105,7 +163,7 @@ wrong:"
 The eight derived variables (`project_slug`, `primary_backend_language`,
 `deployment_target`, `data_sensitivity`, `agent_tools`, `agent_memory`,
 `ticket_prefix`, `enable_macos_notifications`) are all `when: false` in
-`copier.yaml` — they resolve from defaults. The genesis skill's job is to
+`copier.yaml` — they resolve from defaults. This skill's job is to
 confirm them in conversation, not to leave them as invisible guesses.
 
 **Phase 2/3 — only when the conversation raises them (otherwise the seeded
@@ -183,13 +241,13 @@ actually said, ask directly instead of assuming — same discipline as
 
 ### Step 4 — Write the answers file
 
-Write the answers from Step 2 to `/tmp/genesis-answers.yml`. Do not run copier
+Write the answers from Step 2 to `/tmp/new-answers.yml`. Do not run copier
 here — the file is the deliverable of this step, and it is reviewable before
 anything hits disk.
 
 ```yaml
-# /tmp/genesis-answers.yml  — generated by /project-genesis
-# Review, then run: make project ANSWERS=/tmp/genesis-answers.yml output_dir=<path>
+# /tmp/new-answers.yml  — generated by /new
+# Review, then run: make -C ~/workspace/galactus project ANSWERS=/tmp/new-answers.yml output_dir=<path>
 project_name_input: <name>
 project_slug: <slug>
 project_description: <description>
@@ -209,10 +267,10 @@ from Step 5. **Do not run it — the user runs it after review.**
 
 ### Step 5 — Review and render
 
-Tell the user to review `/tmp/genesis-answers.yml`, then render:
+Tell the user to review `/tmp/new-answers.yml`, then render:
 
 ```bash
-make project ANSWERS=/tmp/genesis-answers.yml output_dir=<absolute_path>
+make -C ~/workspace/galactus project ANSWERS=/tmp/new-answers.yml output_dir=<absolute_path>
 ```
 
 Resolve `<output_dir>` to an absolute path first (e.g. `mkdir -p ~/workspace/my-project && cd ~/workspace/my-project && pwd`) — a relative path has previously caused a broken `mv` mid-render.
@@ -304,7 +362,7 @@ inside the generated project.
 - If the conversation reveals a need this template genuinely can't scaffold
   (a capability with no corresponding copier toggle), say so explicitly rather
   than silently dropping it — same reporting discipline as `new-agent`'s Step 4.
-- **Recommended sequence:** `/scope-poc` (design interview → DESIGN.md) → `/project-genesis`
-  (infrastructure interview → copier). Running `/project-genesis` alone is valid but means
+- **Recommended sequence:** `/proto-scope` (design interview → DESIGN.md) → `/new`
+  (infrastructure interview → copier). Running `/new` alone is valid but means
   infrastructure choices are made without design context. The generated project includes a
   blank `DESIGN.md` stub as a reminder to fill it in.

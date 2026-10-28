@@ -16,7 +16,7 @@ description: >
 The re-entry front door for a **rendered** project. Genesis scaffolds the base
 and one shape example; everything deferred lands here, over time, when its
 trigger fires. This skill is the capability-focused wrapper around
-`project-genesis`'s §Re-entry mechanism — same engine (`copier update`), same
+`/new`'s §Re-entry mechanism — same engine (`copier update`), same
 clean-tree gate, but you name a *capability* instead of raw copier answers.
 
 **One rule above all:** `.copier-answers.yml` is the scaffold state, and
@@ -64,7 +64,7 @@ full new list, existing entries included, or copier will drop the ones you omit.
 ### Step 1 — Confirm this is a rendered project, in re-entry
 
 - `.copier-answers.yml` present → yes. Absent → this isn't a scaffolded project;
-  the user wants `/project-genesis` (first render), not this. Say so and stop.
+  the user wants `/new` (first render), not this. Say so and stop.
 - Read `.copier-answers.yml`: `_src_path` (template source), `_commit` (the
   version this project tracks), and every answered variable — that's the
   baseline you're mutating one capability at a time.
@@ -79,7 +79,7 @@ git status --porcelain
 a hard gate, not a warning: `copier update` merges the template diff on top of
 the working tree, and running it over uncommitted work produces conflicts that
 git cannot recover (the pre-diff state is gone). Same rule `/template-update`
-and `/project-genesis` §Re-entry enforce — a capability add is exactly the case
+and `/new` §Re-entry enforce — a capability add is exactly the case
 they're guarding. Do not offer a `--force`; there isn't one.
 
 ### Step 3 — Resolve the capability to concrete answers
@@ -94,7 +94,7 @@ From Step 1's baseline + the request, build the `-d` list:
   `postgres` vs `duckdb`). "I don't know" → take copier's derived default; note
   it in the report.
 - Confirm the derived `-d` list back to the user before running anything — same
-  "don't silently default" discipline as `project-genesis`.
+  "don't silently default" discipline as `/new`.
 
 ### Step 4 — Run copier update
 

@@ -49,19 +49,19 @@ verification loop.
 
 ## Quick start
 
-**Recommended sequence (two skills):**
+**Recommended sequence (two skills, both live in galactus's `.claude/skills/`):**
 
-1. `/scope-poc` — system design interview. Asks about actors, problem, MVP scope, and key architectural
-   decisions before touching infrastructure. Produces `DESIGN.md`. DSSG-aware: recognizes
-   `nonprofit-success-ai` and `project-mgmt-ai` and applies shared platform context automatically.
+1. `/proto-scope` — system design interview. Asks about actors, problem, MVP scope, and key
+   architectural decisions before touching infrastructure. Produces `DESIGN.md`. Start with
+   `/proto-scope discovery` when all you have is a pain point.
 
-2. `/project-genesis` — infrastructure interview. Reads `DESIGN.md` if it exists (many questions
-   are already answered), confirms the short scoping set (project type, users, language, external
-   systems, deployment, conventions), then runs copier non-interactively. Architecture (agent framework,
-   vector backend, TypeScript, MCP, integrations, eval metrics) is no longer asked — it's derived from
-   `project_type` and added later as capabilities via `copier update -d` (`/add-capability`).
+2. `/new` — routes AI vs ML, picks run-in-galactus vs standalone repo, asks the language
+   (Python, TypeScript or both), then for a repo runs the infrastructure interview and writes
+   a copier answers file. Reads `DESIGN.md` if it exists. Architecture (agent framework,
+   vector backend, MCP, integrations, eval metrics) is derived from `project_type` and added
+   later as capabilities via `copier update -d` (`/add-capability`).
 
-Running `/project-genesis` alone (skipping `/scope-poc`) is valid — the generated project includes a
+Running `/new` alone (skipping `/proto-scope`) is valid — the generated project includes a
 blank `DESIGN.md` stub as a reminder to fill in the design before sprint 1.
 
 **Power-user/scriptable path** — the same copier prompts directly:
@@ -125,7 +125,7 @@ Everything else is **inferred, never asked**: `source_root` (`src`), `eval_root`
 (false only for the layer-onto-existing-repo project type), `has_typescript`, `has_corpus_pipeline`, and
 the derived architecture + `include_*` toggles above. Every inferred/`-d`-only value remains overridable
 non-interactively — `-d source_root=lib`, `-d primary_chat_agent=both`, `-d include_mcp_server=true`,
-`-d include_ml=true` all still work, which is how CI and `/project-genesis` drive the template.
+`-d include_ml=true` all still work, which is how CI and `/new` drive the template.
 
 ## Updating a project that already used this template
 

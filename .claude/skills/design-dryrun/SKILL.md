@@ -5,7 +5,7 @@ description: >
   nonprofit scenarios. Validates artifact handoffs, checks that the right questions
   are asked/skipped, and logs friction. Use for: regression testing the skill
   pipeline after changes, onboarding new skill contributors, validating that
-  /project-discovery → /scope-poc → /project-genesis produces coherent results.
+  /proto-scope discovery → /proto-scope → /new produces coherent results.
   Triggers on: "/design-dryrun", "test the discovery pipeline", "smoke test skills",
   "validate the design flow", "run dryrun scenarios".
 ---
@@ -13,11 +13,11 @@ description: >
 # /design-dryrun
 
 Automated smoke test for the design skill pipeline. Simulates a volunteer walking
-through `/project-discovery` → `/scope-poc` → (optionally) `/project-genesis` with
+through `/proto-scope discovery` → `/proto-scope` → (optionally) `/new` with
 sample nonprofit scenarios. Validates that:
 - The right archetype is selected for each pain point
 - Project Profiles contain all required fields
-- `/scope-poc` correctly consumes the profile (skips pre-answered, asks remaining)
+- `/proto-scope` correctly consumes the profile (skips pre-answered, asks remaining)
 - Copier hints map to valid parameter values
 - The pipeline produces coherent, non-contradictory artifacts
 
@@ -72,7 +72,7 @@ Read full scenario details from `reference/scenarios.md`. Summary:
 
 For each scenario, trace through the pipeline step by step:
 
-### Stage 1: /project-discovery simulation
+### Stage 1: /proto-scope discovery simulation
 
 1. Present the scenario's pain point as if a volunteer said it
 2. Trace through the discovery skill's 6 steps with the scenario's inputs
@@ -91,9 +91,9 @@ For each scenario, trace through the pipeline step by step:
    - If external users → primary_users should be `customers` or `public_api`
 6. Write the simulated Project Profile to a temp location
 
-### Stage 2: /scope-poc simulation (if depth >= scope)
+### Stage 2: /proto-scope simulation (if depth >= scope)
 
-1. Feed the simulated profile to `/scope-poc`
+1. Feed the simulated profile to `/proto-scope`
 2. **Checkpoint 2.1:** Does Step 0.6 fire? (finds and reads the profile)
 3. **Checkpoint 2.2:** Are the right fields pre-filled (confirm-only, not re-asked)?
    - Pain point → Tier 1 Q1 (should be confirm-only)
@@ -111,7 +111,7 @@ For each scenario, trace through the pipeline step by step:
 
 ### Stage 3: Copier validation (if depth == full)
 
-1. Check that all copier hints from the profile + decisions from scope-poc map to valid
+1. Check that all copier hints from the profile + decisions from proto-scope map to valid
    copier.yaml parameters and values
 2. **Checkpoint 3.1:** No parameter references a non-existent copier.yaml question
 3. **Checkpoint 3.2:** No value is outside the declared choices for its parameter
@@ -173,8 +173,8 @@ Write to `--output` path in this format:
 
 ---
 
-**Upstream:** Run this after modifying any of: `/project-discovery`, `/scope-poc`,
-`/project-genesis`, or the reference cards. Changes to those skills should not
+**Upstream:** Run this after modifying any of: `/proto-scope discovery`, `/proto-scope`,
+`/new`, or the reference cards. Changes to those skills should not
 introduce friction that wasn't there before.
 
 **Next step:** If friction entries exist, fix them. Then re-run `/design-dryrun`

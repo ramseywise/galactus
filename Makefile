@@ -123,7 +123,7 @@ run_copier:
 	output_dir=$$(cd "$$output_dir" && pwd); \
 	copier copy $(VCS_REF) $(input_dir) "$$output_dir" --trust -d "project_name_input=$$project_name"
 
-## Render a project from a genesis answers file produced by /project-genesis.
+## Render a project from a genesis answers file produced by /new.
 ## Usage: make project ANSWERS=/tmp/genesis-answers.yml output_dir=~/workspace/my-project
 ##        make project ANSWERS=/tmp/genesis-answers.yml output_dir=~/workspace/my-project OVERWRITE=1
 project: check_tools

@@ -59,13 +59,16 @@ starting from nothing is `/proto-scope discovery` → `/proto-scope` → `/proto
 a session that already has a `DESIGN.md` enters at `/proto-design`, and one that already
 has a spec skips FRAME entirely.
 
-Scaffolding is not a band here. A run of the pipeline is a subdirectory under `runs/ai/`
-or `runs/ml/`, not a generated repo; `ai-project-template` owns the copier stage.
+**`/new` is the front door, before any band.** It routes AI vs ML and picks where the
+work lands: a run (a subdirectory under `runs/ai/` or `runs/ml/`, which then enters FRAME)
+or a standalone repo rendered from this repo's copier template (`copier.yaml` +
+`template/`, Python or TypeScript). See `TEMPLATE.md` for the template itself.
+
 `runs/_index/` is reserved for run records — one per training execution, a different grain
 from the run directory that produced it, which is why the name is prefixed: `_index` can
-never collide with a run. **galactus does not define the record shape.** The registry is
-`ai-project-template`'s `experiments/` module (`record`, `provenance`, `fingerprint`, with a
-`NotApplicable` sentinel so a missing metric never reads as `0.0`); galactus consumes it.
+never collide with a run. **Runs do not define the record shape.** It lives in the root
+`experiments/` module, which the template also ships (`record`, `provenance`, `fingerprint`,
+with a `NotApplicable` sentinel so a missing metric never reads as `0.0`); runs consume it.
 Nothing writes here yet — a run's result currently lives as a `summary.json` under its own
 `docs/`, which is why the lending baseline could be overturned but not reproduced.
 
@@ -96,6 +99,7 @@ moment a load-bearing assumption shows up. `decide-shared` is their shared contr
 | `/ml-transform` | `/proto-research` on `Track: ml` | Profiles a frame; emits the ColumnPlan. Advisory — never transforms silently |
 | `/ml-select` | `/proto-research` on `Track: ml` | The `(family, output)` pair + training config. Refuses to run before profiling |
 | `/new-agent` | `/proto-execute` | Scaffolds an ADK or LangGraph agent |
+| `/template-update` | inside a generated project | Walks a `copier update` from this template |
 | `/mcp-builder` | `/proto-execute` | Reference for writing an MCP server. Vendored; carries its own LICENSE |
 | `/proto-harden` | after `/proto-execute`, before `/proto-review`; or any run about to demo | Walks the marketing-comms hardening checklist against a run dir and fixes gaps in-session. Never touches `Status:` |
 | `/skill-creator` | any | Creates or edits a skill in this repo |

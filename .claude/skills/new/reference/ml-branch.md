@@ -1,48 +1,14 @@
----
-name: prototype-genesis
-description: >
-  Front door for a new prototype in this repo. Routes AI-shaped from ML-shaped work at
-  gate 0, then walks the branch's gates in order — loading only that branch's specs and
-  materializing only that branch's payload. Composes /scope-poc, /ml-transform, /ml-select
-  rather than re-asking their questions. Dry-run by default: proposes at every gate and
-  waits for confirmation before writing anything.
-  Triggers on: "new prototype", "start a prototype", "prototyping a new project",
-  "back at it again", "new poc", "/prototype-genesis".
-disable-model-invocation: true
-allowed-tools: Read, Grep, Glob, Bash, Write, Edit, AskUserQuestion
----
+# /new: ML branch
 
-# /prototype-genesis
-
-The gate-0 router the pipeline was missing. `/scope-poc` asks *what to build* and
-`/project-genesis` asks *how to scaffold it* — both assume the work is AI-shaped. Tabular
-ML has a different spine: the dominant risk lives in the data you were handed, and it is
-found by looking, not by reasoning.
-
-This skill picks the branch first, then walks it.
-
-## Usage
-
-```bash
-/prototype-genesis [--branch ai|ml] [--poc pocs/<branch>/<slug>] [--execute]
-```
-
-| Arg | Default | Description |
-|-----|---------|-------------|
-| `--branch` | ask at gate 0 | Skip the routing question when you already know |
-| `--poc` | derived from the problem name | Where the prototype lands |
-| `--execute` | off — **dry-run** | Without it, every gate proposes and waits |
-
-**Dry-run is the default and it is not a formality.** Without `--execute`, this skill
-writes nothing: it names the file it would write and the command it would run, then stops
-for confirmation. A gate that "just" scaffolds boilerplate is still a gate — the operator
-decides, every time.
+Loaded by `/new` when gate 0 routes to ML. Tabular ML has a different spine from
+AI work: the dominant risk lives in the data you were handed, and it is found by looking,
+not by reasoning. Dry-run rules from `/new` apply at every gate.
 
 ---
 
 ## Interview conventions
 
-Inherited verbatim from `/ml-select` and `/scope-poc`, because a second dialect of the
+Inherited verbatim from `/ml-select` and `/proto-scope`, because a second dialect of the
 same discipline is how the discipline erodes:
 
 - **"I don't know" is a first-class answer.** Park it with a concrete revisit trigger.
@@ -56,47 +22,6 @@ same discipline is how the discipline erodes:
   ratifies what exists and walks only the unfinished gates.
 - **Never present a non-decision as a choice.** The baseline model always runs. Say that
   it runs; do not offer it as an option.
-
----
-
-## Gate 0 — Route
-
-Ask one question, then commit to a branch. Greet the returning operator like a colleague,
-not a form.
-
-> "Prototyping again. Is this **AI-shaped** — an agent, RAG, a generation service, an LLM
-> in the loop — or **ML-shaped**: tabular data, a target column, a model that predicts?"
-
-The distinguishing question when it is unclear: **is there a labelled outcome column in a
-frame you already have?** If yes, it is ML however much an LLM might also appear later.
-If the deliverable is a system that reasons over text and there is no target column, it is
-AI.
-
-**Some projects are both.** A fraud model with an LLM narrative layer is an ML prototype
-with an AI consumer. Say so out loud, pick the branch that owns the *risk*, and note the
-other as a downstream consumer. Do not walk both branches in one session — the gates
-interleave badly and the specs contradict each other on purpose.
-
-### What the branch decides
-
-| | AI branch | ML branch |
-|---|---|---|
-| Specs loaded | `.claude/specs/agent-*.md` (start `agent-architecture`), plus `agent-uncertainty` | `python.md` only; **no `agent-*` spec is read** |
-| Design skill | `/scope-poc` → `/project-genesis` | this skill's gates 1–7 |
-| Payload | `src/` agents, evals, guardrails | `ml/` — vendored at repo root, 33 modules |
-| Reference POC | `runs/ai/marketing-comms/` (277 tests) | `runs/ml/credit/` |
-| Dominant risk | ungrounded generation, silent contract breach | **leakage**, imbalance, uncalibrated scores |
-
-**Say which specs you are skipping and why.** "ML branch — I am not loading the ten
-`agent-*` specs" is the observable proof the routing worked. Silent routing is
-indistinguishable from no routing.
-
-**Payload note (current, 2026-08-12):** the ML payload is vendored at `ml/` in this repo
-and passes its own suite (158 passed, 6 skipped). The template's `include_ml=true` renders
-ML *on top of* a full agentic scaffold rather than selecting an ML-shaped project — so
-there is no clean ML branch to render from yet. Use the vendored `ml/`; do not run copier
-for the ML branch until the template has a real `ml` project type. Record what this
-walkthrough needed at gate 7 — that list is the spec for the template's ML branch.
 
 ---
 
@@ -338,37 +263,15 @@ Then **write it back**, in the right place:
 | Gap | Lands in |
 |---|---|
 | A question asked badly, or missing | this file's gate |
-| A missing notebook cell | `pocs/ml/credit/notebooks/01-eda.ipynb` (narrative) |
-| A missing EDA function | `pocs/ml/credit/src/eda.py` (logic) |
-| A missing pipeline capability | `ml/` — and upstream in `ai-project-template` |
+| A missing notebook cell | `runs/ml/credit/notebooks/01-eda.ipynb` (narrative) |
+| A missing EDA function | `runs/ml/credit/notebooks/eda.py` (logic) |
+| A missing pipeline capability | root `ml/` (the template ships it) |
 | Something the template's ML branch needs | `.claude/docs/plans/` — the ML-branch spec |
 | A convention that should be enforced, not asked | a hook, a linter rule, or a test |
 
 That last row is the repo's own standard: a rule you rely on belongs in a hook, not in
 prose. If a gate above can be skipped with no consequence, it is documentation — encode it
 at the strongest available layer instead.
-
----
-
-# AI branch — gates 1 through 5
-
-The AI branch is not a stub, but it is **not walked in the same session as the ML branch**.
-It composes existing skills rather than adding gates:
-
-| Gate | Skill | Produces |
-|---|---|---|
-| 1 · Design | `/scope-poc` | `DESIGN.md` — problem, actors, MVP scope, key decisions |
-| 2 · Specs | read `.claude/specs/agent-architecture.md`, then the layers it indexes | the five layers answered or explicitly deferred |
-| 3 · Scaffold | `/project-genesis` → copier | project structure, evals, guardrails |
-| 4 · Build | `/workflow-plan` → `/workflow-execute` | code, plan doc as the bus |
-| 5 · Review | `/workflow-review` + the `review-*` dimensions | verdict against `## Plan` |
-
-Gate 2 is where the branches genuinely diverge: `agent-uncertainty.md` cuts across every
-layer and owns abstention, asymmetric cost, and reversibility. Read it alongside the layer
-ref, not instead of one. `agent-voice.md` applies **only** to duplex/streaming designs;
-where the design is request → response → done, ignore it entirely.
-
----
 
 ## Constraints
 

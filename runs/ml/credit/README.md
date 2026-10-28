@@ -1,6 +1,6 @@
 # credit — tabular ML prototype
 
-Reference POC for the **ML branch** of `/prototype-genesis`, the way
+Reference POC for the **ML branch** of `/new`, the way
 `runs/ai/marketing-comms/` is the reference for the AI branch.
 
 Binary classification: predict credit default from aggregated account history.

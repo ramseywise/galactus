@@ -73,7 +73,7 @@ that's currently done manually and unreliably.
 | `primary_users` | `internal` | Maria and tutors (staff/volunteers) |
 ```
 
-### Expected scope-poc behavior
+### Expected proto-scope behavior
 
 **Pre-filled (confirm-only):**
 - Tier 1 Q1: "Maria reconstructs meeting decisions manually" ← pain point
@@ -172,7 +172,7 @@ An experienced attorney does this mentally; the AI replicates that lookup capabi
 | `vector_backend` | `duckdb` | 700 pages is well within DuckDB's capacity |
 ```
 
-### Expected scope-poc behavior
+### Expected proto-scope behavior
 
 **Pre-filled (confirm-only):**
 - Tier 1 Q1: Volunteer lookup bottleneck (2-3 hours per intake)
@@ -268,7 +268,7 @@ assemble and reformat it into each funder's required structure.
 | `primary_chat_agent` | `none` | Simple generation, not a chat agent |
 ```
 
-### Expected scope-poc behavior
+### Expected proto-scope behavior
 
 **Pre-filled (confirm-only):**
 - Tier 1 Q1: Report reformatting bottleneck (full day per report, 15x/year)
