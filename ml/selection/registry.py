@@ -25,6 +25,8 @@ floor, and a run without one has nothing to be "better than".
 
 from __future__ import annotations
 
+import functools
+import importlib
 import importlib.util
 import logging
 from collections.abc import Callable
@@ -32,6 +34,19 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
+
+
+@functools.cache
+def _importable(module: str) -> bool:
+    try:
+        if importlib.util.find_spec(module) is None:
+            return False
+        importlib.import_module(module)
+    except (ImportError, ValueError, OSError) as exc:
+        logger.warning("optional dependency %r is installed but does not load: %s", module, exc)
+        return False
+    return True
+
 
 Family = Literal["classification", "clustering", "prediction"]
 
@@ -61,16 +76,13 @@ class ModelSpec:
     def available(self) -> bool:
         """True when the spec's optional dependency is importable (or it has none).
 
-        Uses `importlib.util.find_spec` rather than a try/except import so that
-        checking availability never pays the cost of importing a heavy package
-        we may not end up using.
+        `find_spec` alone is not enough: lightgbm installs fine on a Mac without
+        libomp and then raises OSError at import, which crashed every comparison
+        that included it. So the first check really imports, and the answer is cached.
         """
         if self.optional_dep is None:
             return True
-        try:
-            return importlib.util.find_spec(self.optional_dep) is not None
-        except (ImportError, ValueError):
-            return False
+        return _importable(self.optional_dep)
 
     def build(self, **overrides: Any) -> Any:
         """Instantiate the estimator. Raises the underlying ImportError if the
