@@ -1,4 +1,5 @@
-include ~/.claude/Makefile.common
+# Personal targets (ship, pull, md-lint, ...) — optional, absent in CI.
+-include ~/.claude/Makefile.common
 
 .PHONY: help lint lint-render test new_project new_project_dev run_copier check_tools preview_defaults project
 
