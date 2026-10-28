@@ -209,6 +209,16 @@ has_typescript:
   default: "{{ primary_backend_language in ['typescript', 'both'] if scaffold_full_project else false }}"
   when: false
 
+# Derived: does this render ship Python application code? False for a
+# typescript-only backend, which then gets no Python chat agent, rag_agent,
+# core/, evals/, llm_kit/ or root tests/ — its agent, evals and tests live
+# under ts_project_root instead. Every Python-code flag below folds this in,
+# so the Makefile, docs and _tasks follow without their own language checks.
+has_python:
+  type: bool
+  default: "{{ primary_backend_language in ['python', 'both'] }}"
+  when: false
+
 external_systems:
   type: str
   multiselect: true
@@ -437,7 +447,7 @@ primary_chat_agent:
     _external_data.design.stages is defined and
     _external_data.design.stages.discovery == 'complete' and
     _external_data.design.backends.python.enabled) else
-    ('lg_agent' if project_type in ['chat_app', 'agent', 'workflow', 'prototype'] else 'none') }}
+    ('lg_agent' if has_python and project_type in ['chat_app', 'agent', 'workflow', 'prototype'] else 'none') }}
   # A3: no longer asked at genesis — project_type picks the one shape example
   # (chat shapes → lg_agent; everything else → none). A second framework is a
   # tier-3 capability added later via `copier update -d primary_chat_agent=…`
@@ -499,7 +509,7 @@ include_rag_agent:
     if (_external_data.design is defined and _external_data.design and
     _external_data.design.stages is defined and
     _external_data.design.stages.discovery == 'complete') else
-    (project_type == 'rag') }}
+    (has_python and project_type == 'rag') }}
   # A3: no longer asked at genesis — on for the rag shape (its example), off
   # elsewhere. A tier-3 capability otherwise: add later with
   # `copier update -d include_rag_agent=true` (/add-rag).
@@ -1050,7 +1060,7 @@ include_ml:
 # introduces the flag without changing any existing render.
 include_llm_kit:
   type: bool
-  default: "{{ not is_ml_shaped }}"
+  default: "{{ has_python and not is_ml_shaped }}"
   when: false
 
 # The eval suite (evals/) grades model interactions — an ML project measures its
@@ -1064,7 +1074,7 @@ include_llm_kit:
 # discarded with _scaffold/.
 include_eval_suite:
   type: bool
-  default: "{{ scaffold_full_project and (not is_ml_shaped or has_corpus_pipeline) }}"
+  default: "{{ scaffold_full_project and has_python and (not is_ml_shaped or has_corpus_pipeline) }}"
   when: false
 
 # core/ is the general ETL home for the corpus/document pipeline that feeds
@@ -1074,7 +1084,7 @@ include_eval_suite:
 # rag_agent opted in, core/pipelines/corpus/ is exactly what core/ is for.
 include_core_etl:
   type: bool
-  default: "{{ scaffold_full_project and (not is_ml_shaped or has_corpus_pipeline) }}"
+  default: "{{ scaffold_full_project and has_python and (not is_ml_shaped or has_corpus_pipeline) }}"
   when: false
 
 # The agentic lifecycle docs (LIFECYCLE/DELIVERY/DEPLOYMENT/RELEASE + SANYI) are
@@ -1657,7 +1667,7 @@ _tasks:
   # files (pyproject.toml, Makefile, …) stay `mv` — `mv file ./` overwrites fine
   # even on re-render.
   - >-
-    {{ ('mv ' ~ _copier_conf.dst_path ~ '/_scaffold/pyproject.toml '
+    {{ ('mv ' ~ (_copier_conf.dst_path ~ '/_scaffold/pyproject.toml ' if has_python else '')
     ~ _copier_conf.dst_path ~ '/_scaffold/Makefile '
     ~ _copier_conf.dst_path ~ '/_scaffold/.gitignore '
     ~ _copier_conf.dst_path ~ '/_scaffold/.pre-commit-config.yaml '
@@ -1686,11 +1696,12 @@ _tasks:
     ~ _copier_conf.dst_path ~ '/_scaffold/configs/. ' ~ _copier_conf.dst_path ~ '/configs/'
     ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/data && cp -R '
     ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/data/. ' ~ _copier_conf.dst_path ~ '/data/'
-    ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/tests && cp -R '
-    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/. ' ~ _copier_conf.dst_path ~ '/tests/'
     ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/infrastructure && cp -R '
     ~ _copier_conf.dst_path ~ '/_scaffold/infrastructure/. ' ~ _copier_conf.dst_path ~ '/infrastructure/'
     ) if scaffold_full_project else 'true' }}
+  # Root tests/ is the Python suite (pytest + conftest); a typescript-only render
+  # keeps its tests under ts_project_root, so it gets none of this.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/tests && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/. ' ~ _copier_conf.dst_path ~ '/tests/') if (scaffold_full_project and has_python) else 'true' }}"
   # Separate merges (not part of the block above) — core/ and evals/ are removed
   # from staging entirely for the ml_model shape, so their source dirs may not
   # exist. Folding a missing source into the chained && block aborts the whole

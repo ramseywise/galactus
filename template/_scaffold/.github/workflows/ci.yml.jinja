@@ -6,6 +6,7 @@ on:
   pull_request:
 
 jobs:
+{%- if has_python %}
   # Lint + test come from the shared reusable workflow in ai-project-template,
   # so rendered projects and the standalone production repos stay on one
   # definition. Lint paths are scoped to this project's own source — see the
@@ -15,6 +16,27 @@ jobs:
     with:
       lint-paths: "{{ py_project_root }}/{{ ai_source_root }} core {{ eval_root }} tests"
       test-command: "uv run pytest tests/unit -q"
+{%- endif %}
+{%- if scaffold_full_project and has_typescript and ts_project_root != '' and primary_backend_language in ['typescript', 'both'] and frontend_backend_topology != 'split_service' %}
+
+  # The TS backend service — same steps as the Makefile's ts-* targets. No
+  # lockfile ships with the scaffold, so this installs rather than `npm ci`;
+  # commit a package-lock.json and switch to `npm ci` once dependencies settle.
+  ts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: {{ ts_project_root }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+{%- endif %}
 {%- if has_corpus_pipeline or include_interaction_evals %}
 
   # Informational eval report on every PR — surfaces the numbers so reviewers
