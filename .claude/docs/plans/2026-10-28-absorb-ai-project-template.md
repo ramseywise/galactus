@@ -77,9 +77,9 @@ skill copies for now; step 3 removes the duplicates.
 |---|---|---|
 | Scoping interview | `proto-scope` (superset: has `discovery` mode) | `scope-poc` |
 | Front door | one `/new` skill: AI vs ML routing (from `prototype-genesis`) + language pick + copier run (from `project-genesis`) | both old genesis skills |
-| Review | `review-*` + `review-shared` | template `code-review`, or keep it as the light single-pass review for the `/spike` lane (step 5) |
+| Review | `review-*` + `review-shared`; template `code-review` kept as the light single-pass review for the `/spike` lane (D2) | nothing |
 | Hooks | `.claude/hooks/` canonical; `template/.claude/hooks/*.jinja` source `lib.sh` from it | reconcile the 4 drifted hooks; delete `hook_parity_check.sh` |
-| Specs | one doc per topic: `langgraph.md` vs `framework-lg.md`, `google-adk.md` vs `framework-adk.md` | the loser of each pair |
+| Specs | both of each pair — not duplicates: `specs/langgraph.md` / `google-adk.md` are convention→surface binding tables, `new-agent/references/framework-{lg,adk}.md` are the codegen file templates `/new-agent` writes from | nothing (re-checked 2026-10-28) |
 | `experiments/` | root `experiments/` | template copy → symlink (identical today) |
 | `ml/` | template's (newer superset), moved to root `ml/` | galactus's stale copy; template keeps only its `.jinja` docs and links the code |
 
@@ -119,4 +119,6 @@ skill copies for now; step 3 removes the duplicates.
 
 ## Open decisions
 - D1: Land the staged work via PR before merging (recommended) or park it on `preserve/`?
-- D2: Ship `code-review` as the `/spike` light review, or drop it?
+- D2: ~~Ship `code-review` as the `/spike` light review, or drop it?~~ Ship it (2026-10-28).
+- D3: guacamayo's `.claude/skills/new-agent/` is a stale fork of galactus's (galactus adds the
+  voice/duplex rows; nothing flows the other way). Delete it there, or symlink it to galactus?
