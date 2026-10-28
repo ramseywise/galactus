@@ -6,9 +6,9 @@ description: >
   Two depths: `discovery` runs a plain-language pain-point conversation for someone
   without system-design vocabulary and emits a Project Profile; bare runs the full
   design interview.
-  Triggers on: "scope a project", "design interview", "what should we build", "system design", "help me scope", "POC planning", "/proto-scope", "new project idea", "nonprofit has a problem", "help me figure out what to build", "I have an idea".
-
-  DSSG-aware: recognizes nonprofit-success-ai (customer portal) and project-mgmt-ai (lifecycle backend) and applies DSSG platform context automatically.
+  Triggers on: "scope a project", "design interview", "what should we build",
+  "help me scope", "new project idea", "I have an idea". DSSG-aware (nonprofit
+  projects get platform context automatically).
 ---
 
 # /proto-scope

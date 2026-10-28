@@ -135,20 +135,20 @@ without its reason is indistinguishable from an omission.
 qualifier is what makes you wait for them. Background dispatches let Stage 4 merge before
 the reporters return, which reads as a clean review of findings that had not arrived yet.
 
-Each dispatch gets **exactly one** `review-*` dimension skill, named explicitly, plus the
+Each dispatch gets **exactly one** `review-*` dimension, named explicitly, plus the
 Stage 1 context brief. Never load two dimensions into one dispatch — the ID prefix is what
 proves which skill loaded, and a dispatch carrying two has no unambiguous prefix.
 
 | Input to each dispatch | Value |
 |---|---|
-| Dimension skill | exactly one `review-*` skill, by exact name (table below) |
+| Dimension | exactly one `review-*` name (table below); the reporter reads `review-shared/dimensions/<name>.md` |
 | Files | the changed-file list — **the pre-screened subset** for conditional dimensions |
 | Diff | from Stage 1; the reporter never re-derives it |
 | Repo context | review profile + repo-context facts from Stage 1 |
 
-The eleven dimensions, their skills, and what activates each:
+The eleven dimensions, their files under `review-shared/dimensions/`, and what activates each:
 
-| Dimension | Skill to load | Active when |
+| Dimension | File to load | Active when |
 |---|---|---|
 | intent | `review-intent` | always |
 | correctness | `review-correctness` | always |
@@ -162,7 +162,7 @@ The eleven dimensions, their skills, and what activates each:
 | contracts | `review-contracts` | `SANYI.md` at repo root |
 | leakage | `review-leakage` | ML-code signal |
 
-`detect-signals` decides the right-hand column — do not re-derive it by eye. The skill
+`detect-signals` decides the right-hand column — do not re-derive it by eye. The file
 name is hyphenated even where the dimension is underscored: `silent_failure` loads
 `review-silent-failure`.
 

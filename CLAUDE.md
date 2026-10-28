@@ -94,7 +94,8 @@ appear as a pipeline step, and **never touch `Status:`** — they write to
 so the state machine cannot be tripped by a capability. They are also the only skills the
 model may reach for on its own: cheap, read-only, and exactly what should be available the
 moment a load-bearing assumption shows up. `decide-shared` is their shared contract, as
-`review-shared` is for the thirteen `review-*` dimensions.
+`review-shared` is for the eleven review dimensions, which live in it as reference files
+(`review-shared/dimensions/`), not as skills.
 
 **Tools, called from inside a band.** These are not phases and have no position:
 

@@ -96,7 +96,7 @@ class Reporter(StrEnum):
 
 
 # Maps dimension reporter → required finding ID prefix (e.g. correctness → "CR").
-# Authoritative: `.claude/skills/review_*/SKILL.md` frontmatter must match this
+# Authoritative: `.claude/skills/review-shared/dimensions/review-*.md` frontmatter must match this
 # exactly, and `test_prefix_map.py` asserts it.
 REPORTER_ID_PREFIX: dict[str, str] = {
     Reporter.INTENT: "IN",

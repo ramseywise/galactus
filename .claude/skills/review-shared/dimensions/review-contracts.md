@@ -21,7 +21,7 @@ reconstruct a contract from the code and review against your own invention.
 
 ## Convention bindings
 
-- [references/violations.md](references/violations.md) — the 11 codes, their
+- [review-contracts-violations.md](review-contracts-violations.md) — the 11 codes, their
   severities, and what each one means. Read it before reporting.
 - The repo's `SANYI.md` — the contract itself. Its entries are the only source of
   what is Buyi (invariant), Jianyi (budgeted), or Bianyi (tunable). Read it first.
