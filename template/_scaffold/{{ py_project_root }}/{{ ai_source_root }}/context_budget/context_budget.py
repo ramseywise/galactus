@@ -210,7 +210,7 @@ def compact_history(
     try:
         summary_response = client.messages.create(
             model=model,
-            max_tokens=512,
+            max_tokens=2048,  # thinking shares this budget on current models
             messages=[{"role": "user", "content": summary_prompt}],
         )
         summary_text = "".join(

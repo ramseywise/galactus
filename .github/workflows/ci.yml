@@ -48,3 +48,6 @@ jobs:
       # Renders the defaults and ml profiles and runs each render's own
       # `make lint-check` — the only lint the Jinja scaffold gets before push.
       - run: make lint-render
+      # Shared dep versions vs versions.toml, plus stale Claude model IDs in
+      # template/ and .claude/. Consumers outside this repo are skipped in CI.
+      - run: bash tools/template/check-versions.sh

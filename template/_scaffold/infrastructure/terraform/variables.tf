@@ -72,7 +72,7 @@ variable "container_image" {
 variable "lg_model" {
   description = "Value for the LG_MODEL env var (see .env.example)."
   type        = string
-  default     = "claude-haiku-4-5-20251001"
+  default     = "claude-haiku-5-5"
 }
 
 variable "vectordb_path" {

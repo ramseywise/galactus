@@ -50,7 +50,7 @@ def generate(system_prompt: str, user_message: str) -> str:
     client = get_client()
     response = client.messages.create(
         model=settings.lg_model,
-        max_tokens=1024,
+        max_tokens=settings.llm_max_tokens,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
@@ -98,7 +98,7 @@ async def agenerate(
     # See generate() — no sampling params, thinking-by-default models 400 on them.
     response = await client.messages.create(
         model=settings.lg_model,
-        max_tokens=1024,
+        max_tokens=settings.llm_max_tokens,
         system=system_prompt,
         messages=messages,
         tools=tools or [],

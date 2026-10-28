@@ -103,7 +103,7 @@ Copy this into your submission's README. Reviewers read it first.
 ### What I chose
 
 - **Scope**: I built ___. I did not build ___ because ___.
-- **Model**: `claude-opus-5` at `max_tokens=___` because ___.
+- **Model**: `claude-opus-5-5` at `max_tokens=___` because ___.
 - **Failure handling**: I surface ___ loudly and swallow ___ because ___.
 
 ### What I rejected

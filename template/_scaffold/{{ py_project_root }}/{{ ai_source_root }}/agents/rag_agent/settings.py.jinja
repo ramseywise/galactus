@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     anthropic_api_key: str = ""
-    rag_model: str = "claude-haiku-4-5-20251001"
+    rag_model: str = "claude-haiku-5-5"
     rag_port: int = 8011
 
     # Set explicitly rather than inheriting SDK defaults — see the LangGraph

@@ -36,7 +36,7 @@ def generate(system_prompt: str, user_message: str) -> str:
     client = get_client()
     response = client.messages.create(
         model=settings.rag_model,
-        max_tokens=1024,
+        max_tokens=settings.llm_max_tokens,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )

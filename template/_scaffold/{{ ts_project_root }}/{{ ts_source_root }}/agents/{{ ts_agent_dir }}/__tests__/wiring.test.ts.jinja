@@ -159,10 +159,9 @@ async function invokeCallbacks() {
 
 describe("agent.ts — request params", () => {
   it("sends no sampling params: they 400 on thinking-by-default models", async () => {
-    // Claude Opus 5, Fable 5, Opus 4.8/4.7 and Sonnet 5 reject
-    // temperature/top_p/top_k with a 400. The default model (Haiku 4.5) still
-    // accepts them, so this only breaks once TS_AGENT_MODEL points at a current
-    // model — a runtime-only failure no linter catches. Re-add
+    // Since 2026-10-21 every Claude model, the default Haiku 5.5 included,
+    // rejects temperature/top_p/top_k with a 400 — a runtime-only failure no
+    // linter catches. Re-add
     // `temperature: settings.generationTemperature` to agent.ts and this fails.
     mocks.captured.opts = {};
     await runAgent([]);

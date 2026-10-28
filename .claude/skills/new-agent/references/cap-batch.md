@@ -19,7 +19,7 @@ A dataset of independent inputs must be processable through the agent with bound
 > client = anthropic.Anthropic()
 > batch = client.messages.batches.create(
 >     requests=[
->         {"custom_id": item["id"], "params": {"model": "claude-sonnet-4-5", "max_tokens": 1024, "messages": [{"role": "user", "content": item["query"]}]}}
+>         {"custom_id": item["id"], "params": {"model": "claude-sonnet-5-5", "max_tokens": 1024, "messages": [{"role": "user", "content": item["query"]}]}}
 >         for item in items
 >     ]
 > )

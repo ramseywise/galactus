@@ -67,7 +67,7 @@ class AgentSpan:
 
     # Required
     operation_name: str          # e.g., "gen_ai.anthropic.messages"
-    model: str                   # e.g., "claude-sonnet-4-5"
+    model: str                   # e.g., "claude-sonnet-5-5"
     provider: str                # e.g., "anthropic"
 
     # Timing
@@ -162,7 +162,7 @@ class OTelExporter:
 
     Usage:
         exporter = OTelExporter(tracer_provider=...)
-        async with exporter.span("gen_ai.anthropic.messages", model="claude-sonnet-4-5") as span:
+        async with exporter.span("gen_ai.anthropic.messages", model="claude-sonnet-5-5") as span:
             response = await client.messages.create(...)
             span.input_tokens = response.usage.input_tokens
             span.output_tokens = response.usage.output_tokens
