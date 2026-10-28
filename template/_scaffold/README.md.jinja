@@ -17,8 +17,8 @@ via its framework's native client — see `.claude/skills/mcp-builder/SKILL.md`'
 "Consuming your server" section.
 {% endif -%}
 Plus the project shell (evals, infra, tests, CI) to build real agents on top
-of. See `CLAUDE.md` for AI-assistant conventions and `.agents/skills/README.md`
-for the ADK/LangGraph framework reference library.
+of. See `CLAUDE.md` for AI-assistant conventions and `.claude/skills/README.md`
+for the skills, including the ADK/LangGraph framework references.
 
 ## Quick start
 
@@ -69,24 +69,23 @@ Try the TS agent (Vercel AI SDK) with `make ts-install && make ts-dev`, then
 ├── tests/                               unit / smoke / integration
 ├── infrastructure/                      docker-compose + Dockerfiles{% if cloud == 'aws' %}, Terraform skeleton{% endif %}
 ├── configs/                             Per-environment config (non-secret)
-├── .claude/                             Claude Code skills + hooks
 {%- if include_dev_companion %}
-├── .claude/docs/companion/              Living "how we work" doc — see /grow-companion, /dream
+├── .claude/docs/companion/              Living "how we work" doc, edited by hand
 {%- endif %}
-└── .agents/skills/                      ADK/LangGraph framework reference library
+└── .claude/                             Claude Code skills (incl. ADK/LangGraph refs) + hooks
 ```
 
 ## Building your own agent
 
-The example agent is a starting point, not the point. Once you understand it:
+The example agent is a starting point, not the point. Once you understand it,
+galactus's `/new-agent` (not vendored into this project) scaffolds the next one:
 
 ```
 /new-agent <name> --framework langgraph   # or --framework adk
 ```
 
-reads `.agents/skills/framework-selection` (if you haven't already decided) and
+reads `.claude/skills/framework-selection` (if you haven't already decided) and
 scaffolds a new agent next to the existing one(s) under `{{ py_project_root }}/{{ ai_source_root }}/agents/`.
-See `.claude/skills/new-agent/SKILL.md`.
 
 {% if has_corpus_pipeline -%}
 ## Replacing the example corpus
@@ -223,7 +222,7 @@ app — no separate service or port. `agent/handler.ts` is a plain
 `(req: Request) => Response` function, so it also drops straight into a
 Next.js App Router route handler unchanged if this project is (or becomes)
 Next.js-based. Reads `ANTHROPIC_API_KEY` (same key as the Python agents).
-See `.agents/skills/framework-selection/SKILL.md` for when to reach for
+See `.claude/skills/framework-selection/SKILL.md` for when to reach for
 this vs. ADK/LangGraph. Answer-only smoke eval (NOT retrieval grading — the
 TS agent has no search step, unlike the Python backends): `make ts-dev`
 in one terminal, `make ts-agent-eval` in another — scores token overlap

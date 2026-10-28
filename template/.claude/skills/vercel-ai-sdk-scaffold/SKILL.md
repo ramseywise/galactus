@@ -11,7 +11,7 @@ description: >
 
 # Vercel AI SDK Agent Scaffolding Guide
 
-Read `.agents/skills/framework-selection/SKILL.md` before writing any agent code if
+Read `.claude/skills/framework-selection/SKILL.md` before writing any agent code if
 you haven't decided a framework yet — it asks the TS-runtime question first, which is
 the branch that leads here.
 

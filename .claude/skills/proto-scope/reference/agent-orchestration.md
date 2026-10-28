@@ -153,9 +153,9 @@ send confirmation to client (node 6).
 ### What the template gives you
 - `agents/lg_agent/graph/` — StateGraph definition (nodes, edges, state schema)
 - `agents/lg_agent/nodes/` — individual node implementations
-- `.agents/skills/langgraph-fundamentals/` — reference for StateGraph, nodes, edges, streaming
-- `.agents/skills/langgraph-persistence/` — checkpointers, thread IDs, Store
-- `.agents/skills/langgraph-human-in-the-loop/` — interrupt(), resume, approval gates
+- `.claude/skills/langgraph-fundamentals/` — reference for StateGraph, nodes, edges, streaming
+- `.claude/skills/langgraph-persistence/` — checkpointers, thread IDs, Store
+- `.claude/skills/langgraph-human-in-the-loop/` — interrupt(), resume, approval gates
 
 ### Trade-offs
 - **Pro:** Full control over flow; explicit error handling per step; human gates at precise points; resumable (checkpointed state)
@@ -235,5 +235,5 @@ Once you've chosen a pattern, pick the framework:
 | Multi-provider LLM support needed | **LangGraph** (via LangChain integrations) |
 | Simple single agent, no preference | **ADK** (less boilerplate than LangGraph for simple cases) |
 
-See `.agents/skills/framework-selection/SKILL.md` for the complete decision guide
+See `.claude/skills/framework-selection/SKILL.md` for the complete decision guide
 with detailed comparison table.

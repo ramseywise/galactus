@@ -18,8 +18,8 @@ it runs in **phases** (see "The interview" below), and the tiers describe what l
    `.claude/hooks/*.sh` + `.claude/skills/` (26 workflow skills — see `.claude/skills/README.md` in
    the generated project for the full map).
 2. **Independent toggles** (available even with `scaffold_full_project=false`, i.e. layering-only mode
-   onto an existing repo): `.agents/skills/` (`include_agent_reference_library`) — a tool-agnostic
-   ADK/LangGraph reference library that `/new-agent` orchestrates — and `mcp_servers/<slug>/`
+   onto an existing repo): `.claude/agents/agent_creator.md` (`include_agent_reference_library`,
+   a legacy name) — a subagent that scaffolds agents from the ADK/LangGraph skills — and `mcp_servers/<slug>/`
    (`include_mcp_server`) — a FastMCP server scaffold, ready to extend.
 3. **One all-or-nothing bundle** behind `scaffold_full_project`: `pyproject.toml`, `core/` (the general
    data/ETL home — `core/pipelines/corpus/` holds the markdown→JSONL→DuckDB-FTS corpus pipeline when a
@@ -180,7 +180,7 @@ one shape example; each is a mid-project capability, added later with `copier up
 
 | Value | Derived variable | What it scaffolds |
 |---|---|---|
-| `dev_companion` (default on) | `include_dev_companion` | A living "how we work on this project" doc (transforms, not appends) plus a `/dream` maintenance-audit skill |
+| `dev_companion` (default on) | `include_dev_companion` | A living "how we work on this project" doc (rewritten, not appended), edited by hand |
 | `promptfoo` (seeded by `eval_suite`) | `include_promptfoo` | `promptfoo.config.yaml` — config-driven eval harness (`npx promptfoo eval`) hitting `rag_agent`'s `/chat` endpoint, alongside the Python eval suite |
 | `ragas` | `include_ragas_grader` | ragas-based LLM-judge grader. **Known issue** (verified 2026-07-14): `ragas` 0.4.3 has a broken import upstream — degrades gracefully, no real scores until fixed |
 | `web_research` (seeded by Web) | `include_web_research` | `integrations/web_research.py` — autonomous web research + reports via GPT-Researcher (needs Python ≤ 3.13) |
@@ -207,7 +207,7 @@ isn't in the multiselect — it derives directly from Calendar in `external_syst
 | `python_version` / `aws_region` | `3.12` / `eu-central-1` | pyproject floor / Terraform default region |
 | `mcp_server_name` / `mcp_server_slug` | `<project_slug>` | MCP server naming. `mcp_server_slug` is the seed for `py_mcp_server_slug` / `ts_mcp_server_slug` — the chosen language renders at the real slug, the other gets an `__unchosen_*` suffix that `_tasks` prunes |
 | `expensive_command_patterns` | *(blank)* | Regex for commands that should nudge `--dry-run`; blank disables the hook |
-| `include_agent_reference_library` | `false` | `.agents/skills/` (ADK + LangGraph reference library) + `/new-agent` — opt in for offline/team-portability; canonical home stays this template |
+| `include_agent_reference_library` | `false` | Legacy name. Ships `.claude/agents/agent_creator.md`; the ADK/LangGraph skills it drives always ship in `.claude/skills/` |
 | `global_skills_source` | `vendored` | Maintainer knob — `vendored` ships the payload in `template/.claude/skills/`, `none` strips it at render. The payload is now maintained by hand: `tools/template/sync-global-skills.sh` was retired 2026-08-11 when global stopped being the skill reservoir. |
 
 ## Repository layout
@@ -220,7 +220,6 @@ template-maintainer material.
 | `copier.yaml` | The whole interview + derivation logic + `_tasks` post-processing. The comments in it are load-bearing — read them before changing any toggle. |
 | `template/CLAUDE.md.jinja`, `DESIGN.md.jinja`, `LIFECYCLE.md.jinja`, `DEPLOYMENT.md.jinja`, `DELIVERY.md.jinja`, `RELEASE.md.jinja`, `design.yaml.jinja` | Rendered to the project root in every mode (including layering-only). LIFECYCLE.md is the phase/gate status contract maintained by `/gate-check` and read by DSSG's project-mgmt-ai; DEPLOYMENT.md is the Phase-3 runbook (staged rollout, rollback, monitoring), pre-flighted by `/deploy-check`; DELIVERY.md and RELEASE.md cover delivery process and release notes. |
 | `template/.claude/` | Hooks, skills, agent defs, settings — the always-on Claude tooling tier. Ships in every mode. |
-| `template/.agents/` | Tool-agnostic ADK/LangGraph reference library (`include_agent_reference_library`). |
 | `template/mcp_servers/` | Python FastMCP server scaffold (`include_mcp_server`); swapped for the TS tree when `mcp_server_language=typescript`. |
 | `template/_scaffold/` | **Staging dir** for the full-project tier. Copier renders it verbatim, then `_tasks` prunes unselected features and `mv`s the survivors to the project root. Never collides with a pre-existing repo — layering-only mode discards it wholesale. |
 | `template/_scaffold/configs/` | Environment config files (dev.yaml, prod.yaml) — rendered into project root by `_tasks`. |
@@ -236,6 +235,6 @@ template-maintainer material.
   to be layered onto a project that may already exist and already have its own git history.
 - All Python-stack assumptions (`uv`, `pytest`, `ruff`, `pyright`) are load-bearing defaults, not yet
   optional — this template currently targets Python (+ optional TypeScript) projects.
-- Rendered projects plug into a machine-level review ladder if present (workspace Makefile +
-  global `/review-sweep`, refs, and agent defs in `~/.claude/`) — the template ships only the
-  per-repo halves: Makefile lint/test targets and `Refs:` lines in CLAUDE.md.
+- Review ships in the project: the light `code-review` skill, plus Makefile lint/test targets
+  and `Refs:` lines in CLAUDE.md. Heavier review (`/proto-review`, the `review-*` dimensions)
+  lives in galactus and is not vendored.

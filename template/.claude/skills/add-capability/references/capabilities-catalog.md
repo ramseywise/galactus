@@ -253,16 +253,16 @@ This is FOIA-Fluent's proven production shape: Next.js (Vercel) + FastAPI
 
 ## agent-reference-library
 
-**Label:** Agent reference library (`.agents/skills/`)
+**Label:** Agent-creator subagent (`.claude/agents/agent_creator.md`)
 
 | Field | Value |
 |-------|-------|
-| sets | `include_agent_reference_library=true` |
+| sets | `include_agent_reference_library=true` (legacy name) |
 | requires | none — available in layering mode too |
-| adds | `.agents/skills/` (ADK + LangGraph scaffolding patterns), `/new-agent` skill |
+| adds | `.claude/agents/agent_creator.md`, a subagent that scaffolds agents from the ADK/LangGraph skills in `.claude/skills/` |
 
-Off by default: its canonical home is the template. Opt in for
-offline/team-portability cases where `.claude` global isn't available.
+Off by default. The framework skills themselves always ship; this adds only
+the subagent that drives them.
 
 ---
 

@@ -180,8 +180,8 @@ test-integration:
 	uv run pytest tests/integration -q -m integration
 
 # --- Lint / typecheck ---
-# Scoped to this project's own source, not the whole repo root — .claude/.agents/
-# ship vendored reference material (e.g. mcp-builder's example scripts) that
+# Scoped to this project's own source, not the whole repo root — .claude/
+# ships vendored reference material (e.g. mcp-builder's example scripts) that
 # isn't held to this project's lint config and was never meant to be.
 {% if primary_backend_language in ["python", "both"] -%}
 LINT_PATHS := {% if not is_ml_shaped or include_rag_agent %}{{ py_project_root }}/{{ ai_source_root }} {% endif %}{% if include_core_etl %}core {% endif %}{% if include_eval_suite %}{{ eval_root }} {% endif %}tests{% if include_ml %} {{ py_project_root }}/{{ ml_source_root }}{% endif %}{% if include_notebooks %} nbks{% endif %}

@@ -34,7 +34,7 @@ _message_before_copy: >+
   -d include_mcp_server=true, -d ai_source_root=lib).
 
   Picking "Layer onto an existing repo" as the project type is layering-only
-  mode — safe to run into an existing repo, only adding .claude/.agents/
+  mode — safe to run into an existing repo, only adding .claude/
   mcp_servers and touching nothing else (equivalent to the old
   scaffold_full_project=false). All other project types scaffold a full
   project. The scaffold is minimal by default: one chat-agent example where
@@ -63,7 +63,7 @@ _message_after_copy: >+
   - MCP server: `cd mcp_servers/{{ mcp_server_slug }} && {% if mcp_server_language == "typescript" %}npm install{% else %}uv sync{% endif %}`.
   {%- endif %}
   {%- if include_dev_companion %}
-  - `.claude/docs/companion/collaboration.md` starts blank — /grow-companion fills it in as real sessions happen.
+  - `.claude/docs/companion/collaboration.md` starts blank — fill it in by hand as real sessions teach you something durable.
   {%- endif %}
 
 _message_after_update: >+
@@ -127,7 +127,7 @@ project_type:
 
 # Derived: the old top-level toggle, now inferred from project_type.
 # existing_repo = layering-only mode — safe to run into an existing repo, only
-# adds .claude/.agents/mcp_servers. Overridable with -d scaffold_full_project=…
+# adds .claude/ and mcp_servers/. Overridable with -d scaffold_full_project=…
 # (how CI's layering-only job drives it without picking a project_type).
 scaffold_full_project:
   type: bool
@@ -664,7 +664,7 @@ ts_agent_dir:
 # {{ ts_project_root }}/{{ ts_source_root }}/agent/, framework-agnostic (a
 # plain Request->Response handler, wireable into Express today or a Next.js
 # route handler in a Vercel-hosted project) — see
-# .agents/skills/framework-selection.
+# .claude/skills/framework-selection.
 ts_agent_framework:
   type: str
   help: >-
@@ -802,7 +802,7 @@ include_supabase_db:
 
 # mcp_servers/ lives at template root, NOT inside _scaffold/ — deliberately. It
 # is available in layering-only mode (project_type=existing_repo), same class as
-# .claude/ and .agents/: something addable to an existing repo that does not
+# .claude/: something addable to an existing repo that does not
 # require a full scaffold. Moving it into _scaffold/ would make layering mode
 # render an empty directory (everything inside _scaffold/ is discarded in that
 # mode). The `include_mcp_server` task below prunes the whole mcp_servers/ dir
@@ -901,7 +901,7 @@ optional_features:
     (Calendar isn't listed here — selecting Calendar in external systems
     already scaffolds the Google Calendar client.)
   choices:
-    "dev companion — living how-we-work doc + /dream maintenance audits": dev_companion
+    "dev companion — living how-we-work doc": dev_companion
     "promptfoo — config-driven HTTP eval harness alongside the Python evals": promptfoo
     "ragas — LLM-judge eval grader (KNOWN ISSUE: ragas 0.4.3 import bug upstream, degrades gracefully, no real scores until fixed)": ragas
     "web research — GPT-Researcher reports (KNOWN ISSUE: needs Python <=3.13, own API keys)": web_research
@@ -1301,11 +1301,10 @@ expensive_command_patterns:
   when: false
 
 # Independent of scaffold_full_project — available in layering-only mode too.
-# .agents/skills/ is a tool-agnostic agent-framework reference library (ADK +
-# LangGraph scaffolding and patterns) shared across Claude, ADK's own tooling,
-# or any other agent harness; also enables the /new-agent skill. Default off:
-# its canonical home is this template and vendoring it into every render
-# creates N drifting copies — opt in (-d) for offline/team-portability cases.
+# Legacy name: this once shipped a separate .agents/skills/ library, which was
+# folded into .claude/skills/ (the ADK/LangGraph skills there always ship). It
+# now gates only .claude/agents/agent_creator.md, the subagent that drives
+# those skills. Kept under the old name so existing answers files still apply.
 include_agent_reference_library:
   type: bool
   default: false
@@ -1330,9 +1329,7 @@ _tasks:
   # guarded/independent: keep everything; permissions differ in settings.json only.
   - "{{ 'true' if agent_config_profile != 'vanilla' else 'rm -rf ' ~ _copier_conf.dst_path ~ '/.claude ' ~ _copier_conf.dst_path ~ '/.agents' }}"
   - "{{ 'true' if include_mcp_server else 'rm -rf ' ~ _copier_conf.dst_path ~ '/mcp_servers' }}"
-  # agent_creator.md is the subagent that the .agents/ reference library
-  # dispatches to — useless without it, so it goes with it.
-  - "{{ 'true' if include_agent_reference_library else 'rm -rf ' ~ _copier_conf.dst_path ~ '/.agents ' ~ _copier_conf.dst_path ~ '/.claude/agents/agent_creator.md' }}"
+  - "{{ 'true' if include_agent_reference_library else 'rm -rf ' ~ _copier_conf.dst_path ~ '/.claude/agents/agent_creator.md' }}"
   # code-* are the only skills gated by global_skills_source. The design-*
   # pipeline (initiative/product/system/roadmap) is template-native and always
   # ships. Demoted skills (workflow-*, git-*, docs-check, new-agent, etc.) were
