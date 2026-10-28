@@ -1,0 +1,183 @@
+# %% [markdown]
+# # 03 — Features
+#
+# **Question this notebook answers:** which derived features earn their place?
+#
+# "Earn" is the operative word. Every added feature costs interpretability, adds a
+# path for leakage, and gives the model another chance to overfit. The default
+# answer for a candidate feature is no; this notebook is where a candidate argues
+# its way to yes.
+#
+# The important distinction here, and the one that decides *where* a feature may be
+# computed:
+#
+# - **Row-local** features (ratios, interactions, calendar parts) depend only on
+#   their own row. Safe to compute before splitting.
+# - **Frame-dependent** features (group aggregates, rare-category collapsing)
+#   depend on other rows. Computing them on the full frame **leaks**, and because
+#   these functions hold no fitted state, nothing warns you.
+#
+# See `tests/unit/ml/features/test_features_fold_safety.py` — that distinction is
+# enforced by tests, not just described here.
+
+# %%
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path.cwd().parent if Path.cwd().name == "nbks" else Path.cwd()
+sys.path.insert(0, str(REPO_ROOT / "{{ py_project_root }}"))
+sys.path.insert(0, str(REPO_ROOT / "nbks"))
+
+import numpy as np
+import pandas as pd
+from _sample_data import TARGET, load_frame
+
+from ml.feature_engineering.features import mutual_information_importance
+from ml.feature_engineering.mining import (
+    add_binned_features,
+    add_group_aggregates,
+    add_interaction_features,
+    add_ratio_features,
+    collapse_rare_categories,
+)
+from ml.schemas import FeatureSpec
+
+pd.set_option("display.max_columns", 200)
+
+frame, is_real = load_frame()
+LEAKS = ["collections_flag"]  # carried over from 02_bivariate
+frame = frame.drop(columns=[c for c in LEAKS if c in frame.columns])
+print(f"{'real' if is_real else 'synthetic'} frame: {frame.shape}")
+
+# %% [markdown]
+# ## Row-local features — safe before the split
+#
+# A ratio is the classic case worth building: `income` and `utilisation`
+# separately say less than the relationship between them, and the ratio is
+# computed from one row's own values.
+
+# %%
+ratios = [("income", "age")]
+enriched = add_ratio_features(frame, ratios)
+interactions = [("utilisation", "income")]
+enriched = add_interaction_features(enriched, interactions)
+
+new_columns = [c for c in enriched.columns if c not in frame.columns]
+print(f"added row-local: {new_columns}")
+enriched[new_columns].describe().T
+
+# %% [markdown]
+# ### Declare each one with a spec
+#
+# `FeatureSpec` records what a feature is built from and whether it needs
+# per-fold fitting. `fitted_in_fold=False` is a claim that the feature is
+# stateless — make it deliberately.
+
+# %%
+specs = [
+    FeatureSpec(
+        name="income_over_age",
+        source_columns=("income", "age"),
+        kind="ratio",
+        fitted_in_fold=False,
+    ),
+    FeatureSpec(
+        name="utilisation_x_income",
+        source_columns=("utilisation", "income"),
+        kind="interaction",
+        fitted_in_fold=False,
+    ),
+]
+pd.DataFrame([s.model_dump() for s in specs])
+
+# %% [markdown]
+# ## Frame-dependent features — inside the fold only
+#
+# The cell below is a **demonstration of the leak**, not a recommendation. It
+# computes a group aggregate on the full frame and shows that the value a row
+# receives depends on rows it should not have seen.
+
+# %%
+whole_frame = add_group_aggregates(frame, group_col="household_id", value_cols=["income"])
+first_half = add_group_aggregates(
+    frame.iloc[: len(frame) // 2], group_col="household_id", value_cols=["income"]
+)
+
+aggregate_columns = [c for c in whole_frame.columns if c not in frame.columns]
+comparison = pd.DataFrame(
+    {
+        "on_full_frame": whole_frame[aggregate_columns[0]].iloc[:5],
+        "on_first_half": first_half[aggregate_columns[0]].iloc[:5],
+    }
+)
+comparison["differs"] = ~np.isclose(
+    comparison["on_full_frame"], comparison["on_first_half"], equal_nan=True
+)
+print(f"aggregate columns: {aggregate_columns}")
+comparison
+
+# %% [markdown]
+# ### Reading that table
+#
+# Where `differs` is True, the full-frame value contains information from the
+# held-out half. To use group aggregates safely you have two options, and only
+# two:
+#
+# 1. **Group-aware splitting** — `SplitSpec(kind="group_kfold", group_col=...)`,
+#    so a group never straddles the boundary. Then the aggregate is unchanged by
+#    the split and nothing leaks.
+# 2. **Compute inside the fold** — wrap the aggregation in a transformer that
+#    `training/` refits per fold.
+#
+# Computing on the full frame and splitting randomly is the third option, and it
+# is the one that quietly inflates every score you will report.
+
+# %%
+rare_collapsed = collapse_rare_categories(frame, ["region"], min_freq=0.15)
+print("region levels before:", sorted(frame["region"].unique()))
+print("region levels after: ", sorted(rare_collapsed["region"].unique()))
+print("\n^ also frame-dependent: the frequencies come from whatever frame is passed.")
+
+# %% [markdown]
+# ## Binned features
+#
+# Binning trades resolution for robustness and makes a non-monotone relationship
+# usable by a linear model. It is frame-dependent when the edges are quantiles.
+
+# %%
+binned = add_binned_features(frame, ["income"], n_bins=5)
+binned_columns = [c for c in binned.columns if c not in frame.columns]
+if binned_columns:
+    print(binned[binned_columns[0]].value_counts().sort_index().to_string())
+
+# %% [markdown]
+# ## Do the new features earn their place?
+#
+# Mutual information against the target, raw features and derived ones ranked
+# together. A derived feature that ranks below the columns it was built from has
+# not earned its place — it has added a column and explained nothing.
+
+# %%
+candidate_columns = [
+    c
+    for c in enriched.columns
+    if c not in {TARGET, "customer_id", "household_id", "opened_at"}
+    and pd.api.types.is_numeric_dtype(enriched[c])
+]
+x = enriched[candidate_columns].fillna(enriched[candidate_columns].median(numeric_only=True))
+importance = mutual_information_importance(
+    x.to_numpy(dtype=float), enriched[TARGET].to_numpy(), feature_names=candidate_columns
+)
+
+ranked = importance.as_dataframe()
+ranked["derived"] = ranked.iloc[:, 0].isin(new_columns)
+ranked.reset_index(drop=True)
+
+# %% [markdown]
+# ## Handoff
+#
+# **Output of this notebook:** a list of `FeatureSpec`s you intend to keep, and for
+# each frame-dependent one, a decision about *where* it will be computed. Next:
+# `04_selection.py` for the candidate models.

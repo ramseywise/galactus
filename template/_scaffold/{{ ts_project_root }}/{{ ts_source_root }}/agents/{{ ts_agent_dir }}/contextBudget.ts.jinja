@@ -1,0 +1,265 @@
+/**
+ * {{ project_name }} — context-budget utility (Vercel AI SDK).
+ *
+ * Wraps model calls with token counting, per-category usage logging,
+ * a compaction trigger, and prompt-caching annotation helpers.
+ *
+ * Architecture note
+ * -----------------
+ * This module never constructs an AI provider — import getModel() from
+ * clients/llm.js (convention enforced by sdk_lint.sh on the Python side;
+ * keep this file the TS-side equivalent). All functions are pure / side-effect
+ * free except for the logger calls.
+ *
+ * Usage
+ * -----
+ * ```ts
+ * import { trackUsage, shouldCompact, compactHistory, cacheBreakpoint } from "./contextBudget.js";
+ *
+ * const result = await generateText({ model, messages, ... });
+ * const usage  = trackUsage(result.usage);
+ *
+ * if (shouldCompact(result.usage)) {
+ *   messages = await compactHistory(messages, model);
+ * }
+ *
+ * // Prompt-caching annotation (Anthropic-specific):
+ * const system = [cacheBreakpoint(STATIC_INSTRUCTIONS)];
+ * ```
+ */
+
+import { generateText, type LanguageModel } from "ai";
+
+// ── Settings (env-var driven, same pattern as settings.ts) ─────────────────
+
+export const budgetSettings = {
+  /** Maximum context-window tokens before compaction fires.
+   *  Claude claude-haiku-4-5-20251001 / claude-sonnet-* window = 200 000;
+   *  set conservatively to leave headroom for the compaction summary itself. */
+  maxContextTokens: Number(process.env.MAX_CONTEXT_TOKENS ?? 180_000),
+
+  /** Fraction of maxContextTokens at which the compaction trigger fires.
+   *  0.8 → fire when used ≥ 80 % of the window. */
+  compactionThreshold: Number(process.env.COMPACTION_THRESHOLD ?? 0.8),
+
+  /** Log per-category breakdowns (system / history / tools / scratch) to console. */
+  logTokenCategories: (process.env.LOG_TOKEN_CATEGORIES ?? "true") !== "false",
+};
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+export interface TokenCategoryBreakdown {
+  system?: number;
+  history?: number;
+  tools?: number;
+  scratch?: number;
+}
+
+export interface TokenUsage {
+  totalInput: number;
+  totalOutput: number;
+  system: number;
+  history: number;
+  tools: number;
+  scratch: number;
+  utilisationPct: number;
+}
+
+/** Minimal shape of the `usage` object returned by Vercel AI SDK generateText / streamText. */
+export interface AIUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+// ── Core helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Extract token counts from a Vercel AI SDK usage object and log per-category breakdown.
+ *
+ * @param usage  The `.usage` field from a `generateText` / `streamText` result.
+ * @param categories  Optional caller-supplied per-category token estimates.
+ *   Keys: `system`, `history`, `tools`, `scratch`. Unknown tokens go to `scratch`.
+ * @returns Populated TokenUsage object.
+ */
+export function trackUsage(
+  usage: AIUsage,
+  categories: TokenCategoryBreakdown = {},
+): TokenUsage {
+  const totalInput = usage.promptTokens;
+  const totalOutput = usage.completionTokens;
+
+  const system = categories.system ?? 0;
+  const history = categories.history ?? 0;
+  const tools = categories.tools ?? 0;
+  const accounted = system + history + tools;
+  const scratch = Math.max(0, totalInput - accounted);
+
+  const utilisationPct =
+    budgetSettings.maxContextTokens > 0
+      ? Math.round((totalInput / budgetSettings.maxContextTokens) * 1000) / 10
+      : 0;
+
+  const tokenUsage: TokenUsage = {
+    totalInput,
+    totalOutput,
+    system,
+    history,
+    tools,
+    scratch,
+    utilisationPct,
+  };
+
+  if (budgetSettings.logTokenCategories) {
+    console.info("[context-budget] usage", {
+      totalInput,
+      totalOutput,
+      system,
+      history,
+      tools,
+      scratch,
+      utilisationPct,
+      thresholdPct: Math.round(budgetSettings.compactionThreshold * 100),
+    });
+  }
+
+  return tokenUsage;
+}
+
+/**
+ * Return true when the usage crosses the compaction threshold.
+ *
+ * Call immediately after `trackUsage()`:
+ * ```ts
+ * if (shouldCompact(result.usage)) {
+ *   messages = await compactHistory(messages, model);
+ * }
+ * ```
+ */
+export function shouldCompact(usage: AIUsage): boolean {
+  if (budgetSettings.maxContextTokens <= 0) { return false; }
+  const utilisation = usage.promptTokens / budgetSettings.maxContextTokens;
+  const triggered = utilisation >= budgetSettings.compactionThreshold;
+  if (triggered) {
+    console.warn("[context-budget] compaction triggered", {
+      utilisationPct: Math.round(utilisation * 1000) / 10,
+      thresholdPct: Math.round(budgetSettings.compactionThreshold * 100),
+      maxContextTokens: budgetSettings.maxContextTokens,
+    });
+  }
+  return triggered;
+}
+
+// ── Conversation compaction ────────────────────────────────────────────────
+//
+// NOT wired into agent.ts (stateless handler — intentional)
+// ----------------------------------------------------------
+// `compactHistory` requires a mutable, retained message array that persists
+// across turns so old turns can be replaced with a summary.  `handler.ts` is
+// stateless: it rebuilds history from the request body on every call and
+// discards it when the response closes.  Wiring compactHistory here would
+// require introducing session state the template deliberately does not carry.
+//
+// Wire it in your own session-aware layer (e.g. a database-backed conversation
+// store) once you have persistent history.  `trackUsage` + `shouldCompact` in
+// agent.ts's `onFinish` callback tell you *when* to compact; the actual
+// compaction happens in whatever layer owns the history.
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+/**
+ * Summarise old conversation turns to reclaim context space.
+ *
+ * Sends the oldest `history.length - keepLastN` turns to the model for
+ * summarisation, then replaces them with a single assistant summary message.
+ * The `keepLastN` most-recent turns are preserved verbatim.
+ *
+ * Compaction failure is non-fatal: if the summarisation call throws, the
+ * original history is returned unchanged with a console.warn.
+ *
+ * @param history    The current messages array.
+ * @param model      A Vercel AI SDK LanguageModel (from getModel() in clients/llm.js).
+ * @param keepLastN  Number of trailing turns to preserve unchanged (>= 1).
+ */
+export async function compactHistory(
+  history: ChatMessage[],
+  model: LanguageModel,
+  keepLastN = 2,
+): Promise<ChatMessage[]> {
+  const keep = Math.max(1, keepLastN);
+  if (history.length <= keep) { return history; }
+
+  const toSummarise = history.slice(0, history.length - keep);
+  const tail = history.slice(history.length - keep);
+
+  const conversationText = toSummarise
+    .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+    .join("\n");
+
+  const summaryPrompt =
+    "Summarise the following conversation concisely, preserving key decisions, " +
+    "facts, and open questions. Output only the summary — no preamble.\n\n" +
+    conversationText;
+
+  try {
+    const { text } = await generateText({
+      model,
+      messages: [{ role: "user", content: summaryPrompt }],
+      // AI SDK v5 renamed maxTokens -> maxOutputTokens (package.json pins ^5.0.0).
+      maxOutputTokens: 512,
+    });
+
+    console.info("[context-budget] compacted", {
+      turnsSummarised: toSummarise.length,
+      kept: keep,
+    });
+
+    return [{ role: "assistant", content: `[Conversation summary]\n${text}` }, ...tail];
+  } catch (err) {
+    console.warn("[context-budget] compact failed — returning original history", {
+      error: String(err),
+    });
+    return history;
+  }
+}
+
+// ── Prompt-caching annotation helper (Anthropic-specific) ──────────────────
+
+/**
+ * Wrap a stable system-prompt section with Anthropic's cache_control marker.
+ *
+ * Sections annotated with `cache_control: { type: "ephemeral" }` are eligible
+ * for prompt caching (cache TTL: 5 min; billed at 10 % of base input price on
+ * cache hit). Mark sections that do NOT change between turns: static
+ * instructions, tool schemas, large reference documents.
+ *
+ * Do NOT annotate sections that vary per turn (user query, retrieved docs,
+ * dynamic context) — the cache key covers the full prefix up to each
+ * breakpoint, so a changing prefix invalidates downstream cache entries.
+ *
+ * Anthropic docs: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+ *
+ * @example
+ * ```ts
+ * const system = [
+ *   cacheBreakpoint(STATIC_INSTRUCTIONS),      // cached
+ *   { type: "text", text: dynamicContext },    // NOT cached (varies per turn)
+ * ];
+ * const result = await generateText({ model, system, messages });
+ * ```
+ */
+export function cacheBreakpoint(text: string): {
+  type: "text";
+  text: string;
+  experimental_providerMetadata: { anthropic: { cacheControl: { type: "ephemeral" } } };
+} {
+  return {
+    type: "text",
+    text,
+    experimental_providerMetadata: {
+      anthropic: { cacheControl: { type: "ephemeral" } },
+    },
+  };
+}

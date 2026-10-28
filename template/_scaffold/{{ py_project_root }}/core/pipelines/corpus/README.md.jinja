@@ -1,0 +1,23 @@
+# core/pipelines/corpus/ — corpus ingestion + full-text index
+
+One data pipeline under the general `core/` ETL home. It turns a markdown
+corpus into a searchable index:
+
+1. `ingestion.py` — load `*.md` articles from the raw corpus dir (`# Title`
+   heading + body; filename stem = id).
+2. `preprocessing.py` — clean/normalize into a JSONL corpus.
+3. `index.py` — build a DuckDB full-text-search (BM25) index from the JSONL.
+4. `models.py` — shared `Article`/`SearchResult` types.
+
+Run it via `make corpus-preprocess` / `make corpus-ingest` (wraps
+`python -m core.pipelines.corpus`). Consumers: the chat agent's BM25 retrieval
+and the retrieval eval in `{{ eval_root }}/` (golden-QA `make eval-heuristic`).
+`rag_agent` maintains its own embedding-based vector store separately
+(`make rag-corpus-ingest`) — this package is the lexical/FTS side plus the
+shared corpus models.
+
+This subpackage ships only when a retrieval example agent is present (the
+LangGraph chat agent or `rag_agent`); a non-retrieval project shape gets an
+empty `core/` ETL home instead. Add it later with `/add-capability`.
+
+Raw corpus files live under `data/` (see `data/README.md`).

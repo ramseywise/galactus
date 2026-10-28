@@ -59,13 +59,16 @@ starting from nothing is `/proto-scope discovery` → `/proto-scope` → `/proto
 a session that already has a `DESIGN.md` enters at `/proto-design`, and one that already
 has a spec skips FRAME entirely.
 
-Scaffolding is not a band here. A run of the pipeline is a subdirectory under `runs/ai/`
-or `runs/ml/`, not a generated repo; `ai-project-template` owns the copier stage.
+**`/new` is the front door, before any band.** It routes AI vs ML and picks where the
+work lands: a run (a subdirectory under `runs/ai/` or `runs/ml/`, which then enters FRAME)
+or a standalone repo rendered from this repo's copier template (`copier.yaml` +
+`template/`, Python or TypeScript). See `TEMPLATE.md` for the template itself.
+
 `runs/_index/` is reserved for run records — one per training execution, a different grain
 from the run directory that produced it, which is why the name is prefixed: `_index` can
-never collide with a run. **galactus does not define the record shape.** The registry is
-`ai-project-template`'s `experiments/` module (`record`, `provenance`, `fingerprint`, with a
-`NotApplicable` sentinel so a missing metric never reads as `0.0`); galactus consumes it.
+never collide with a run. **Runs do not define the record shape.** It lives in the root
+`experiments/` module, which the template also ships (`record`, `provenance`, `fingerprint`,
+with a `NotApplicable` sentinel so a missing metric never reads as `0.0`); runs consume it.
 Nothing writes here yet — a run's result currently lives as a `summary.json` under its own
 `docs/`, which is why the lending baseline could be overturned but not reproduced.
 
@@ -96,6 +99,7 @@ moment a load-bearing assumption shows up. `decide-shared` is their shared contr
 | `/ml-transform` | `/proto-research` on `Track: ml` | Profiles a frame; emits the ColumnPlan. Advisory — never transforms silently |
 | `/ml-select` | `/proto-research` on `Track: ml` | The `(family, output)` pair + training config. Refuses to run before profiling |
 | `/new-agent` | `/proto-execute` | Scaffolds an ADK or LangGraph agent |
+| `/template-update` | inside a generated project | Walks a `copier update` from this template |
 | `/mcp-builder` | `/proto-execute` | Reference for writing an MCP server. Vendored; carries its own LICENSE |
 | `/proto-harden` | after `/proto-execute`, before `/proto-review`; or any run about to demo | Walks the marketing-comms hardening checklist against a run dir and fixes gaps in-session. Never touches `Status:` |
 | `/skill-creator` | any | Creates or edits a skill in this repo |
@@ -120,23 +124,20 @@ looks, so they are not invocable.
   encode it at the strongest available layer instead (hook > linter > test > tool schema
   > instruction).
 
-## Vendoring exception
+## Canon lives here
 
-`.claude/skills/` and `.claude/specs/` deliberately duplicate names from the operator's
-global `~/.claude/`. Normally that is a double-load blocker. Here it is intentional:
-galactus is a self-contained showcase — anyone who clones it gets a working setup with no
-access to a private home directory. **Canon remains `~/.claude/`;** the copies here are
-rendered payload. Fix generic skills upstream, then re-vendor.
+`.claude/skills/`, `.claude/specs/` and `.claude/hooks/` in this repo are the canonical
+copies. `~/.claude/` holds none of them (it was emptied in the 2026-09 machine move) and is
+not upstream of anything here.
 
-**`.claude/hooks/` is payload too — and unlike the skills, it is payload that does not
-run.** `settings.json` registers hooks as `$CLAUDE_PROJECT_DIR/.claude/hooks/<name>`, and
-in this workspace `~/workspace/.claude` is a symlink to `~/.claude`. On a session rooted
-at `~/workspace`, that path resolves to the operator's global hooks — never to the files
-in this directory. A fresh clone of galactus gets the working setup the vendoring exists
-for; here, editing `.claude/hooks/` changes nothing at runtime.
+**The template ships from the same files.** Every shared skill or hook under
+`template/.claude/` is a symlink into the root `.claude/` (copier follows symlinks, so a
+rendered project gets real files). Edit the root copy; never replace a symlink with a
+file. A `.jinja` hook exists only where the generated project needs a rendered path, and
+it must stay line-for-line with its root twin apart from that path.
 
-This is the root of galactus#20: the global copies were behind, and the repo-local ones
-everybody was editing were never invoked. **Fix a hook in `~/.claude/hooks/` first, then
-re-vendor, and keep the two byte-identical.** Parity is enforced by
-`hook_parity_check.sh` (fires once per session on `UserPromptSubmit`), which iterates
-the vendored set and warns on any `cmp` mismatch or missing global counterpart.
+**Hooks only run when the session is rooted here.** `settings.json` registers them as
+`$CLAUDE_PROJECT_DIR/.claude/hooks/<name>`. In this workspace `~/workspace/.claude` is a
+symlink to `~/.claude`, so a session rooted at `~/workspace` resolves that path to
+`~/.claude/hooks/`, which does not exist: none of these hooks fire there. Open the session
+in `galactus/` when the guards matter.

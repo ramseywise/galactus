@@ -1,0 +1,23 @@
+import request from "supertest";
+import { describe, it, expect } from "vitest";
+
+import { createApp } from "../app.js";
+
+describe("health check", () => {
+  it("GET /health returns ok", async () => {
+    const app = createApp();
+    const res = await request(app).get("/health");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: "ok" });
+  });
+});
+{%- if ts_agent_framework == "vercel_ai_sdk" %}
+
+describe("agent chat", () => {
+  it("POST /agent/chat rejects a missing messages array", async () => {
+    const app = createApp();
+    const res = await request(app).post("/agent/chat").send({});
+    expect(res.status).toBe(400);
+  });
+});
+{%- endif %}

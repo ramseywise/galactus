@@ -1,0 +1,558 @@
+"""CLI entrypoint for the heuristic eval suite.
+
+Subcommands, wired up by the project Makefile:
+
+    python -m evals.pipelines.run heuristic   # == `make eval-heuristic`
+    python -m evals.pipelines.run render      # == `make eval-render`
+
+Grades retrieval quality against the golden QA set in
+``data/raw_corpus/golden_qa.jsonl`` for each retrieval backend actually present in
+this project — rag_agent's embedding-based retrieval (default-on shared
+MCP-backing infra) and the LangGraph chat agent's BM25 retrieval, whichever
+are scaffolded. Each backend gets its own results/report file and
+(optionally) its own W&B run tagged by backend — grading one backend never
+depends on another being present. Both are pure heuristics (BM25/embedding
+rank + token overlap) — no LLM calls required for the retrieval grade itself;
+answer-overlap grading additionally requires ANTHROPIC_API_KEY per backend.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import UTC, datetime
+from html import escape
+from pathlib import Path
+
+from pydantic import BaseModel
+
+from core.pipelines.corpus.models import SearchResult
+from evals.graders.citation import grade_answer_overlap, grade_retrieval
+from evals.graders.custom import all_graders
+{%- if include_ragas_grader %}
+from evals.graders.ragas_grader import grade_with_ragas
+{%- endif %}
+from evals.metrics.retrieval import hit_rate, mean_reciprocal_rank
+
+GOLDEN_QA_PATH = Path("data/raw_corpus/golden_qa.jsonl")
+REPORTS_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "reports" / "output"
+TARGETS_PATH = Path(__file__).resolve().parent.parent / "targets.yaml"
+
+BACKENDS = [
+{%- if primary_chat_agent in ["lg_agent", "both"] %}
+    "{{ lg_agent_dir }}",
+{%- endif %}
+{%- if include_rag_agent %}
+    "rag_agent",
+{%- endif %}
+]
+
+
+class RowResult(BaseModel):
+    id: str
+    question: str
+    category: str
+    expected_source_article: str
+    rank: int | None
+    hit: bool
+    top_k_ids: list[str]
+    answer_overlap_ratio: float | None = None
+{%- if include_ragas_grader %}
+    ragas_faithfulness: float | None = None
+    ragas_answer_relevancy: float | None = None
+    ragas_context_precision: float | None = None
+{%- endif %}
+
+
+class HeuristicReport(BaseModel):
+    backend: str
+    generated_at: str
+    total_queries: int
+    hit_rate: float
+    mean_reciprocal_rank: float
+    mean_answer_overlap: float | None
+    # Project-specific metrics from evals/graders/custom/ — averaged per-row
+    # scores keyed by registered grader name; gateable via targets.yaml.
+    custom_scores: dict[str, float] = {}
+{%- if include_ragas_grader %}
+    mean_ragas_faithfulness: float | None = None
+    mean_ragas_answer_relevancy: float | None = None
+    mean_ragas_context_precision: float | None = None
+{%- endif %}
+    rows: list[RowResult]
+
+
+def _results_path(backend: str) -> Path:
+    return REPORTS_OUTPUT_DIR / f"heuristic_results_{backend}.json"
+
+
+def _report_html_path(backend: str) -> Path:
+    return REPORTS_OUTPUT_DIR / f"heuristic_report_{backend}.html"
+
+
+def _load_golden_qa(path: Path) -> list[dict[str, str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if line.strip()]
+
+
+def _load_targets() -> dict[str, float]:
+    """Metric thresholds from targets.yaml — {} when absent/empty (gate disabled)."""
+    if not TARGETS_PATH.exists():
+        return {}
+    import yaml
+
+    raw = yaml.safe_load(TARGETS_PATH.read_text(encoding="utf-8"))
+    if not raw:
+        return {}
+    return {key: float(value) for key, value in raw.items()}
+
+
+def _warn_no_targets_activated() -> None:
+    """Loud banner when --warn-empty runs but no targets.yaml metric is active.
+
+    An empty targets.yaml makes --gate pass trivially — enforcement that reads
+    as a no-op. In CI we want that vacuous pass to be *visible*, so the gate
+    step can't green-wash a fresh scaffold. Prints one WARNING line and returns;
+    the build still proceeds (warn-but-pass — see the plan's Phase 4b contract).
+    """
+    print(
+        "WARNING: eval gate is NOT enforcing — no targets activated in "
+        "targets.yaml. Uncomment real thresholds (see DESIGN.md's Evaluation "
+        "section) to make --gate bite. Proceeding without enforcement.",
+        file=sys.stderr,
+    )
+
+
+def _check_targets(report: HeuristicReport, targets: dict[str, float]) -> list[str]:
+    """Compare report metrics against targets.yaml; return failure descriptions.
+
+    Prints one PASS/FAIL line per activated target. Metrics that weren't
+    measured this run (e.g. answer overlap without ANTHROPIC_API_KEY) are
+    skipped, not failed — same graceful-degradation contract as W&B logging.
+    """
+    failures: list[str] = []
+    for metric, target in targets.items():
+        actual = getattr(report, metric, None)
+        if actual is None:
+            actual = report.custom_scores.get(metric)
+        if actual is None:
+            print(f"target {metric}: n/a (not measured this run — skipped)")
+            continue
+        passed = actual >= target
+        print(f"target {metric}: {'PASS' if passed else 'FAIL'} ({actual:.3f} vs >= {target})")
+        if not passed:
+            failures.append(f"{report.backend}: {metric} {actual:.3f} < {target}")
+    return failures
+
+
+{% if primary_chat_agent in ["lg_agent", "both"] -%}
+def _search_lg_agent(question: str) -> list[SearchResult]:
+    from agents.{{ lg_agent_dir }}.settings import settings
+    from core.pipelines.corpus.index import search
+
+    if settings.vectordb_path != ":memory:" and not Path(settings.vectordb_path).exists():
+        raise SystemExit(
+            f"error: {{ lg_agent_dir }} vector DB not found at '{settings.vectordb_path}'.\n"
+            "Build it first with `make corpus-ingest`."
+        )
+    return search(settings.vectordb_path, question, k=settings.retrieval_top_k)
+
+
+def _try_generate_answer_lg_agent(question: str, thread_id: str) -> str | None:
+    """Best-effort answer generation via the LangGraph chat agent's full graph.
+
+    Requires ``ANTHROPIC_API_KEY`` to be set — this is optional enrichment on
+    top of the retrieval grading, so any failure (missing key, network,
+    whatever) degrades to "no answer graded" rather than crashing the run.
+    """
+    from agents.{{ lg_agent_dir }}.settings import settings
+
+    if not settings.anthropic_api_key:
+        return None
+    try:
+        from agents.{{ lg_agent_dir }}.graph import build_graph
+
+        graph = build_graph()
+        result = graph.invoke({"message": question}, {"configurable": {"thread_id": thread_id}})
+        return result.get("answer")
+    except Exception:
+        return None
+
+
+{% endif -%}
+{% if include_rag_agent -%}
+def _search_rag_agent(question: str) -> list[SearchResult]:
+    from agents.rag_agent.settings import settings
+    from agents.rag_agent.vectorstore import get_vector_index
+
+    index = get_vector_index()
+    if index.doc_count() == 0:
+        raise SystemExit(
+            f"error: rag_agent's {settings.vector_backend} vector index is empty.\n"
+            "Build it first with `make rag-corpus-ingest`."
+        )
+    results = index.similarity_search(question, k=settings.retrieval_top_k)
+    return [
+        SearchResult(id=rid, title=title, text=text, score=score)
+        for rid, title, text, score in results
+    ]
+
+
+def _try_generate_answer_rag_agent(question: str, thread_id: str) -> str | None:
+    """Best-effort answer generation via rag_agent's retrieve->generate graph.
+
+    Same graceful-degradation contract as the LangGraph variant: requires
+    ANTHROPIC_API_KEY, any failure degrades to "no answer graded".
+    """
+    from agents.rag_agent.settings import settings
+
+    if not settings.anthropic_api_key:
+        return None
+    try:
+        from agents.rag_agent.graph import build_graph
+
+        graph = build_graph()
+        result = graph.invoke({"message": question}, {"configurable": {"thread_id": thread_id}})
+        return result.get("answer")
+    except Exception:
+        return None
+
+
+{% endif -%}
+_SEARCH_FNS = {
+{%- if primary_chat_agent in ["lg_agent", "both"] %}
+    "{{ lg_agent_dir }}": (_search_lg_agent, _try_generate_answer_lg_agent),
+{%- endif %}
+{%- if include_rag_agent %}
+    "rag_agent": (_search_rag_agent, _try_generate_answer_rag_agent),
+{%- endif %}
+}
+
+
+def _try_log_to_wandb(backend: str, report: HeuristicReport) -> None:
+    """Best-effort W&B logging, tagged by backend.
+
+    Requires ``WANDB_API_KEY`` to be set — this is optional enrichment on top
+    of the eval run, so any failure (missing key, network, whatever) degrades
+    to "not logged" rather than crashing the run.
+    """
+{%- if primary_chat_agent in ["lg_agent", "both"] and include_rag_agent %}
+    if backend == "{{ lg_agent_dir }}":
+        from agents.{{ lg_agent_dir }}.settings import settings
+    else:
+        from agents.rag_agent.settings import settings
+{%- elif primary_chat_agent in ["lg_agent", "both"] %}
+    from agents.{{ lg_agent_dir }}.settings import settings
+{%- else %}
+    from agents.rag_agent.settings import settings
+{%- endif %}
+
+    if not settings.wandb_api_key:
+        return
+    try:
+        import wandb
+
+        wandb.login(key=settings.wandb_api_key)
+        run = wandb.init(
+            project=settings.wandb_project,
+            config={"backend": backend, "data_sensitivity": settings.data_sensitivity},
+        )
+        run.log(
+            {
+                "hit_rate": report.hit_rate,
+                "mean_reciprocal_rank": report.mean_reciprocal_rank,
+                "mean_answer_overlap": report.mean_answer_overlap,
+                "total_queries": report.total_queries,
+            }
+        )
+        run.finish()
+    except Exception as e:
+        print(
+            f"warning: W&B logging failed for {backend}, continuing without it: {e}",
+            file=sys.stderr,
+        )
+
+
+def run_heuristic(backend: str) -> tuple[HeuristicReport, list[str]]:
+    search_fn, try_generate_fn = _SEARCH_FNS[backend]
+
+    if not GOLDEN_QA_PATH.exists():
+        print(f"error: golden QA set not found at '{GOLDEN_QA_PATH}'.", file=sys.stderr)
+        raise SystemExit(1)
+
+    golden_qa = _load_golden_qa(GOLDEN_QA_PATH)
+    rows: list[RowResult] = []
+    overlap_ratios: list[float] = []
+    generated_by_id: dict[str, str | None] = {}
+{%- if include_ragas_grader %}
+    ragas_faithfulness_scores: list[float] = []
+    ragas_answer_relevancy_scores: list[float] = []
+    ragas_context_precision_scores: list[float] = []
+{%- endif %}
+
+    for entry in golden_qa:
+        question = entry["question"]
+        expected_id = entry["source_article"]
+
+        results = search_fn(question)
+        retrieval_grade = grade_retrieval(question, expected_id, results)
+
+        answer_overlap_ratio: float | None = None
+{%- if include_ragas_grader %}
+        ragas_scores: dict[str, float] | None = None
+{%- endif %}
+        generated_answer = try_generate_fn(question, thread_id=entry["id"])
+        generated_by_id[entry["id"]] = generated_answer
+        if generated_answer is not None:
+            overlap_grade = grade_answer_overlap(generated_answer, entry["expected_answer"])
+            answer_overlap_ratio = overlap_grade.overlap_ratio
+            overlap_ratios.append(answer_overlap_ratio)
+{%- if include_ragas_grader %}
+            ragas_scores = grade_with_ragas(
+                question=question,
+                contexts=[r.text for r in results],
+                answer=generated_answer,
+                ground_truth=entry["expected_answer"],
+            )
+            if ragas_scores is not None:
+                ragas_faithfulness_scores.append(ragas_scores["faithfulness"])
+                ragas_answer_relevancy_scores.append(ragas_scores["answer_relevancy"])
+                ragas_context_precision_scores.append(ragas_scores["context_precision"])
+{%- endif %}
+
+        rows.append(
+            RowResult(
+                id=entry["id"],
+                question=question,
+                category=entry["category"],
+                expected_source_article=expected_id,
+                rank=retrieval_grade.rank,
+                hit=retrieval_grade.hit,
+                top_k_ids=retrieval_grade.top_k_ids,
+                answer_overlap_ratio=answer_overlap_ratio,
+{%- if include_ragas_grader %}
+                ragas_faithfulness=ragas_scores.get("faithfulness") if ragas_scores else None,
+                ragas_answer_relevancy=ragas_scores.get("answer_relevancy") if ragas_scores else None,
+                ragas_context_precision=ragas_scores.get("context_precision") if ragas_scores else None,
+{%- endif %}
+            )
+        )
+
+    custom_scores: dict[str, float] = {}
+    for grader_name, grader in all_graders().items():
+        scores = [
+            score
+            for entry in golden_qa
+            if (score := grader(entry, generated_by_id.get(entry["id"]))) is not None
+        ]
+        if scores:
+            custom_scores[grader_name] = sum(scores) / len(scores)
+
+    ranks = [row.rank for row in rows]
+    report = HeuristicReport(
+        backend=backend,
+        generated_at=datetime.now(UTC).isoformat(),
+        total_queries=len(rows),
+        hit_rate=hit_rate(ranks),
+        mean_reciprocal_rank=mean_reciprocal_rank(ranks),
+        mean_answer_overlap=(sum(overlap_ratios) / len(overlap_ratios) if overlap_ratios else None),
+        custom_scores=custom_scores,
+{%- if include_ragas_grader %}
+        mean_ragas_faithfulness=(
+            sum(ragas_faithfulness_scores) / len(ragas_faithfulness_scores)
+            if ragas_faithfulness_scores
+            else None
+        ),
+        mean_ragas_answer_relevancy=(
+            sum(ragas_answer_relevancy_scores) / len(ragas_answer_relevancy_scores)
+            if ragas_answer_relevancy_scores
+            else None
+        ),
+        mean_ragas_context_precision=(
+            sum(ragas_context_precision_scores) / len(ragas_context_precision_scores)
+            if ragas_context_precision_scores
+            else None
+        ),
+{%- endif %}
+        rows=rows,
+    )
+
+    REPORTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    _results_path(backend).write_text(report.model_dump_json(indent=2), encoding="utf-8")
+
+    _print_summary(backend, report)
+    failures = _check_targets(report, _load_targets())
+    print(f"\nWrote results to {_results_path(backend)}")
+    _try_log_to_wandb(backend, report)
+    return report, failures
+
+
+def run_all_heuristic(gate: bool = False, warn_empty: bool = False) -> None:
+    if warn_empty and not _load_targets():
+        _warn_no_targets_activated()
+    all_failures: list[str] = []
+    for backend in BACKENDS:
+        print(f"=== {backend} ===")
+        _, failures = run_heuristic(backend)
+        all_failures.extend(failures)
+        print()
+    if gate and all_failures:
+        print("eval gate FAILED:", file=sys.stderr)
+        for failure in all_failures:
+            print(f"  {failure}", file=sys.stderr)
+        raise SystemExit(1)
+
+
+def _print_summary(backend: str, report: HeuristicReport) -> None:
+    header = f"{'id':<8} {'hit':<5} {'rank':<6} {'overlap':<8} category"
+    print(header)
+    print("-" * len(header))
+    for row in report.rows:
+        rank_str = "-" if row.rank is None else str(row.rank)
+        overlap_str = "-" if row.answer_overlap_ratio is None else f"{row.answer_overlap_ratio:.2f}"
+        print(f"{row.id:<8} {row.hit!s:<5} {rank_str:<6} {overlap_str:<8} {row.category}")
+    print("-" * len(header))
+    print(f"queries:            {report.total_queries}")
+    print(f"hit_rate:           {report.hit_rate:.3f}")
+    print(f"mean_reciprocal_rank: {report.mean_reciprocal_rank:.3f}")
+    if report.mean_answer_overlap is not None:
+        print(f"mean_answer_overlap: {report.mean_answer_overlap:.3f}")
+    else:
+        print(f"mean_answer_overlap: n/a (no ANTHROPIC_API_KEY set — {backend} retrieval-only)")
+    for name, value in sorted(report.custom_scores.items()):
+        print(f"{name}: {value:.3f} (custom grader)")
+{%- if include_ragas_grader %}
+    if report.mean_ragas_faithfulness is not None:
+        print(f"mean_ragas_faithfulness:      {report.mean_ragas_faithfulness:.3f}")
+        print(f"mean_ragas_answer_relevancy:  {report.mean_ragas_answer_relevancy:.3f}")
+        print(f"mean_ragas_context_precision: {report.mean_ragas_context_precision:.3f}")
+    else:
+        print("mean_ragas_*: n/a (ragas unavailable or no ANTHROPIC_API_KEY — see ragas_grader.py)")
+{%- endif %}
+
+
+def run_render(backend: str) -> None:
+    results_path = _results_path(backend)
+    if not results_path.exists():
+        print(
+            f"error: no results file at '{results_path}'.\n"
+            "Run `python -m evals.pipelines.run heuristic` (or `make eval-heuristic`) first.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    report = HeuristicReport.model_validate_json(results_path.read_text(encoding="utf-8"))
+    html = _render_html(report)
+    REPORTS_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    _report_html_path(backend).write_text(html, encoding="utf-8")
+    print(f"Wrote HTML report to {_report_html_path(backend)}")
+
+
+def run_all_render() -> None:
+    for backend in BACKENDS:
+        run_render(backend)
+
+
+def _render_html(report: HeuristicReport) -> str:
+    overlap_summary = (
+        f"{report.mean_answer_overlap:.3f}" if report.mean_answer_overlap is not None else "n/a"
+    )
+
+    def _row(row: RowResult) -> str:
+        overlap = f"{row.answer_overlap_ratio:.2f}" if row.answer_overlap_ratio is not None else "-"
+        return (
+            f"<tr>"
+            f"<td>{escape(row.id)}</td>"
+            f"<td>{escape(row.question)}</td>"
+            f"<td>{escape(row.expected_source_article)}</td>"
+            f"<td>{'yes' if row.hit else 'no'}</td>"
+            f"<td>{row.rank if row.rank is not None else '-'}</td>"
+            f"<td>{overlap}</td>"
+            f"<td>{escape(row.category)}</td>"
+            f"</tr>"
+        )
+
+    row_html = "\n".join(_row(row) for row in report.rows)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Heuristic eval report — {escape(report.backend)}</title>
+{% raw -%}
+<style>
+  body {{ font-family: sans-serif; margin: 2rem; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th, td {{ border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }}
+  th {{ background: #f2f2f2; }}
+  .summary {{ margin-bottom: 1.5rem; }}
+  .summary dt {{ font-weight: bold; }}
+</style>
+{% endraw -%}
+</head>
+<body>
+<h1>Heuristic eval report — {escape(report.backend)}</h1>
+<div class="summary">
+  <p>Generated: {escape(report.generated_at)}</p>
+  <dl>
+    <dt>Total queries</dt><dd>{report.total_queries}</dd>
+    <dt>Hit rate</dt><dd>{report.hit_rate:.3f}</dd>
+    <dt>Mean reciprocal rank</dt><dd>{report.mean_reciprocal_rank:.3f}</dd>
+    <dt>Mean answer overlap</dt><dd>{overlap_summary}</dd>
+  </dl>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>id</th><th>question</th><th>expected article</th><th>hit</th>
+      <th>rank</th><th>answer overlap</th><th>category</th>
+    </tr>
+  </thead>
+  <tbody>
+{row_html}
+  </tbody>
+</table>
+</body>
+</html>
+"""
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(prog="python -m evals.pipelines.run")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    heuristic_parser = subparsers.add_parser(
+        "heuristic", help="Grade retrieval against the golden QA set, for every backend present."
+    )
+    heuristic_parser.add_argument(
+        "--gate",
+        action="store_true",
+        help="Exit non-zero if any targets.yaml metric falls below its target.",
+    )
+    heuristic_parser.add_argument(
+        "--warn-empty",
+        action="store_true",
+        help="Print a loud WARNING (but still pass) when targets.yaml has no "
+        "activated metric, so a vacuous --gate can't green-wash in CI.",
+    )
+    subparsers.add_parser(
+        "render", help="Render the latest heuristic results as HTML, for every backend present."
+    )
+
+    args = parser.parse_args(argv)
+    if not BACKENDS:
+        print(
+            "error: no retrieval backend scaffolded (include_rag_agent=false and no "
+            "LangGraph chat agent) — the golden-QA retrieval eval needs one. "
+            "Register your custom backend in BACKENDS/_SEARCH_FNS in this file.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    if args.command == "heuristic":
+        run_all_heuristic(gate=args.gate, warn_empty=args.warn_empty)
+    elif args.command == "render":
+        run_all_render()
+
+
+if __name__ == "__main__":
+    main()

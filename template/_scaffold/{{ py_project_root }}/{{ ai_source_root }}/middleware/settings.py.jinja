@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AuthSettings(BaseSettings):
+    """Supabase Auth settings for middleware/auth.py -- separate from each
+    agent's own Settings class since auth isn't agent-specific (any present
+    agent's FastAPI app can depend on get_current_user_id). Same convention
+    as integrations/settings.py.jinja's IntegrationSettings."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # Optional for local dev (get_current_user_id falls back to DEV_USER_ID
+    # when unset), required for deployment.
+    supabase_url: str = ""
+    supabase_anon_key: str = ""
+    supabase_service_key: str = ""
+    supabase_jwt_secret: str = ""  # Settings -> API -> JWT Secret, for HS256 verification
+
+    # Accepts a JSON array or a comma-separated string:
+    #   BACKEND_CORS_ORIGINS=https://app.vercel.app,http://localhost:3000
+    #   BACKEND_CORS_ORIGINS=["https://app.vercel.app","http://localhost:3000"]
+    backend_cors_origins: list[str] = ["http://localhost:3000"]
+
+    @field_validator("backend_cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("["):
+                import json
+
+                return json.loads(v)
+            return [o.strip() for o in v.split(",") if o.strip()]
+        return v
+
+
+settings = AuthSettings()

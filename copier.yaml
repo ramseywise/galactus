@@ -1,0 +1,1855 @@
+_min_copier_version: "9.3.0"
+_subdirectory: template
+_external_data:
+  # Path is RELATIVE TO dst_path (copier joins it internally — do not prefix
+  # _copier_conf.dst_path here, that double-joins and the file is never found).
+  # Rendered, then loaded as a Jinja namespace (`_external_data.design.<path>`)
+  # before question defaults compute. Empty dict on fresh genesis (no
+  # design.yaml yet) or on any repo that predates this layer — every default:
+  # expression below guards with
+  # `_external_data.design is defined and _external_data.design and
+  # _external_data.design.stages.<stage> == 'complete'` before reading it,
+  # falling back to the existing A3-derived expression otherwise. See
+  # .claude/docs/plans/2026-07-18-template-full-mirror-redesign.md Q5/Q5a for
+  # the full mechanism (design.yaml is a 3rd, upstream flag layer; stage-gating
+  # selects which branch of a when:false flag's default wins, not whether a
+  # question is asked).
+  design: "design.yaml"
+_message_before_copy: >+
+  AI-Eng Claude Template
+
+  The interview is deliberately short (~11–14 questions). Phase 1 scopes the
+  project — what you're building, who uses it, language(s), external systems,
+  deployment — and, for agent-shaped projects, what the AI system itself looks
+  like (tools, memory, human approval). Phase 4 covers team conventions
+  (data sensitivity, ticket prefix, notifications). That's it — the
+  architecture choices that used to be Phase 2/3 (chat-agent framework, vector
+  store, TS agent loop, frontend/backend topology, MCP server, optional
+  integrations, eval metrics) are NOT asked at genesis: project_type derives
+  the one shape example, and each of those components is a mid-project
+  capability you add later with `copier update -d include_<x>=true` (the
+  /add-capability path). Everything inferred — directory names, eval layout,
+  Python version, AWS region, and every deferred capability — is still
+  overridable non-interactively with -d (e.g. -d primary_chat_agent=both,
+  -d include_mcp_server=true, -d ai_source_root=lib).
+
+  Picking "Layer onto an existing repo" as the project type is layering-only
+  mode — safe to run into an existing repo, only adding .claude/.agents/
+  mcp_servers and touching nothing else (equivalent to the old
+  scaffold_full_project=false). All other project types scaffold a full
+  project. The scaffold is minimal by default: one chat-agent example where
+  the shape calls for it (lg_agent), and no MCP server or rag_agent unless
+  the project IS one (mcp_server / rag shapes) or you ask for them — every
+  component stays a `copier update -d include_<x>=true` away after genesis.
+
+_message_after_copy: >+
+  Done. Next steps:
+  - Review CLAUDE.md and fill in the "Hard Rules" placeholder section.
+  - Review DESIGN.md — the scoping answers you just gave are seeded there; finish the blank sections before sprint 1.
+  - LIFECYCLE.md tracks phase + gates (Discovery → Delivery → Deployment) — run /gate-check once discovery artifacts exist; it's the file DSSG's project-mgmt-ai reads for status updates.
+  - DEPLOYMENT.md is the Phase-3 runbook (staged rollout, rollback, monitoring) — fill it at the G2 gate; /deploy-check pre-flights launch readiness.
+  - Run `chmod +x .claude/hooks/*.sh` if hooks aren't executable.
+  - If scaffold_full_project: run `make setup` (uv sync + .env from example){% if primary_chat_agent in ["lg_agent", "both"] %}, then `make {{ lg_agent_dir | replace('_', '-') }}-up` to try the example agent{% elif primary_chat_agent == "adk_agent" %}, then `make {{ adk_agent_dir | replace('_', '-') }}-up` to try the example agent{% elif include_rag_agent %}, then `make rag-up` to try the example agent{% endif %}.
+  {%- if scaffold_full_project and primary_backend_language in ["typescript", "both"] and frontend_backend_topology != "split_service" %}
+  - TS backend service scaffolded at {{ ts_project_root }}/ — run `make ts-install` then `make ts-dev`.
+  {%- endif %}
+  {%- if has_typescript and ts_agent_framework == "vercel_ai_sdk" %}
+  - Vercel AI SDK agent scaffolded at {{ ts_project_root }}/{{ ts_source_root }}/agents/{{ ts_agent_dir }}/ — set ANTHROPIC_API_KEY, then `make ts-dev` and POST to /agent/chat to try it.
+  {%- endif %}
+  {%- if scaffold_full_project and frontend_backend_topology == "split_service" %}
+  - split_service scaffolded: Next.js frontend at {{ ts_project_root }}/ (`make ts-install` then `make ts-dev`) + FastAPI backend with Supabase-JWT auth ({{ py_project_root }}/{{ ai_source_root }}/middleware/auth.py). Create a Supabase project, fill in SUPABASE_URL/SUPABASE_ANON_KEY/SUPABASE_JWT_SECRET (backend) and NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY (frontend) before first deploy — Vercel for the frontend, Railway for the backend (see railway.toml/vercel.json).
+  {%- endif %}
+  {%- if include_mcp_server %}
+  - MCP server: `cd mcp_servers/{{ mcp_server_slug }} && {% if mcp_server_language == "typescript" %}npm install{% else %}uv sync{% endif %}`.
+  {%- endif %}
+  {%- if include_dev_companion %}
+  - `.claude/docs/companion/collaboration.md` starts blank — /grow-companion fills it in as real sessions happen.
+  {%- endif %}
+
+_message_after_update: >+
+  Layout note: use_flat_layout defaults to false (nested, backend/src).
+  Projects that recorded use_flat_layout: true will keep their flat layout;
+  projects without the key get backend/.  To switch, re-run with
+  -d use_flat_layout=true (flat) or -d use_flat_layout=false (nested).
+
+_exclude:
+  - __pycache__
+  - "*.py[cod]"
+  - .venv
+  - .pytest_cache
+  - .ruff_cache
+  - .DS_Store
+  - .git
+  - copier.yaml
+
+# ─── Phase 1 — Project scoping ────────────────────────────────────────────
+# These questions determine the scaffold. Later phases either derive their
+# defaults from these answers or are only asked when relevant. Hidden
+# (when: false) questions are still computed and still overridable with -d —
+# that's how CI and /new drive them non-interactively.
+
+project_name:
+  type: str
+  help: What is your project name?
+  placeholder: "{{project_name_input}}"
+  default: "{{project_name_input}}"
+
+project_slug:
+  type: str
+  help: Is this project slug ok? (used for folder/package naming)
+  placeholder: my-project
+  default: "{{ project_name.lower().replace(' ', '-') }}"
+  when: false
+
+project_description:
+  type: str
+  help: One-sentence description of the project
+  default: "TODO: describe this project"
+
+project_type:
+  type: str
+  help: >-
+    What are you building? This drives which questions follow and what gets
+    scaffolded — implementation details (vector store, eval harness, MCP
+    language, ...) are inferred from it and only surfaced when they matter.
+  choices:
+    "AI chat application": chat_app
+    "Autonomous agent": agent
+    "Workflow automation": workflow
+    "RAG / document Q&A": rag
+    "MCP server": mcp_server
+    "AI backend / API service": ai_backend
+    "Evaluation suite": eval_suite
+    "ML model (tabular / classical ML)": ml_model
+    "Research prototype": prototype
+    "Layer onto an existing repo (tooling only)": existing_repo
+  default: chat_app
+
+# Derived: the old top-level toggle, now inferred from project_type.
+# existing_repo = layering-only mode — safe to run into an existing repo, only
+# adds .claude/.agents/mcp_servers. Overridable with -d scaffold_full_project=…
+# (how CI's layering-only job drives it without picking a project_type).
+scaffold_full_project:
+  type: bool
+  default: "{{ project_type != 'existing_repo' }}"
+  when: false
+
+# The one canonical "is this an agent-shaped project?" predicate — referenced by
+# agent_tools/agent_memory/human_approval's when: and DESIGN.md.jinja's Key
+# Decisions block, which must all stay in lockstep. Edit the list here only.
+is_agent_shaped:
+  type: bool
+  default: "{{ scaffold_full_project and project_type in ['chat_app', 'agent', 'workflow', 'rag', 'ai_backend'] }}"
+  when: false
+
+# The ML twin of is_agent_shaped, and the reason it exists as its own predicate
+# rather than as `not is_agent_shaped`: those two are NOT complements. Several
+# shapes (eval_suite, mcp_server, prototype) are neither agent-shaped nor
+# ml-shaped, and each still ships the agentic scaffold. Only ml_model selects
+# an ML-shaped project — a project whose payload is {{ ml_source_root }}/ +
+# nbks/ + tests/unit/ml and which renders NO agents/, evals/, llm_kit/, core/,
+# or agentic lifecycle docs.
+#
+# This is the flag the gate-7 walkthrough asked for. Before it, `include_ml=true`
+# layered ML *on top of* a full agentic scaffold — there was no way to render an
+# ML project, only an agentic project that also had ml/. include_ml stays the
+# "add the ML toolkit to whatever this project is" capability toggle; this is
+# the "this project IS an ML project" shape predicate. Referenced by
+# include_ml/has_corpus_pipeline/include_llm_kit/the doc gates and the _tasks
+# cleanups — edit the shape list here only.
+is_ml_shaped:
+  type: bool
+  default: "{{ scaffold_full_project and project_type == 'ml_model' }}"
+  when: false
+
+primary_users:
+  type: str
+  help: >-
+    Who uses it? Seeds the data-sensitivity default (customer- or
+    public-facing implies restricted) and DESIGN.md's actor table.
+  choices:
+    "Internal team": internal
+    "Customers": customers
+    "Developers": developers
+    "Public API": public_api
+  default: internal
+
+primary_backend_language:
+  type: str
+  help: >-
+    Implementation language(s). python ships the working example agents.
+    typescript/both additionally scaffold a real Node/TS backend service (not
+    just frontend hooks) with its own lint/typecheck/test tooling.
+  choices:
+    python: "python"
+    typescript: "typescript"
+    both: "both"
+  default: >-
+    {{ (('both' if (_external_data.design.backends.python.enabled and
+    _external_data.design.backends.typescript.enabled) else
+    ('typescript' if _external_data.design.backends.typescript.enabled else 'python')))
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else 'python' }}
+  # Q5 row 4 (stage-gated on discovery): seed reflects which backends are
+  # enabled in design.yaml once discovery is complete — the question stays
+  # askable/​overridable either way (this only changes its seed, same as
+  # every other Layer-A default). Else = the original literal 'python' default.
+  when: false
+
+# Derived from primary_backend_language. Override with -d has_typescript=true
+# for a frontend-only TS project layered onto an existing repo (adds the TS
+# quality/typecheck hooks without scaffolding a backend).
+has_typescript:
+  type: bool
+  # Gated on scaffold_full_project: a layering-only render must not ship the
+  # ts_*.sh hooks, which assume a scaffolded TS project (package.json/tsconfig
+  # at ts_project_root) that layering mode never creates. A frontend-only
+  # layered TS repo can still opt in with -d has_typescript=true.
+  default: "{{ primary_backend_language in ['typescript', 'both'] if scaffold_full_project else false }}"
+  when: false
+
+external_systems:
+  type: str
+  multiselect: true
+  help: >-
+    Which external systems will this project interact with? Seeds later
+    defaults (Calendar → Google Calendar client, Web → web research,
+    Slack/GitHub/Email/Workspace → Composio, Database → pgvector) — every
+    seeded choice resurfaces for confirmation later, nothing is silently
+    locked in.
+  choices:
+    "Slack": slack
+    "GitHub": github
+    "Google Workspace": google_workspace
+    "Calendar": calendar
+    "Email": email
+    "Database": database
+    "Web": web
+  default: []
+
+deployment_target:
+  type: str
+  help: >-
+    Expected deployment. Recorded in DESIGN.md's key decisions; Dockerfiles
+    (infrastructure/containers/) ship with every full scaffold, and the
+    terraform/ skeleton ships only when cloud == aws (the skeleton is AWS-only:
+    ECS Fargate + ALB; selecting gcp would render the wrong provider's IaC).
+    docker/cloud additionally scaffold .github/workflows/cd.yml
+    (build-and-push to GHCR) when the lg_agent image exists to build —
+    local/serverless get no CD workflow (serverless deploys via the
+    platform's own git integration).
+  choices:
+    "Local only": local
+    "Docker": docker
+    "Cloud (long-running service)": cloud
+    "Serverless (Vercel / Lambda)": serverless
+  default: >-
+    {{ _external_data.design.deployment_target
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else 'local' }}
+  # Q5 row 9 (stage-gated on discovery): direct copy of design.deployment_target
+  # once discovery is complete; else the original literal 'local' default. Stays
+  # askable — this only changes the seed shown/used, same as primary_backend_language.
+  when: false
+
+# Q5 row 8 (new flag): which cloud, drives the RAG-per-cloud matrix (Q4:
+# bedrock_kb needs aws, vertex_rag needs gcp) and terraform provider selection
+# (providers.aws.tf / providers.gcp.tf, gated on this flag — see Q4 execution
+# note). Stage-gated on discovery; else 'none' (no legacy expression — cloud
+# selection is new in this redesign, deployment_target alone didn't carry it).
+cloud:
+  type: str
+  choices:
+    none: "none"
+    aws: "aws"
+    gcp: "gcp"
+  default: >-
+    {{ _external_data.design.cloud
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else 'none' }}
+  when: false
+
+# ─── Phase 1b — the AI system itself ──────────────────────────────────────
+# Only asked for agent-shaped projects. These shape DESIGN.md's key-decisions
+# table and seed architecture defaults (MCP server, postgres checkpointer) —
+# they matter more than any individual tool toggle.
+
+agent_tools:
+  type: str
+  multiselect: true
+  help: >-
+    Will the agent use tools? Recorded in DESIGN.md; selecting "MCP" (a
+    declared MCP host consumer) seeds the MCP-server default. Nothing is
+    pre-selected beyond what your external-systems answer implies — REST is
+    the standard service boundary, MCP an adapter over it.
+  choices:
+    "Web search": search
+    "Filesystem": filesystem
+    "GitHub": github
+    "Database": database
+    "MCP (expose/consume tools)": mcp
+    "Custom (project-specific)": custom
+  default: "{{ (['github'] if 'github' in external_systems else []) + (['database'] if 'database' in external_systems else []) }}"
+  when: false
+
+agent_memory:
+  type: str
+  help: >-
+    Will the agent store memory? conversation = per-thread history (LangGraph
+    checkpointer, the scaffold's default). long_term = durable cross-session
+    memory — seeds the postgres checkpointer dependency so persistence has
+    somewhere real to live. Recorded in DESIGN.md.
+  choices:
+    "No memory (stateless calls)": none
+    "Conversation history": conversation
+    "Long-term / cross-session": long_term
+  default: conversation
+  when: false
+
+human_approval:
+  type: str
+  help: >-
+    Does the agent need human approval before acting? Recorded in DESIGN.md's
+    key decisions — it constrains every tool that writes to an external
+    system, so decide it now, not after the first irreversible write.
+  choices:
+    "No — fully autonomous": none
+    "Sometimes — for irreversible/external writes": sometimes
+    "Always — human confirms every action": always
+  default: sometimes
+  when: "{{ is_agent_shaped }}"
+
+# Inferred directory layout — computed here (before Phase 2) because later
+# question help-strings interpolate it; copier renders each question with only
+# the answers collected so far. use_flat_layout is asked (recorded in
+# .copier-answers.yml) and py_project_root derives from it; ai_source_root and
+# ml_source_root are never asked — override with -d ai_source_root=… /
+# -d ml_source_root=… if yours differs.
+#
+# Two-root scaffold (2026-07-19): the staging tree under _scaffold/ now mirrors
+# the destination layout instead of staying flat. _scaffold/ itself is the
+# UNIVERSAL shell (build/deploy/CI/config — pyproject, Makefile, .github,
+# .vscode, configs, infrastructure); one level down sits a per-language project
+# root holding that language's backend:
+#
+#   _scaffold/{{ py_project_root }}/   ← Python backend (promotes atomically)
+#     {{ ai_source_root }}/  agents, integrations, middleware,
+#                            observability, security
+#     {{ ml_source_root }}/  classical ML/stats toolkit
+#     {{ eval_root }}/       eval suite — a SIBLING of both source roots, not
+#                            nested: evals import ACROSS roots (run.py pulls
+#                            core.pipelines.corpus.models alongside
+#                            evals.graders.*), so they are a consumer of every
+#                            root rather than a member of one.
+#     core/ data/ nbks/ tests/
+#   _scaffold/{{ ts_project_root }}/   ← TS backend (promotes atomically)
+#     {{ ts_source_root }}/  agent/, app.ts, index.ts
+#
+# These defaults reproduce the previous single `source_root: backend/src`
+# exactly — py_project_root + ai_source_root == backend/src — so rendered
+# destination paths are unchanged; only the staging layout moved.
+#
+# Flat layout (AIT-33): a python-only backend with no frontend tree has nothing
+# to disambiguate, so py_project_root collapses to '.' and the backend lands at
+# ./src instead of backend/src. ml_source_root stays 'ml' — under flat layout ML
+# is scaffolded as an optional sibling backend to the agentic src/, at ./ml/.
+# The frontend condition is INLINED from _external_data (not `include_frontend`)
+# because that question is declared later in this file — copier renders each
+# default with only the answers collected so far, so referencing it here would
+# be undefined.
+#
+# use_flat_layout (AIT-40): the layout choice is surfaced as a recorded answer
+# so it survives `copier update` without re-passing -d.  It is only asked for
+# python-only projects with no frontend (same guard as py_project_root's old
+# default condition).  The default is false so that pre-4eac907 projects
+# (which have no use_flat_layout in their .copier-answers.yml) keep their
+# existing backend/ tree intact on the next `copier update`.  New python-only
+# renders wanting the flat layout must pass -d use_flat_layout=true (or answer
+# the question interactively).
+#
+# Note: _copier_operation is NOT available in default: expressions in copier
+# 9.17.0 — it is only injected into the task-execution context, not the
+# question-rendering context (_render_context()).  Verified empirically:
+# `{{ _copier_operation == 'copy' }}` evaluates to False for both copy and
+# update, so it cannot be used to give new renders a different default.
+use_flat_layout:
+  type: bool
+  help: >-
+    Put the Python backend at the repo root (flat layout, src/ at ./src) instead
+    of under backend/ (nested layout, backend/src)?  The default is nested.
+    Answer yes only if you want src/ directly at the repo root.
+  default: false
+  when: >-
+    {{ primary_backend_language == 'python' and not
+    (_external_data.design.web.enabled
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else false) }}
+
+py_project_root:
+  type: str
+  default: "{{ '.' if use_flat_layout else 'backend' }}"
+  when: false
+
+ai_source_root:
+  type: str
+  default: src
+  when: false
+
+ml_source_root:
+  type: str
+  default: ml
+  when: false
+
+run_registry_root:
+  type: str
+  default: experiments
+  when: false
+
+# ─── Phase 2 — Architecture (A3: derived from Phase 1, -d-only, never asked) ─
+# These were interview questions; A3 (F4) made them `when: false` — the shape
+# example is derived from project_type and each component is a deferred
+# capability added post-genesis via `copier update -d <name>=…`
+# (the /add-capability path). Defaults + validators still apply; drive them
+# non-interactively with -d.
+
+primary_chat_agent:
+  type: str
+  help: >-
+    Which prebuilt chat-agent implementation(s) do you want? This picks the
+    framework(s) of the user-facing chat agent — the agent itself is named by
+    the next question (agent_slug), not after the framework. A new project
+    needs one working example (lg_agent by default); the other framework is a
+    `copier update -d primary_chat_agent=…` away. "none" means no prebuilt
+    chat agent — build your own.
+  choices:
+    lg_agent: "lg_agent"
+    adk_agent: "adk_agent"
+    both: "both"
+    none: "none"
+  default: >-
+    {{ ('lg_agent' if _external_data.design.backends.python.framework == 'langgraph' else
+    ('adk_agent' if _external_data.design.backends.python.framework == 'adk' else 'none'))
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete' and
+    _external_data.design.backends.python.enabled) else
+    ('lg_agent' if project_type in ['chat_app', 'agent', 'workflow', 'prototype'] else 'none') }}
+  # A3: no longer asked at genesis — project_type picks the one shape example
+  # (chat shapes → lg_agent; everything else → none). A second framework is a
+  # tier-3 capability added later via `copier update -d primary_chat_agent=…`
+  # (the /add-capability path). Still computed + overridable with -d.
+  # Q5 row 1 (design.yaml layer, stage-gated on discovery): once
+  # design.stages.discovery == 'complete', backends.python.framework wins
+  # (langgraph -> lg_agent, adk -> adk_agent, python disabled -> none); else
+  # the A3-derived project_type expression above is the fallback. Flag stays
+  # when: false — stage-gating picks the default: branch, not askability.
+  when: false
+
+agent_slug:
+  type: str
+  help: >-
+    Directory/package name for your chat agent under
+    {{ py_project_root }}/{{ ai_source_root }}/agents/ — name it for what the agent DOES
+    (intake_triage, helpdesk, grants_qa), not the framework it's built on.
+    Makefile targets follow it (<slug>-up/-down/-chat). With
+    primary_chat_agent=both, the LangGraph implementation gets this name and
+    the ADK one gets <slug>_adk.
+  placeholder: assistant
+  default: assistant
+  validator: >-
+    {% if not (agent_slug | regex_search('^[a-z][a-z0-9_]*$')) %}agent_slug
+    must be a lowercase Python identifier (letters/digits/underscores, letter
+    first){% endif %}{% if agent_slug in ['rag_agent', 'lg_agent', 'adk_agent',
+    'agents', 'core', 'tests'] %} agent_slug '{{ agent_slug }}' is
+    reserved{% endif %}
+  # A3: no longer asked at genesis — the single chat example is named `assistant`
+  # by default; rename it with -d agent_slug=<name> (validator still enforced).
+  when: false
+
+# Derived directory names the templates and _tasks actually consume. When a
+# framework isn't the chosen one its tree keeps the framework name in staging
+# (it's removed by _tasks before the big mv, so the name never reaches the
+# rendered project). agent_slug values colliding with these staging names are
+# rejected by the validator above.
+lg_agent_dir:
+  type: str
+  default: "{{ agent_slug if primary_chat_agent in ['lg_agent', 'both'] else 'lg_agent' }}"
+  when: false
+
+adk_agent_dir:
+  type: str
+  default: "{{ (agent_slug ~ '_adk') if primary_chat_agent == 'both' else (agent_slug if primary_chat_agent == 'adk_agent' else 'adk_agent') }}"
+  when: false
+
+include_rag_agent:
+  type: bool
+  help: >-
+    Ship the prebuilt rag_agent retrieval backend (LangGraph + vector store)?
+    Default on only for the rag project shape — it's that shape's working
+    end-to-end example, not shared infrastructure. Other shapes opt in here
+    (or later via `copier update -d include_rag_agent=true`). The MCP
+    retrieval tool, when scaffolded, calls RAG_AGENT_URL either way — point
+    it at any compatible /api/v1/retrieval endpoint.
+  default: >-
+    {{ ('rag' in _external_data.design.backends.python.capabilities)
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (project_type == 'rag') }}
+  # A3: no longer asked at genesis — on for the rag shape (its example), off
+  # elsewhere. A tier-3 capability otherwise: add later with
+  # `copier update -d include_rag_agent=true` (/add-rag).
+  # Q5 row 3 (stage-gated on discovery): 'rag' in
+  # design.backends.python.capabilities wins once discovery is complete; else
+  # the A3-derived project_type == 'rag' expression is the fallback.
+  when: false
+
+# Derived: does this render ship the corpus data pipeline
+# (core/pipelines/corpus/ — markdown → JSONL → DuckDB FTS index) and the
+# retrieval golden-QA eval that grades against it? True when RAG is on
+# (rag_agent present — embedding retrieval over the preprocessed corpus).
+# The LangGraph chat agent is corpus-free by default; its retrieve node and
+# BM25 wiring are the additive corpus demo layer, rendered only when this
+# flag is true. core/ itself is the general ETL home and
+# always ships in a full scaffold; only the corpus SUBpackage + its golden-QA
+# eval, tests, fixtures, and Makefile targets are gated here — a non-retrieval
+# shape (mcp_server / eval_suite / ai_backend / adk-only / none) gets an empty
+# core/ ETL layer with no corpus pipeline welded in. Override with
+# -d has_corpus_pipeline=… (independent of scaffold_full_project — false in
+# layering mode, which ships no src pipeline at all).
+has_corpus_pipeline:
+  type: bool
+  default: >-
+    {{ (scaffold_full_project and 'rag' in _external_data.design.backends.python.capabilities
+    and _external_data.design.rag.corpus_pipeline == 'markdown_jsonl')
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (scaffold_full_project and include_rag_agent) }}
+  # AIT-32: the A3-derived else branch dropped its `or lg_agent` clause —
+  # lg_agent no longer implies the corpus demo. design.yaml branch additionally requires
+  # rag.corpus_pipeline == 'markdown_jsonl' (Q4): only that rag_impl ships the
+  # markdown->JSONL->DuckDB pipeline; bedrock_kb/vertex_rag/ts_vectorstore don't.
+  when: false
+
+vector_backend:
+  type: str
+  help: >-
+    rag_agent's vector store backend. duckdb is a durable single file, no
+    external service. memory is in-process (zero setup, optional JSON snapshot
+    for persistence across restarts) — good for local dev/CI. opensearch is
+    for production scale (external cluster, HNSW kNN) — requires the optional
+    opensearch-py dependency and a reachable cluster. postgres uses pgvector —
+    for Supabase or any managed Postgres, requires the optional
+    psycopg/pgvector dependencies and a reachable database with the pgvector
+    extension enabled.
+  choices:
+    duckdb: "duckdb"
+    memory: "memory"
+    opensearch: "opensearch"
+    postgres: "postgres"
+  default: >-
+    {{ _external_data.design.rag.vector_store
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    ('postgres' if 'database' in external_systems else 'duckdb') }}
+  # A3 (F4): a vector-backend upgrade is a mid-project capability, not a
+  # genesis decision — default duckdb (or postgres when a database was named),
+  # change later with -d vector_backend=… (/add-capability vector-backend).
+  # Q5 row 7 (stage-gated on discovery): direct copy of design.rag.vector_store;
+  # else the A3-derived external_systems-based expression.
+  when: false
+
+# Q5 row 7 (new flag): which RAG implementation the vectorstore factory
+# selects — langgraph_vectorstore (current, vector_backend-driven),
+# bedrock_kb (ADK+AWS managed KB), vertex_rag (ADK+GCP managed RAG Engine),
+# ts_vectorstore (TS backend mirror). See the RAG-per-cloud matrix (plan Q4).
+# Stage-gated on discovery; else langgraph_vectorstore (today's only impl).
+rag_impl:
+  type: str
+  choices:
+    langgraph_vectorstore: "langgraph_vectorstore"
+    bedrock_kb: "bedrock_kb"
+    vertex_rag: "vertex_rag"
+    ts_vectorstore: "ts_vectorstore"
+  default: >-
+    {{ _external_data.design.rag.backend
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else 'langgraph_vectorstore' }}
+  when: false
+
+# Q5 row 7 (new flag): which corpus ingestion tree ships. Only markdown_jsonl
+# ships the core/pipelines/corpus/ DuckDB FTS pipeline (has_corpus_pipeline);
+# bedrock_ingest/vertex_datastore/ts_ingest ship managed-ingestion config
+# instead (plan Q4 table). Stage-gated on discovery; else markdown_jsonl.
+corpus_pipeline_kind:
+  type: str
+  choices:
+    markdown_jsonl: "markdown_jsonl"
+    bedrock_ingest: "bedrock_ingest"
+    vertex_datastore: "vertex_datastore"
+    ts_ingest: "ts_ingest"
+  default: >-
+    {{ _external_data.design.rag.corpus_pipeline
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else 'markdown_jsonl' }}
+  when: false
+
+# Q5 row 5 (new flag): backend-ts RAG mirror (Q4 tree D, ts_vectorstore).
+# Gates backend-ts/src/rag/ cleanup. Stage-gated on discovery; else false (no
+# legacy expression — the TS RAG mirror is new in this redesign).
+include_ts_rag:
+  type: bool
+  default: >-
+    {{ ('rag' in _external_data.design.backends.typescript.capabilities)
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else false }}
+  when: false
+
+# Derived: adds langgraph-checkpoint-postgres so the LangGraph checkpointer
+# CAN be switched to postgres at runtime (LG_CHECKPOINTER=postgres /
+# RAG_CHECKPOINTER=postgres, using POSTGRES_DSN). The runtime default stays
+# "memory" either way — checkpointer construction happens eagerly at
+# graph-compile time (unlike vector_backend, which is lazy per-call), so
+# defaulting straight to postgres would make `make test`/import fail hard
+# without a live database reachable. Seeded on when the agent declared
+# long-term memory; independent of vector_backend
+# (override with -d enable_postgres_checkpointer=…).
+enable_postgres_checkpointer:
+  type: bool
+  default: "{{ agent_memory == 'long_term' }}"
+  when: false
+
+# Derived TS layout — 99% of projects answer src / <project_slug>; override
+# with -d ts_source_root=… / -d ts_project_root=… if yours differs.
+ts_source_root:
+  type: str
+  default: src
+  when: false
+
+ts_project_root:
+  type: str
+  default: "{{ project_slug }}"
+  when: false
+
+# The TS agent's own directory under {{ ts_source_root }}/agents/ — the TS twin
+# of lg_agent_dir/adk_agent_dir. Before AIT-70 the TS agent lived in a singular
+# `agent/` directory that also held tracing, guards and the LLM client; those
+# moved out to observability/, guardrails/ and model/ (naming.md §1), leaving
+# agents/<name>/ to hold only agent logic. Named for what the agent DOES, same
+# convention as the Python agent dirs.
+ts_agent_dir:
+  type: str
+  default: chat_agent
+  when: false
+
+# ts_backend_dest was deleted 2026-07-19 (two-root scaffold). It existed to
+# resolve a collision that no longer occurs: under `both`, Python owned
+# backend/ and TS had to fall back to its project-named root. Now each language
+# stages under — and promotes to — its own project root side by side, so there
+# is nothing to rename on promotion. The TS backend lands at
+# {{ ts_project_root }} in every configuration.
+
+# Orthogonal to primary_chat_agent — a TS project may or may not want an agent
+# loop at all (some TS backends are plain API services). vercel_ai_sdk stages
+# a real agent/ tree (streamText + tool() loop, Anthropic provider) at
+# {{ ts_project_root }}/{{ ts_source_root }}/agent/, framework-agnostic (a
+# plain Request->Response handler, wireable into Express today or a Next.js
+# route handler in a Vercel-hosted project) — see
+# .agents/skills/framework-selection.
+ts_agent_framework:
+  type: str
+  help: >-
+    TypeScript agent framework. none stages the plain TS backend service only,
+    no LLM code. vercel_ai_sdk additionally stages a real tool-calling agent
+    loop (Vercel AI SDK's streamText + tool()) — for projects deploying a
+    TS-native assistant (e.g. a Vercel-hosted frontend's own API routes)
+    rather than calling out to a separate Python agent service.
+  choices:
+    none: "none"
+    vercel_ai_sdk: "vercel_ai_sdk"
+  default: >-
+    {{ (_external_data.design.backends.typescript.framework
+    if _external_data.design.backends.typescript.enabled else 'none')
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    ('vercel_ai_sdk' if primary_backend_language == 'typescript' and project_type in ['chat_app', 'agent'] else 'none') }}
+  # A3 (F4): topology/second-framework decision — derived from language + shape,
+  # override with -d ts_agent_framework=vercel_ai_sdk (added later as a capability).
+  # Q5 row 4 (stage-gated on discovery): design.backends.typescript.framework
+  # wins once discovery is complete (only 'none'|'vercel_ai_sdk' choices exist
+  # today so this is a direct passthrough); else the A3-derived expression.
+  when: false
+
+# Orthogonal to ts_agent_framework — that toggle is about whether the *agent
+# loop* lives in TS (single-service, no separate Python backend needed).
+# frontend_backend_topology is about *deployment shape*: does the TS side
+# deploy as one thing, or as a genuinely separate service from the Python
+# backend, each with its own host and its own auth boundary? split_service
+# scaffolds FOIA-Fluent's actual production shape (dssg/projects/FOIA-Fluent)
+# — a Next.js frontend + a separate FastAPI backend, sharing identity via
+# Supabase Auth JWT rather than sharing a process. Mutually exclusive in
+# practice with ts_agent_framework=vercel_ai_sdk (that path assumes the
+# agent's own API routes ARE the backend); /new should flag the
+# conflict rather than copier enforcing it structurally.
+frontend_backend_topology:
+  type: str
+  help: >-
+    How do frontend and backend deploy? single (default) is one deployable —
+    frontend hooks only, or one Node/TS backend service per
+    primary_backend_language. split_service scaffolds FOIA-Fluent's proven
+    shape: a Next.js frontend (Vercel) + a separate FastAPI backend (Railway),
+    talking over HTTPS, sharing identity via Supabase Auth JWT — an Edge
+    middleware on the frontend and a FastAPI dependency on the backend
+    ({{ py_project_root }}/{{ ai_source_root }}/middleware/auth.py) — with Postgres RLS for tenant
+    isolation. Only offered when there's both a real TS component and a
+    Python backend to connect.
+  choices:
+    single: "single"
+    split_service: "split_service"
+  default: >-
+    {{ ('split_service' if (_external_data.design.web.enabled and
+    _external_data.design.backends.python.enabled) else 'single')
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else 'single' }}
+  # A3 (F4): split_service is a tier-3 deployment-shape capability, landed when
+  # a real frontend ships — not a genesis question. Default single; opt in with
+  # -d frontend_backend_topology=split_service (/add-capability split_service).
+  # Q5 row 6 (stage-gated on discovery): split_service when both web.enabled
+  # and backends.python.enabled are true in design.yaml; else 'single'.
+  when: false
+
+# Q5 row 6 (new flag): whether a frontend/ tree renders at all. Independent of
+# frontend_backend_topology (which governs deploy SHAPE once a frontend
+# exists) — this governs whether one exists. Stage-gated on discovery; else
+# false (A3 has no frontend concept pre-design.yaml — frontend is entirely new
+# in this redesign, so there is no legacy expression to fall back to).
+include_frontend:
+  type: bool
+  help: >-
+    Scaffold a frontend/ tree (Next.js)? Derived from design.yaml's web.enabled
+    once discovery is complete; off otherwise — this template has no frontend
+    scaffold prior to the full-mirror redesign.
+  default: >-
+    {{ _external_data.design.web.enabled
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else false }}
+  when: false
+
+# AIT-70: which frontend the frontend/ tree renders. Before this the tree was
+# Next.js-only, which meant no SPA option existed at all — dssg/project-mgmt-ai
+# (Vite + React 19 + Tailwind, a client-rendered console with no SSR need) had
+# to be hand-built rather than scaffolded. The two are genuinely different
+# shapes, not a preference: next brings SSR/RSC, file-system routing and its own
+# server runtime; vite is a client bundle served statically, pairing with a
+# separate api/ backend. Choose by whether the app needs server rendering.
+frontend_bundler:
+  type: str
+  help: >-
+    Frontend build tool. next scaffolds a Next.js app (SSR/RSC, file-system
+    routing, Supabase SSR auth) — pick it when pages must render server-side or
+    the frontend IS the backend (its own API routes). vite scaffolds a
+    React 19 + Tailwind SPA (client-rendered, react-router, vitest) — pick it
+    for a console/dashboard talking to a separate API, which is the
+    project-mgmt-ai shape.
+  choices:
+    next: "next"
+    vite: "vite"
+  default: >-
+    {{ _external_data.design.web.bundler
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete' and
+    _external_data.design.web.bundler is defined) else 'next' }}
+  # Default next preserves the pre-AIT-70 render for existing projects: a repo
+  # that answered include_frontend=true before this flag existed gets exactly
+  # what it had. Opt into the SPA with -d frontend_bundler=vite.
+  when: false
+
+# AIT-70: Supabase as the APPLICATION database — migrations, RLS policies and a
+# pgSQL test harness — which is distinct from the two Supabase touchpoints that
+# already existed: auth (@supabase/ssr in the frontend, JWT middleware in the
+# split_service backend) and vector_backend=postgres (pgvector as a RAG store).
+# Neither of those gives a project row-level tenant isolation or a migration
+# history. project-mgmt-ai's 8 migrations (tenancy, telemetry, approval spine,
+# delivery, documents) are the reusable pattern this scaffolds.
+include_supabase_db:
+  type: bool
+  help: >-
+    Scaffold supabase/ — a migrations tree with a tenancy + RLS starter, a
+    pgSQL RLS test harness, and the Supabase CLI as a dev dependency? For
+    projects where Postgres IS the application database and tenant isolation is
+    enforced in the database rather than the application layer.
+  default: >-
+    {{ _external_data.design.data.supabase_db
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete' and
+    _external_data.design.data is defined and
+    _external_data.design.data.supabase_db is defined) else false }}
+  when: false
+
+# mcp_servers/ lives at template root, NOT inside _scaffold/ — deliberately. It
+# is available in layering-only mode (project_type=existing_repo), same class as
+# .claude/ and .agents/: something addable to an existing repo that does not
+# require a full scaffold. Moving it into _scaffold/ would make layering mode
+# render an empty directory (everything inside _scaffold/ is discarded in that
+# mode). The `include_mcp_server` task below prunes the whole mcp_servers/ dir
+# when the toggle is off — correct in both modes.
+# Independent of scaffold_full_project — available in layering-only mode too.
+include_mcp_server:
+  type: bool
+  help: >-
+    Scaffold a parameterized MCP server for this project? Defaults on only
+    when the project IS an MCP server, or when you explicitly listed MCP in
+    agent_tools (a declared MCP host consumer). MCP servers here are thin
+    adapters over the REST boundary, never the primary surface.
+  # A3/§3c: no longer asked at genesis — on only when the project IS an MCP
+  # server or you listed MCP in agent_tools (a declared host consumer). Add an
+  # MCP adapter later with -d include_mcp_server=true (/add-capability mcp).
+  default: "{{ project_type == 'mcp_server' or 'mcp' in agent_tools }}"
+  when: false
+
+mcp_server_name:
+  type: str
+  default: "{{ project_slug }}"
+  when: false
+
+# RETAINED DELIBERATELY (decided 2026-07-19) — do not delete as dead indirection.
+# This is the single seed both py_mcp_server_slug and ts_mcp_server_slug read, so
+# the two trees are guaranteed to agree on the survivor's path. Splitting it into
+# two independent expressions is what produced the empty-mcp_servers/ bug the
+# comment below records. It carries no user answer (never asked, never set by -d),
+# so there is nothing a rename would preserve that project_slug can't reconstruct.
+# Renaming it would also need a PRE-RENDER .copier-answers.yml rewrite: copier
+# 9.17.0 strips unknown answers keys before building the Jinja context, so an
+# `is defined` fallback reads False on update and silently loses the value.
+mcp_server_slug:
+  type: str
+  default: "{{ project_slug }}"
+  when: false
+
+# Directory names for the two disjoint MCP trees. copier renders every path
+# unconditionally, so the python and typescript trees must be distinct paths in
+# template/ or they'd collide. The CHOSEN language renders at the real slug; the
+# other gets an `__unchosen_*` suffix that the mcp prune task in _tasks deletes.
+# (Naive aliasing — both defaulting to mcp_server_slug — makes the two trees
+# indistinguishable, so the prune deletes the chosen one too. Verified
+# 2026-07-19: that bug rendered an mcp_servers/ containing only README.md.)
+# Renaming either var without renaming its template/mcp_servers/ dir renders an
+# EMPTY path segment, silently.
+mcp_server_language:
+  type: str
+  help: >-
+    MCP server implementation language. python (FastMCP) or typescript (the
+    official MCP TypeScript SDK — see
+    .claude/skills/mcp-builder/reference/node_mcp_server.md). Independent of
+    primary_backend_language — a Python backend can have a TS MCP server or
+    vice versa; the default just follows your language answer.
+  choices:
+    python: "python"
+    typescript: "typescript"
+  default: "{{ 'typescript' if primary_backend_language == 'typescript' else 'python' }}"
+  # A3: derived from primary_backend_language now that include_mcp_server is
+  # -d-only; override with -d mcp_server_language=typescript.
+  #
+  # Layout note: the two languages are disjoint file trees, not one tree with a
+  # Jinja switch, so they can't collapse into a single dir in template/. They
+  # render side by side as mcp_servers/{{ py_mcp_server_slug }} (FastMCP) and
+  # mcp_servers/{{ ts_mcp_server_slug }} (MCP TS SDK); _tasks then deletes the
+  # unchosen one. Both slugs default to mcp_server_slug, so the survivor is
+  # already at its final path. The language *choice* is made in _tasks, the one
+  # layer that can delete whole trees.
+  when: false
+
+# MUST stay declared AFTER mcp_server_language — copier evaluates defaults in
+# declaration order, so referencing it from above yields an empty string and
+# NEITHER branch matches, suffixing both trees and pruning both away.
+py_mcp_server_slug:
+  type: str
+  default: "{{ mcp_server_slug }}{{ '' if mcp_server_language == 'python' else '__unchosen_py' }}"
+  when: false
+
+ts_mcp_server_slug:
+  type: str
+  default: "{{ mcp_server_slug }}{{ '' if mcp_server_language == 'typescript' else '__unchosen_ts' }}"
+  when: false
+
+# ─── Phase 3 — Optional features (A3: derived, -d-only, never asked) ──────
+# Was a genesis multiselect; A3 (F4) made optional_features + eval_metrics
+# `when: false`. The shape-derived default is applied silently at genesis; add
+# integrations/metrics later with -d (/add-integration, /add-eval-metric).
+
+optional_features:
+  type: str
+  multiselect: true
+  help: >-
+    Optional add-ons. Defaults are seeded from your Phase-1 answers — the dev
+    companion is on by default; integrations implied by your external-systems
+    answer are pre-selected; everything else is off.
+    (Calendar isn't listed here — selecting Calendar in external systems
+    already scaffolds the Google Calendar client.)
+  choices:
+    "dev companion — living how-we-work doc + /dream maintenance audits": dev_companion
+    "promptfoo — config-driven HTTP eval harness alongside the Python evals": promptfoo
+    "ragas — LLM-judge eval grader (KNOWN ISSUE: ragas 0.4.3 import bug upstream, degrades gracefully, no real scores until fixed)": ragas
+    "web research — GPT-Researcher reports (KNOWN ISSUE: needs Python <=3.13, own API keys)": web_research
+    "meeting intelligence — transcript -> action items/decisions via one LLM call": meeting_intelligence
+    "marketing clients — Eventbrite/LinkedIn/Canva httpx clients": marketing
+    "n8n webhook — HMAC-verified inbound receiver (POST /webhooks/n8n)": n8n_webhook
+    "composio — third-party app actions (Gmail/Slack/GitHub, hundreds more)": composio
+    "ml — classical ML/stats toolkit (regression, time-series, A/B, clustering)": ml
+  default: "['dev_companion'{% if 'web' in external_systems %}, 'web_research'{% endif %}{% if 'slack' in external_systems or 'github' in external_systems or 'email' in external_systems or 'google_workspace' in external_systems %}, 'composio'{% endif %}{% if project_type == 'workflow' %}, 'n8n_webhook'{% endif %}{% if project_type == 'eval_suite' %}, 'promptfoo'{% endif %}]"
+  # A3 (F4): optional integrations are mid-project capabilities, not a genesis
+  # menu — the shape-derived default (dev_companion, plus integrations
+  # implied by external_systems/shape) is applied silently; add more later with
+  # -d optional_features=[…] or the /add-integration path. Still overridable.
+  when: false
+
+# Does this project produce model interactions worth grading? The interaction
+# evals (escalation/friction/intent/language) grade a *conversational turn* —
+# they need a chat agent to have produced one. `is_agent_shaped` is the wrong
+# gate for that: it keys off project_type, which is the project's SHAPE, not
+# whether a chat agent was actually scaffolded. The two diverge in both
+# directions, and step 7 exists because both divergences shipped:
+#   - primary_chat_agent=none on an agent-shaped type (chat_app etc.) rendered
+#     escalation+friction graders, a metrics_registry importing them, and
+#     targets.yaml keys — all grading an agent the project does not contain.
+#   - an ml-shaped project (project_type=prototype + ml) is not agent-shaped,
+#     so it correctly got none; that half was already right and must stay right.
+# Keyed on primary_chat_agent for the same reason has_corpus_pipeline is: the
+# concrete capability, not the shape label. `both` counts (two agents, still
+# gradeable turns); `none` does not.
+#
+# adk_agent counts even though the shipped judges were written against the
+# LangGraph example — the graders read EvalInteraction (framework-agnostic
+# recorded turns), not a framework object, so an ADK project grades its own
+# interactions through the same registry.
+has_gradeable_interactions:
+  type: bool
+  default: >-
+    {{ (scaffold_full_project and _external_data.design.backends.python.enabled
+    and _external_data.design.backends.python.framework in ['langgraph', 'adk'])
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (scaffold_full_project and is_agent_shaped
+    and primary_chat_agent in ['lg_agent', 'adk_agent', 'both']) }}
+  # Mirrors has_corpus_pipeline's two-branch shape (Q5): design.yaml once
+  # discovery is complete, else the A3-derived answer expression. `and
+  # is_agent_shaped` is kept in the else branch so a NON-agent shape that
+  # nonetheless carries a chat-agent answer (primary_chat_agent defaults to
+  # lg_agent for `prototype`, which is not agent-shaped) does not acquire
+  # interaction evals — that half of the coupling was already correct.
+  when: false
+
+eval_metrics:
+  type: str
+  multiselect: true
+  help: >-
+    Interaction-eval metrics to scaffold in {{ eval_root }}/ — each ships a
+    matched heuristic grader + LLM judge + aggregation + report section, wired
+    through graders/metrics_registry.py, with sampling/redaction/calibration
+    pipelines alongside. Retrieval isn't listed: its golden-QA eval ships with
+    every full scaffold regardless. Projects with a prebuilt chat agent
+    pre-select escalation + friction.
+  choices:
+    "escalation — did the assistant hand off to a human when it should?": escalation
+    "friction — hedging/vagueness/UX friction in responses": friction
+    "intent — routing/intent classification correctness": intent
+    "language — response language matches the user's": language
+  default: "[{% if has_gradeable_interactions %}'escalation', 'friction'{% endif %}]"
+  # A3 (F4): interaction-eval metrics are added as they become relevant, not at
+  # genesis — projects with a chat agent seed escalation + friction; add others
+  # later with -d eval_metrics=[…] (/add-eval-metric). Still overridable.
+  # Step 7: the seed gate moved from is_agent_shaped to
+  # has_gradeable_interactions — see that variable's comment.
+  when: false
+
+# Derived feature toggles — the _tasks block and templates consume these
+# names; the multiselect above (plus external_systems for calendar) is the
+# single user-facing surface. Each remains overridable with -d, which is how
+# CI exercises individual axes (e.g. -d include_ml=true).
+
+# Both gated on scaffold_full_project: optional_features is skipped in
+# layering-only mode but still computes its full default list, which would
+# otherwise flip these on in an existing repo that never asked for them.
+include_dev_companion:
+  type: bool
+  default: "{{ scaffold_full_project and 'dev_companion' in optional_features }}"
+  when: false
+
+include_promptfoo:
+  type: bool
+  default: "{{ 'promptfoo' in optional_features }}"
+  when: false
+
+include_ragas_grader:
+  type: bool
+  default: "{{ 'ragas' in optional_features }}"
+  when: false
+
+include_web_research:
+  type: bool
+  default: "{{ 'web_research' in optional_features }}"
+  when: false
+
+include_meeting_intelligence:
+  type: bool
+  default: "{{ 'meeting_intelligence' in optional_features }}"
+  when: false
+
+include_marketing_integrations:
+  type: bool
+  default: "{{ 'marketing' in optional_features }}"
+  when: false
+
+include_n8n_webhook:
+  type: bool
+  default: "{{ 'n8n_webhook' in optional_features }}"
+  when: false
+
+include_composio:
+  type: bool
+  default: "{{ 'composio' in optional_features }}"
+  when: false
+
+include_ml:
+  type: bool
+  default: >-
+    {{ ('ml' in _external_data.design.backends.python.capabilities)
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (is_ml_shaped or 'ml' in optional_features) }}
+  # Q5 row 2: repoints include_ml's OWN default directly, bypassing the
+  # optional_features multiselect (design.yaml never reconstructs that list).
+  # Stage-gated on discovery; else = existing A3-derived 'ml' in
+  # optional_features expression, plus is_ml_shaped: the ml_model shape ships
+  # the ML toolkit as its payload, not as an opt-in add-on. Kept as an OR (not
+  # a replacement) so a non-ML shape can still add ml/ via optional_features,
+  # which is the pre-existing /add-capability path.
+  when: false
+
+# llm_kit/ is a standalone LLM-calling starter kit at the repo root. It had no
+# gate at all before ml_model existed — it rendered into every project,
+# including layering-only ones, and nothing in copier.yaml or _tasks referenced
+# it. An ML project has no LLM call to make, so it is the clearest thing to drop:
+# gated OFF for the ml_model shape and preserved everywhere else, so this
+# introduces the flag without changing any existing render.
+include_llm_kit:
+  type: bool
+  default: "{{ not is_ml_shaped }}"
+  when: false
+
+# The eval suite (evals/) grades model interactions — an ML project measures its
+# models with ml/evaluation/ and the run registry instead, so the whole eval root
+# goes. Its own toggle rather than a bare is_ml_shaped reference in _tasks: the
+# eval tree is also what a future non-agentic-but-graded shape would want to keep,
+# and `-d include_eval_suite=true` restores it on an ml_model render.
+# `or has_corpus_pipeline`: an ml_model render that opts into rag_agent keeps the
+# retrieval golden-QA eval staged (evals/pipelines/run.py, graders/citation.py,
+# metrics/retrieval.py) — without this clause it is staged and then silently
+# discarded with _scaffold/.
+include_eval_suite:
+  type: bool
+  default: "{{ scaffold_full_project and (not is_ml_shaped or has_corpus_pipeline) }}"
+  when: false
+
+# core/ is the general ETL home for the corpus/document pipeline that feeds
+# retrieval. An ML project's data work lives in ml/transform + ml/feature_engineering
+# against a tabular frame, so core/ ships nothing it uses. Same override posture
+# as include_eval_suite above — including the has_corpus_pipeline clause: with
+# rag_agent opted in, core/pipelines/corpus/ is exactly what core/ is for.
+include_core_etl:
+  type: bool
+  default: "{{ scaffold_full_project and (not is_ml_shaped or has_corpus_pipeline) }}"
+  when: false
+
+# The agentic lifecycle docs (LIFECYCLE/DELIVERY/DEPLOYMENT/RELEASE + SANYI) are
+# written around gates that read eval evidence and a change contract over agent
+# behaviour — none of which an ml_model render produces. DESIGN.md and CLAUDE.md
+# are NOT in this set: both are shape-neutral project docs every render keeps.
+include_lifecycle_docs:
+  type: bool
+  default: "{{ scaffold_full_project and not is_ml_shaped }}"
+  when: false
+
+# nbks/ used to ride entirely on has_corpus_pipeline — the corpus_analysis.py
+# notebook was the only thing in it, so a non-corpus render dropped the whole
+# directory. An ML project is the case where notebooks matter MOST (the
+# /new ML branch treats the EDA notebook as load-bearing: templated
+# code arrives while the operator looks at real data), so the gate becomes the
+# union of the two reasons a project has notebooks. Which notebook FILES ship is
+# still decided per-reason — see the two _tasks cleanups.
+include_notebooks:
+  type: bool
+  default: "{{ scaffold_full_project and (has_corpus_pipeline or is_ml_shaped) }}"
+  when: false
+
+# The run registry (experiments/) is a top-level shared root, not an
+# ml_source_root subtree — AI evals consume the same record shape (see
+# experiments/record.py), so this does NOT gate on include_ml. Default is
+# "on whenever a full scaffold happens", same posture as eval_root, which
+# has no off-switch of its own either. It is one of the few roots an ml_model
+# render KEEPS: a model comparison is exactly the thing a run registry records.
+# It IS gated on the backend language: experiments/ is a Python tree, and the
+# _tasks copy step already refuses to stage it for a TS-only backend. Without
+# the same guard here the flag stays true for that scaffold and pulls in a
+# pandas dependency plus pyright/pythonpath entries for a tree that never lands.
+include_run_registry:
+  type: bool
+  default: "{{ scaffold_full_project and primary_backend_language in ['python', 'both'] }}"
+  when: false
+
+# LLM tracing provider for backend/src/observability/ (step 3′). Agentic-only:
+# an ml-only project has no LLM calls to trace, so the subtree is removed in
+# _tasks when is_agent_shaped is false and this collapses to 'none'.
+# The factory file MUST stay named observability.py — .claude/hooks/sdk_lint.sh
+# (B3) exempts only that filename from the bare-client-instantiation check, so
+# renaming it makes the scaffold flag itself.
+observability_provider:
+  type: str
+  choices:
+    langfuse: langfuse
+    langsmith: langsmith
+    none: none
+  default: "{{ 'langfuse' if is_agent_shaped else 'none' }}"
+  # A3 invariant: derived, never asked — drive it with
+  # -d observability_provider=langsmith.
+  when: false
+
+# Guard layers for backend/src/security/ (step 4′). Agentic-only: the three
+# layers wrap an LLM turn (untrusted input → prompt → model output), so an
+# ml-only project has nothing to guard and the subtree is removed in _tasks.
+# Independent of observability_provider — guards don't trace. The output filter
+# runs BEFORE observability/tracing.py's redact() so a value the model leaked
+# never reaches the tracing backend (CLAUDE.md.jinja, DESIGN.md.jinja).
+include_security_guards:
+  type: bool
+  # Narrower than is_agent_shaped: guards.py's only importers are the lg_agent
+  # nodes (guardrail/generate/retrieve). An agent-shaped project with
+  # primary_chat_agent=none — project_type=rag is the live case — renders no
+  # such nodes, so is_agent_shaped alone shipped the whole security/ layer with
+  # nothing able to call it. Caught by scripts/check_imports.py (AIT-51).
+  default: "{{ is_agent_shaped and primary_chat_agent in ['lg_agent', 'both'] }}"
+  # A3 invariant: derived, never asked — drive it with
+  # -d include_security_guards=false.
+  when: false
+
+include_calendar_integration:
+  type: bool
+  default: "{{ 'calendar' in external_systems }}"
+  when: false
+
+# Derived per-metric toggles from the eval_metrics multiselect — same pattern
+# as the optional_features derivations above.
+#
+# Gated on has_gradeable_interactions (step 7), which is strictly stronger than
+# the scaffold_full_project conjunct these carried before: it still keeps
+# layering-only mode from computing a truthy default off the (skipped)
+# multiselect's seeded default, AND it makes the gate hold against an EXPLICIT
+# override. That second half is the point — `-d eval_metrics=[intent]` on a
+# primary_chat_agent=none project would otherwise scaffold an intent grader,
+# a registry importing it, and a targets.yaml key, all grading an agent that
+# was never rendered. The metric list stays user-selectable; whether ANY
+# interaction metric is coherent for the project is not a list question.
+include_metric_escalation:
+  type: bool
+  default: >-
+    {{ (has_gradeable_interactions and 'escalation' in _external_data.design.evals.interaction)
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (has_gradeable_interactions and 'escalation' in eval_metrics) }}
+  # Q5 row 10: repoints include_metric_escalation's OWN default directly,
+  # bypassing the eval_metrics multiselect. Stage-gated on discovery; else the
+  # existing A3-derived 'escalation' in eval_metrics expression, kept verbatim.
+  when: false
+
+include_metric_friction:
+  type: bool
+  default: >-
+    {{ (has_gradeable_interactions and 'friction' in _external_data.design.evals.interaction)
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (has_gradeable_interactions and 'friction' in eval_metrics) }}
+  when: false
+
+include_metric_intent:
+  type: bool
+  default: >-
+    {{ (has_gradeable_interactions and 'intent' in _external_data.design.evals.interaction)
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (has_gradeable_interactions and 'intent' in eval_metrics) }}
+  when: false
+
+include_metric_language:
+  type: bool
+  default: >-
+    {{ (has_gradeable_interactions and 'language' in _external_data.design.evals.interaction)
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    (has_gradeable_interactions and 'language' in eval_metrics) }}
+  when: false
+
+# Any interaction metric selected → ship the shared machinery (models,
+# registry, judges base, grade/sampling/calibration/redaction pipelines,
+# report builder/renderer, sample data, tests).
+include_interaction_evals:
+  type: bool
+  default: "{{ include_metric_escalation or include_metric_friction or include_metric_intent or include_metric_language }}"
+  when: false
+
+# ─── Phase 4 — Team conventions ───────────────────────────────────────────
+
+data_sensitivity:
+  type: str
+  help: >-
+    What's the most sensitive data this project will touch? Drives a CLAUDE.md
+    hard-rule and (when scaffold_full_project) a Terraform resource tag —
+    governance should be visible from day one, not bolted on later. Default
+    follows your primary-users answer (customer/public-facing -> restricted).
+  choices:
+    public: "public"
+    internal: "internal"
+    restricted: "restricted"
+    secret: "secret"
+  default: >-
+    {{ _external_data.design.data_sensitivity
+    if (_external_data.design is defined and _external_data.design and
+    _external_data.design.stages is defined and
+    _external_data.design.stages.discovery == 'complete') else
+    ('restricted' if primary_users in ['customers', 'public_api'] else 'internal') }}
+  # Q5 (— row, data_sensitivity): direct copy of design.data_sensitivity once
+  # discovery is complete (governance decision seeded during Discovery per the
+  # design.yaml schema); else the original literal primary_users-derived
+  # expression. Stays askable.
+  when: false
+
+ticket_prefix:
+  type: str
+  help: Ticket prefix used for branch naming and linked-issue conventions (e.g. LIN, JIRA, GH)
+  default: LIN
+  when: false
+
+enable_macos_notifications:
+  type: bool
+  help: Use macOS notifications (osascript) for Stop/long-test hooks? (turn off on Linux/CI)
+  default: "{{ _copier_conf.os == 'macos' }}"
+  when: false
+
+agent_config_profile:
+  type: str
+  help: "Agent harness posture: guarded (full hooks+permissions), independent (full hooks, relaxed permissions), vanilla (no .claude or .agents)"
+  choices:
+    guarded: guarded
+    independent: independent
+    vanilla: vanilla
+  default: guarded
+
+# ─── Inferred repo configuration (never asked — override with -d) ─────────
+# (py_project_root/ai_source_root live above Phase 2 — later help-strings
+# interpolate them.)
+
+eval_root:
+  type: str
+  default: evals
+  when: false
+
+eval_allowed_dirs:
+  type: str
+  default: generation graders metrics pipelines reports utils
+  when: false
+
+# Canonical eval-suite directory-layout enforcement — only meaningful for
+# eval-suite-shaped repos (eval suites, RAG projects graded against golden
+# sets), so it follows project_type instead of being asked.
+enable_structure_guard:
+  type: bool
+  default: "{{ scaffold_full_project and project_type in ['eval_suite', 'rag'] }}"
+  when: false
+
+python_version:
+  type: str
+  default: "3.12"
+  when: false
+
+aws_region:
+  type: str
+  default: eu-central-1
+  when: false
+
+expensive_command_patterns:
+  type: str
+  default: ""
+  when: false
+
+# Independent of scaffold_full_project — available in layering-only mode too.
+# .agents/skills/ is a tool-agnostic agent-framework reference library (ADK +
+# LangGraph scaffolding and patterns) shared across Claude, ADK's own tooling,
+# or any other agent harness; also enables the /new-agent skill. Default off:
+# its canonical home is this template and vendoring it into every render
+# creates N drifting copies — opt in (-d) for offline/team-portability cases.
+include_agent_reference_library:
+  type: bool
+  default: false
+  when: false
+
+# Maintainer knob: "vendored" ships the code-* skills (code-debug,
+# code-refactor, code-review) into the rendered project. "none" removes them.
+# The design-* pipeline (initiative/product/system/roadmap) always ships —
+# it is template-native, not synced from global.
+# sync-global-skills.sh is retired and must not be run.
+global_skills_source:
+  type: str
+  choices:
+    vendored: "vendored"
+    none: "none"
+  default: vendored
+  when: false
+
+_tasks:
+  - "chmod +x {{ _copier_conf.dst_path }}/.claude/hooks/*.sh 2>/dev/null || true"
+  # vanilla profile: no agent harness at all — remove .claude and .agents wholesale.
+  # guarded/independent: keep everything; permissions differ in settings.json only.
+  - "{{ 'true' if agent_config_profile != 'vanilla' else 'rm -rf ' ~ _copier_conf.dst_path ~ '/.claude ' ~ _copier_conf.dst_path ~ '/.agents' }}"
+  - "{{ 'true' if include_mcp_server else 'rm -rf ' ~ _copier_conf.dst_path ~ '/mcp_servers' }}"
+  # agent_creator.md is the subagent that the .agents/ reference library
+  # dispatches to — useless without it, so it goes with it.
+  - "{{ 'true' if include_agent_reference_library else 'rm -rf ' ~ _copier_conf.dst_path ~ '/.agents ' ~ _copier_conf.dst_path ~ '/.claude/agents/agent_creator.md' }}"
+  # code-* are the only skills gated by global_skills_source. The design-*
+  # pipeline (initiative/product/system/roadmap) is template-native and always
+  # ships. Demoted skills (workflow-*, git-*, docs-check, new-agent, etc.) were
+  # removed from the template 2026-08-27 — they live in the repo that owns
+  # their stage (guacamayo for production, galactus for prototyping).
+  - >-
+    {{ 'true' if global_skills_source == 'vendored' else 'rm -rf ' ~
+    _copier_conf.dst_path ~ '/.claude/skills/code-refactor ' ~
+    _copier_conf.dst_path ~ '/.claude/skills/code-review ' ~
+    _copier_conf.dst_path ~ '/.claude/skills/code-debug' }}
+  # dev_companion is .claude-only and guarded on include_* alone (not
+  # `(not scaffold_full_project) or ...`): it lives under .claude/, which
+  # layering-only mode DOES ship, so the removal must fire there too when the
+  # toggle is off — unlike the _scaffold/ cleanups below, which layering mode
+  # discards wholesale anyway.
+  - "{{ 'true' if include_dev_companion else 'rm -rf ' ~ _copier_conf.dst_path ~ '/.claude/docs/companion' }}"
+  # integrations/ sub-modules are independently removable — a blanket rm -rf tied
+  # to one toggle would also delete modules gated by the OTHER toggles below.
+  # Same staging-path caveat as dev_companion above — integrations/ is staged
+  # under _scaffold/{{ py_project_root }}/{{ ai_source_root }}, only moved into place by the big mv task
+  # when scaffold_full_project=true.
+  - "{{ 'true' if (not scaffold_full_project) or include_n8n_webhook else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/n8n_webhook.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_calendar_integration else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/google_calendar.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_marketing_integrations else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/eventbrite.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/linkedin.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/canva.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_meeting_intelligence else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/meeting_intelligence.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/model ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/integrations' }}"
+  # If nothing under integrations/ ended up enabled, remove the now-empty package.
+  - "{{ 'true' if (not scaffold_full_project) or include_n8n_webhook or include_calendar_integration or include_marketing_integrations or include_meeting_intelligence or include_composio or include_web_research else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_ragas_grader else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/ragas_grader.py' }}"
+  # Corpus data pipeline (core/pipelines/corpus/) + its retrieval golden-QA eval,
+  # tests, example corpus, analysis notebook, and lg_agent's retrieve node +
+  # test — shipped only when the corpus demo layer is on (has_corpus_pipeline).
+  # Note this removes nbks/corpus_analysis.py, the FILE, not nbks/ the directory:
+  # the ML shape also ships notebooks (see include_notebooks), so the directory's
+  # own removal moved to its own task below. Removing the dir here would delete
+  # the ML EDA notebook on every ml_model render, which has no corpus pipeline.
+  # core/ itself (the general ETL home) always ships in a full scaffold; only the
+  # corpus SUBpackage and everything welded to it is removed here for a
+  # non-retrieval shape. Staged under _scaffold/, removed before the big mv —
+  # same pattern as the integration/metric sub-modules above. The three eval
+  # files (pipelines/run.py, graders/citation.py, metrics/retrieval.py) are the
+  # only eval modules coupled to corpus.models; nothing else imports them, so the
+  # remaining eval tree (interaction evals, gated separately) stays intact.
+  # pipelines/compare.py ships on the unmerged AIT-29-otel-spans branch; when it
+  # rebases, AIT-29 must append compare.py to this rm list and gate its
+  # eval-compare Makefile target on has_corpus_pipeline (see issue #29). It is
+  # NOT listed here preemptively — tools/template/validate_paths.py rejects _tasks
+  # paths with no matching template entry.
+  # graders/custom/ goes with run.py: `from evals.graders.custom import all_graders`
+  # in run.py is its ONLY importer, so without run.py the custom-grader registry
+  # ships into every non-retrieval render with nothing able to invoke it — the
+  # plugin hook is documented in its docstring but unreachable. Caught by
+  # scripts/check_imports.py (AIT-51) on its first run.
+  - >-
+    {{ 'true' if (not scaffold_full_project) or has_corpus_pipeline else 'rm -rf '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/core/pipelines/corpus '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/data/raw_corpus '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/core '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks/corpus_analysis.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/custom '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/pipelines/run.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/citation.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/metrics/retrieval.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/agents/' ~ lg_agent_dir ~ '/nodes/retrieve.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/agents/test_retrieve.py' }}
+  # terraform/ is an AWS-only IaC skeleton (ECS Fargate + ALB, provider "aws") —
+  # sending it to a GCP project would ship the wrong cloud's IaC, which is worse
+  # than shipping none. containers/ still ships regardless (Dockerfiles/compose
+  # are useful at every cloud target, including none).
+  - "{{ 'true' if (not scaffold_full_project) or cloud == 'aws' else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/infrastructure/terraform' }}"
+  # Interaction-eval metrics: per-metric modules (heuristic + judge + metrics
+  # aggregator) are independently removable, same pattern as integrations/
+  # sub-modules above — staged under _scaffold/<eval_root>, removed from
+  # staging before the big mv.
+  - "{{ 'true' if (not scaffold_full_project) or include_metric_escalation else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/heuristic/escalation.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/judges/escalation.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/metrics/escalation.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_metric_friction else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/heuristic/friction.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/judges/friction.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/metrics/friction.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_metric_intent else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/heuristic/intent.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/judges/intent.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/metrics/intent.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_metric_language else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/heuristic/language.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/judges/language.py ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/metrics/language.py' }}"
+  # No interaction metric selected → remove the shared machinery wholesale so
+  # the eval tree looks exactly like the pre-interaction-evals scaffold
+  # (retrieval golden-QA pipeline only).
+  - >-
+    {{ 'true' if (not scaffold_full_project) or include_interaction_evals else 'rm -rf '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/heuristic '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/judges '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/graders/metrics_registry.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/models.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/metrics/_shared.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/pipelines/grade.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/pipelines/sampling.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/pipelines/calibration.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/pipelines/redaction.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/reports/builder.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/reports/renderer.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/data/evals '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/evals/test_interaction_evals.py' }}
+  - "{{ 'true' if (not scaffold_full_project) or include_promptfoo else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/promptfoo.config.yaml' }}"
+  # cd.yml builds infrastructure/containers/lg_agent/Dockerfile — the only image
+  # the template ships — so it needs BOTH a docker/cloud deployment_target and
+  # the lg_agent actually scaffolded. Removed from staging before the big mv
+  # (same class as the promptfoo cleanup above).
+  - "{{ 'true' if (not scaffold_full_project) or (deployment_target in ['docker', 'cloud'] and primary_chat_agent in ['lg_agent', 'both']) else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/.github/workflows/cd.yml' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_composio else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/composio.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or include_web_research else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/integrations/web_research.py' }}"
+  # The chat-agent trees are staged under _scaffold/ at their rendered
+  # {{ lg_agent_dir }}/{{ adk_agent_dir }} names (same reasoning as the
+  # cleanups above) — when a framework isn't chosen its dir var falls back to
+  # the framework name and the tree is removed here. 'none' removes both,
+  # leaving rag_agent (shared retrieval infra for the MCP tool, if included)
+  # as the sole example agent.
+  # The verification-loop smoke test imports agents.{{ lg_agent_dir }} directly,
+  # so it goes with the tree — otherwise it ships into lg-agent-less profiles and
+  # fails at import with ModuleNotFoundError (lint hides this: ruff can't resolve
+  # the missing module, so it silently reclassifies the import as third-party).
+  - "{{ 'true' if (not scaffold_full_project) or primary_chat_agent in ['lg_agent', 'both'] else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/agents/' ~ lg_agent_dir ~ ' ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/agents ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/smoke/test_verification_loop.py' }}"
+  - "{{ 'true' if (not scaffold_full_project) or primary_chat_agent in ['adk_agent', 'both'] else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/agents/' ~ adk_agent_dir }}"
+  # rag_agent ships default-on only for the rag shape (include_rag_agent) —
+  # when off, the tree goes; the MCP retrieval tool keeps its RAG_AGENT_URL
+  # contract for whatever compatible retrieval service the project points at.
+  - "{{ 'true' if (not scaffold_full_project) or include_rag_agent else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/agents/rag_agent' }}"
+  - "{{ 'true' if enable_structure_guard else 'rm -f ' ~ _copier_conf.dst_path ~ '/.claude/hooks/structure_guard.sh' }}"
+  # observability/ (step 3′) is agentic-only — an ml-only or non-agent project
+  # has no LLM calls to trace. Removed from staging (not the final path), same
+  # reasoning as the rag_agent/ml cleanups. It otherwise rides the AI source-root
+  # merge below like agents/integrations/middleware, so there is no separate
+  # merge task for it.
+  - "{{ 'true' if (not scaffold_full_project) or (is_agent_shaped and observability_provider != 'none') else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/observability' }}"
+  # security/ (step 4′) is agentic-only for the same reason as observability/ —
+  # the three guard layers wrap an LLM turn, so an ml-only or non-agent project
+  # has nothing to guard. Independent of observability_provider (guards don't
+  # trace). Removed from staging (not the final path); like observability/ it
+  # rides the AI source-root merge below, so there is no separate merge task.
+  - "{{ 'true' if (not scaffold_full_project) or include_security_guards else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/guardrails' }}"
+  # context_budget/ (step 4a′) is agentic-only — an ml-only or non-agent
+  # project has no LLM calls to budget. Rides the AI source-root merge below
+  # (same as observability/); no separate merge task needed.
+  #
+  # Gated on primary_chat_agent, not is_agent_shaped, for the same reason as
+  # security/ above: `from context_budget.context_budget import ...` in
+  # nodes/generate.py is its ONLY importer, and those nodes are themselves
+  # gated on primary_chat_agent in ['lg_agent', 'both']. Under project_type=rag
+  # (agent-shaped, primary_chat_agent=none) the looser gate shipped the budget
+  # tracker unreachable. Caught by scripts/check_imports.py (AIT-51).
+  - "{{ 'true' if (not scaffold_full_project) or (is_agent_shaped and primary_chat_agent in ['lg_agent', 'both']) else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/context_budget' }}"
+  # ml/ (classical ML/stats toolkit) is staged under _scaffold/ like the
+  # other optional full-project-tier content — removed from staging (not the
+  # final path) if not requested, same reasoning as the lg_agent cleanup above.
+  - "{{ 'true' if (not scaffold_full_project) or include_ml else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ml_source_root ~ ' ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/ml' }}"
+  # ─── ml_model shape (is_ml_shaped) — remove the agentic scaffold ────────
+  # These five tasks are what make ml_model a PROJECT TYPE rather than a
+  # feature flag. Everything above adds capability to an agentic scaffold; an
+  # ML project's payload is ml/ + nbks/ + tests/unit/ml, and the agentic tree
+  # is not a smaller version of that — it is a different project. Each removal
+  # is guarded by its own include_* flag (not a bare is_ml_shaped), so any one
+  # of them can be restored on an ml_model render with -d.
+  #
+  # agents/ — the whole package, not just the chat-agent subtree. The
+  # primary_chat_agent/rag_agent tasks above already remove the individual agent
+  # dirs (ml_model derives primary_chat_agent=none), but they leave agents/
+  # itself holding __init__.py + README.md. tests/unit/agents goes with it —
+  # the lg_agent task only removes that dir when lg_agent was the chosen
+  # framework, so on a `none` render it survives, importing a package that is
+  # about to be deleted.
+  # `or include_rag_agent` on the package removal: the ML shape can opt into
+  # rag_agent (`copier update -d include_rag_agent=true`), and the rag_agent
+  # task above keeps agents/rag_agent staged when it does — deleting the parent
+  # package here would take it right back out. rag_agent is self-contained
+  # (its own graph/nodes/model/settings), so agents/ keeping __init__.py +
+  # README.md + rag_agent/ is a coherent tree. The test dirs are NOT gated the
+  # same way: they cover the lg_agent chat surface, which an ml_model render
+  # never has.
+  - >-
+    {{ 'true' if not is_ml_shaped or include_rag_agent else 'rm -rf '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/agents' }}
+  - >-
+    {{ 'true' if not is_ml_shaped else 'rm -rf '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/agents '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/smoke' }}
+  # evals/ — the eval root and its data/tests. The interaction-eval and corpus
+  # tasks above already strip most of the tree for a non-agentic shape (ml_model
+  # has has_gradeable_interactions=false and has_corpus_pipeline=false), but the
+  # root itself, targets.yaml, generation/, and the reports/ scaffolding survive
+  # those. An ML project measures models through ml/evaluation/ + the run
+  # registry instead.
+  - >-
+    {{ 'true' if include_eval_suite or (not scaffold_full_project) else 'rm -rf '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ ' '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/' ~ eval_root ~ ' '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/data/' ~ eval_root }}
+  # core/ — the ETL home. The corpus task above removes core/pipelines/corpus
+  # for any non-retrieval shape; this removes the remaining shell (core/__init__.py
+  # + core/pipelines/) for the ML shape, which does its data work in
+  # ml/transform + ml/feature_engineering against a tabular frame.
+  - >-
+    {{ 'true' if include_core_etl or (not scaffold_full_project) else 'rm -rf '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/core '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/core' }}
+  # llm_kit/ — the standalone LLM starter kit. NOT staged under _scaffold/: it
+  # sits at template root and renders straight to the destination (it predates
+  # the staging convention and had no gate at all), so this rm targets the final
+  # path, not a staging path — the one cleanup in this block that does.
+  - "{{ 'true' if include_llm_kit else 'rm -rf ' ~ _copier_conf.dst_path ~ '/llm_kit' }}"
+  # Agentic lifecycle docs. Also rendered at the destination root rather than
+  # under _scaffold/ (same class as llm_kit above). DESIGN.md/CLAUDE.md/README.md
+  # are deliberately absent: those are shape-neutral and every render keeps them.
+  - >-
+    {{ 'true' if include_lifecycle_docs or (not scaffold_full_project) else 'rm -f '
+    ~ _copier_conf.dst_path ~ '/LIFECYCLE.md '
+    ~ _copier_conf.dst_path ~ '/DELIVERY.md '
+    ~ _copier_conf.dst_path ~ '/DEPLOYMENT.md '
+    ~ _copier_conf.dst_path ~ '/RELEASE.md' }}
+  # The per-stage ML notebooks (00–06, plus their _sample_data helper) are the ML
+  # shape's counterpart to corpus_analysis.py — removed as FILES for any non-ML
+  # shape, same as the corpus task removes the corpus notebook for a
+  # non-retrieval shape. They import ml.*, and the ruff ignores that make them
+  # lint-clean ship only with include_ml, so a corpus shape that kept them would
+  # fail lint on code it cannot run. Between the two, nbks/ holds exactly the
+  # notebooks the render's shape justifies.
+  - >-
+    {{ 'true' if is_ml_shaped or (not scaffold_full_project) else 'rm -f '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks/0[0-6]_*.py '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks/_sample_data.py' }}
+  # nbks/ — removed only when NEITHER reason to have notebooks applies. The two
+  # tasks above remove the notebook FILES; this removes the now-empty directory
+  # for a shape with no notebooks at all.
+  - "{{ 'true' if include_notebooks or (not scaffold_full_project) else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks' }}"
+  # experiments/ (run registry) is staged the same way — removed from staging
+  # when not requested, same reasoning as ml/ above. NOT gated on include_ml:
+  # this root is shared with AI evals, not ML-only.
+  - "{{ 'true' if (not scaffold_full_project) or include_run_registry else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ run_registry_root ~ ' ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/unit/' ~ run_registry_root }}"
+  - "{{ 'true' if has_typescript else 'rm -f ' ~ _copier_conf.dst_path ~ '/.claude/hooks/ts_quality.sh ' ~ _copier_conf.dst_path ~ '/.claude/hooks/ts_typecheck.sh' }}"
+  # ts_lint.sh is the real eslint-equivalent of ts_quality.sh's ad-hoc pattern
+  # checks — only meaningful when a real TS backend is actually scaffolded
+  # (primary_backend_language), not for has_typescript's original
+  # frontend-hooks-only, layering use case. (The "run tests before commit" gate
+  # for TS lives inline in settings.json.jinja, mirroring the Python pytest gate
+  # there — not a separate hook script, same as that one isn't.)
+  # Guarded on the positive condition (not `(not scaffold_full_project) or ...`):
+  # ts_lint.sh expects the scaffolded TS backend, which only exists when a full
+  # scaffold picked a TS language — layering mode must remove it like any other
+  # .claude/ file whose target doesn't exist (same guard class as the
+  # dev_companion removal above).
+  - "{{ 'true' if (scaffold_full_project and primary_backend_language in ['typescript', 'both']) else 'rm -f ' ~ _copier_conf.dst_path ~ '/.claude/hooks/ts_lint.sh' }}"
+  # Vercel AI SDK agent/ subtree is staged under _scaffold/<ts_project_root>/<ts_source_root>/agent
+  # (same staging convention as the Python agents above) — remove it before the
+  # big ts_project_root mv below if not requested, so ts_agent_framework=none
+  # renders the plain TS backend with no agent/LLM code at all.
+  # Every test importing src/agent/* goes with the subtree. agent-wiring and
+  # traceTools were left behind before AIT-44 — a test importing a removed
+  # module is an unconditional suite failure, and ts_agent_framework=none has
+  # no matrix row to catch it.
+  # AIT-70: the agent tree is now agents/<ts_agent_dir>/ with colocated
+  # __tests__/, and the modules that used to sit beside it moved out to
+  # observability/ (tracing + traceTools) and model/ (gateway) — all of which
+  # are agent-only and go with it. api/ and guardrails/ stay: a plain TS
+  # service still has an HTTP edge and still guards its inputs.
+  - "{{ 'true' if (not scaffold_full_project) or (not has_typescript) or ts_project_root == '' or ts_agent_framework == 'vercel_ai_sdk' else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ ts_project_root ~ '/' ~ ts_source_root ~ '/agents ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ ts_project_root ~ '/' ~ ts_source_root ~ '/observability ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ ts_project_root ~ '/' ~ ts_source_root ~ '/model ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ ts_project_root ~ '/' ~ ts_source_root ~ '/evals' }}"
+  # TS backend service (package.json/tsconfig/eslint/jest/src/tests) is staged
+  # under _scaffold/<ts_project_root> — only relevant when has_typescript is true
+  # (short-circuited below, so ts_project_root is safe to reference) AND
+  # primary_backend_language actually wants it (has_typescript can independently
+  # be true for a frontend-only, layering-only TS project that this backend
+  # scaffold has nothing to do with). split_service replaces this Express tree
+  # with the Next.js staging tree below, so it's discarded here too — not just
+  # when primary_backend_language excludes typescript.
+  # ts_project_root == '' guard: it derives from project_slug, which is empty
+  # under a bare `--defaults` render. Without the guard this renders
+  # `rm -rf <dst>/_scaffold/` and wipes the entire staging tree.
+  - "{{ 'true' if (not scaffold_full_project) or (not has_typescript) or ts_project_root == '' or (primary_backend_language in ['typescript', 'both'] and frontend_backend_topology != 'split_service') else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ ts_project_root }}"
+  # frontend/ (Next.js) is staged under _scaffold/frontend/ and pruned when
+  # include_frontend is false. Two 2026-07-19 fixes are folded in here:
+  #
+  #  1. It moved into _scaffold/ — it is already scaffold_full_project-gated via
+  #     has_typescript (which is false unless scaffold_full_project), so it can
+  #     never render in layering-only mode and belongs in staging by definition.
+  #  2. include_frontend now actually GATES it. Previously the flag had zero
+  #     _tasks references: it fed only design.yaml/DESIGN.md, so frontend/
+  #     rendered unconditionally while DESIGN.md reported "Frontend: none".
+  #
+  # The deleted _split_service_frontend_staging/ path is NOT reinstated: it was
+  # referenced by three tasks but never existed on disk (a cp -R sourced from
+  # it, so every split_service render failed). It is also unnecessary — the one
+  # frontend tree already carries src/middleware.ts.jinja, the Supabase-JWT auth
+  # boundary split_service needs. split vs. single is a deploy-config
+  # difference, not a tree difference.
+  - "{{ 'true' if (scaffold_full_project and include_frontend) else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/frontend' }}"
+  # AIT-70: the Vite SPA is staged in a SECOND tree, _scaffold/frontend-vite/,
+  # rather than branching inside the Next.js one. The two share almost no files
+  # — different entrypoint (index.html + main.tsx vs. app/layout.tsx), different
+  # env convention (import.meta.env.VITE_* vs. process.env.NEXT_PUBLIC_*),
+  # different Supabase client (createClient vs. createBrowserClient), different
+  # test runner setup — so a per-file {% if %} would leave every file a
+  # two-branch conditional. Whichever bundler is not chosen is pruned here; the
+  # survivor is promoted to frontend/ by the copy task below, so the rendered
+  # project has one plain frontend/ either way and no bundler in its path.
+  - "{{ 'true' if (scaffold_full_project and include_frontend and frontend_bundler == 'vite') else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/frontend-vite' }}"
+  - "{{ ('rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/frontend') if (scaffold_full_project and include_frontend and frontend_bundler == 'vite') else 'true' }}"
+  # AIT-70: supabase/ (migrations + RLS pgTAP suite + local stack config) is
+  # staged and pruned when include_supabase_db is false. Independent of the
+  # Supabase *auth* touchpoints (frontend client, split_service JWT middleware)
+  # and of vector_backend=postgres — a project can use Supabase for identity or
+  # for pgvector without Postgres being its application database.
+  - "{{ 'true' if (scaffold_full_project and include_supabase_db) else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/supabase' }}"
+  # middleware/auth.py lives inside the normal
+# _scaffold/<py_project_root>/<ai_source_root> Python
+  # tree (moved by the big unconditional mv above, same as every other Python
+  # file) — remove it from staging before that mv when split_service isn't
+  # chosen, so a Python-only or single-topology project never gets an unused
+  # Supabase-JWT dependency it has no frontend to pair with.
+  - "{{ 'true' if (not scaffold_full_project) or frontend_backend_topology == 'split_service' else 'rm -rf ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/middleware' }}"
+  # railway.toml (Python backend deploy config) is split_service-only, same
+  # reasoning as ml/promptfoo.config.yaml below — can't sit in the big
+  # unconditional mv list since it may not exist in staging at all.
+  - "{{ 'true' if (not scaffold_full_project) or frontend_backend_topology == 'split_service' else 'rm -f ' ~ _copier_conf.dst_path ~ '/_scaffold/railway.toml' }}"
+  # Full-project scaffold content is staged under _scaffold/ (a template-exclusive
+  # path that can never collide with a pre-existing repo) so it's safe either way:
+  # when enabled, move it into place; when disabled, it's simply discarded below —
+  # never written into (and never rm -rf'd from) the target's real src/tests/etc.
+  #
+  # Directories are MERGED into place, not `mv`'d: a plain `mv _scaffold/src ./`
+  # fails ("Directory not empty") on any re-render because src/ already exists
+  # from the first render — which is exactly the copier-update / add-capability
+  # re-entry path. `mkdir -p dst && cp -R _scaffold/X/. dst/` merges the staged
+  # contents into the existing (or fresh) target dir on both first render and
+  # re-render; the final `rm -rf _scaffold` below clears the staging copies. Bare
+  # files (pyproject.toml, Makefile, …) stay `mv` — `mv file ./` overwrites fine
+  # even on re-render.
+  - >-
+    {{ ('mv ' ~ _copier_conf.dst_path ~ '/_scaffold/pyproject.toml '
+    ~ _copier_conf.dst_path ~ '/_scaffold/Makefile '
+    ~ _copier_conf.dst_path ~ '/_scaffold/.gitignore '
+    ~ _copier_conf.dst_path ~ '/_scaffold/.pre-commit-config.yaml '
+    ~ _copier_conf.dst_path ~ '/_scaffold/renovate.json '
+    ~ _copier_conf.dst_path ~ '/_scaffold/.env.example '
+    ~ _copier_conf.dst_path ~ '/_scaffold/project_init.sh '
+    ~ _copier_conf.dst_path ~ '/') if scaffold_full_project else 'true' }}
+  # README.md is the project's own doc — never clobber an existing one on
+  # re-render (copier --skip semantics don't reach post-task mv).
+  - >-
+    {{ ('[ -f ' ~ _copier_conf.dst_path ~ '/README.md ] && rm -f '
+    ~ _copier_conf.dst_path ~ '/_scaffold/README.md || mv '
+    ~ _copier_conf.dst_path ~ '/_scaffold/README.md '
+    ~ _copier_conf.dst_path ~ '/') if scaffold_full_project else 'true' }}
+  # Directory merges (idempotent on re-render — see note above). Each: create the
+  # target if absent, copy staged contents in (merging with any existing files).
+  # .vscode/ and .github/ are DIRECTORIES (not bare files) so they merge here, not
+  # in the mv list above — `mv .vscode ./` would fail "Directory not empty" on
+  # re-render.
+  - >-
+    {{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/.vscode && cp -R '
+    ~ _copier_conf.dst_path ~ '/_scaffold/.vscode/. ' ~ _copier_conf.dst_path ~ '/.vscode/'
+    ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/.github && cp -R '
+    ~ _copier_conf.dst_path ~ '/_scaffold/.github/. ' ~ _copier_conf.dst_path ~ '/.github/'
+    ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/configs && cp -R '
+    ~ _copier_conf.dst_path ~ '/_scaffold/configs/. ' ~ _copier_conf.dst_path ~ '/configs/'
+    ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/data && cp -R '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/data/. ' ~ _copier_conf.dst_path ~ '/data/'
+    ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/tests && cp -R '
+    ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/tests/. ' ~ _copier_conf.dst_path ~ '/tests/'
+    ~ ' && mkdir -p ' ~ _copier_conf.dst_path ~ '/infrastructure && cp -R '
+    ~ _copier_conf.dst_path ~ '/_scaffold/infrastructure/. ' ~ _copier_conf.dst_path ~ '/infrastructure/'
+    ) if scaffold_full_project else 'true' }}
+  # Separate merges (not part of the block above) — core/ and evals/ are removed
+  # from staging entirely for the ml_model shape, so their source dirs may not
+  # exist. Folding a missing source into the chained && block aborts the whole
+  # chain (and with it every promotion after it), which is why each optional root
+  # gets its own task — same reasoning as the ml/ and nbks/ merges below.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/core && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/core/. ' ~ _copier_conf.dst_path ~ '/core/') if (scaffold_full_project and include_core_etl) else 'true' }}"
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/' ~ eval_root ~ ' && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ eval_root ~ '/. ' ~ _copier_conf.dst_path ~ '/' ~ eval_root ~ '/') if (scaffold_full_project and include_eval_suite) else 'true' }}"
+  # Separate merge (not part of the block above) — the corpus cleanup task above
+  # removes the corpus notebook and the nbks task removes the directory when the
+  # project ships no notebooks at all, so it may not exist; folding it into the
+  # chained && block would abort the whole chain on a missing source path (same
+  # reasoning as the ml merge below). Gated on include_notebooks rather than
+  # has_corpus_pipeline so the ml_model shape's EDA notebook actually promotes —
+  # under the old gate it was staged, never copied, and silently discarded with
+  # _scaffold/.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/nbks && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/nbks/. ' ~ _copier_conf.dst_path ~ '/nbks/') if (scaffold_full_project and include_notebooks) else 'true' }}"
+  # Separate merge (not part of the block above) — the Python backend tree only
+  # belongs in a project whose backend is Python. Pre-2b′ this rode along in the
+  # unconditional block, so a typescript-only project still got a Python src/
+  # tree beside its TS root; re-parenting both to backend/ turned that latent
+  # bug into a visible collision. Gated here to mirror the TS merge's own
+  # primary_backend_language condition.
+  # `not is_ml_shaped` guard: the ml_model cleanups strip the staged AI source
+  # tree down to nothing, and this task's `mkdir -p` runs before the `cp -R`, so
+  # without the guard an ML render ends up with an empty backend/src/ — a
+  # directory the project has no use for, created by the very task that had
+  # nothing to copy into it.
+  # `or include_rag_agent`: the ML shape can opt into rag_agent (tier-3
+  # capability, `copier update -d include_rag_agent=true`), and the rag_agent
+  # cleanup above keeps the tree staged when it does. Without this clause the
+  # tree is staged and then silently discarded with _scaffold/ — the guard's
+  # empty-directory rationale doesn't apply, because include_rag_agent=true
+  # makes the tree non-empty by construction.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/' ~ py_project_root ~ '/' ~ ai_source_root ~ ' && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/. ' ~ _copier_conf.dst_path ~ '/' ~ py_project_root ~ '/' ~ ai_source_root ~ '/') if (scaffold_full_project and (not is_ml_shaped or include_rag_agent) and py_project_root != '' and primary_backend_language in ['python', 'both']) else 'true' }}"
+  # Separate merge (not part of the block above) — the ml/ cleanup task above
+  # rm -rf's the whole staged ml directory when include_ml is false, so it may
+  # not exist at all; folding it in would make the copy fail on a missing
+  # source path. Staged at _scaffold/<py_project_root>/<ml_source_root>/ and
+  # lands beside the AI source root (backend/ml/ by default) — a sibling of
+  # <ai_source_root>, not nested inside it.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/' ~ py_project_root ~ '/' ~ ml_source_root ~ ' && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ ml_source_root ~ '/. ' ~ _copier_conf.dst_path ~ '/' ~ py_project_root ~ '/' ~ ml_source_root ~ '/') if (scaffold_full_project and include_ml and py_project_root != '' and primary_backend_language in ['python', 'both']) else 'true' }}"
+  # Separate merge (not part of the block above) — same reasoning as the ml/
+  # merge immediately above: the experiments/ cleanup task rm -rf's the whole
+  # staged directory when include_run_registry is false, so it may not exist
+  # at all. Staged at _scaffold/<py_project_root>/<run_registry_root>/ and
+  # lands beside the AI source root — a sibling of <ai_source_root> and
+  # <ml_source_root>, not nested inside either (top-level shared root, not
+  # ML-only — see include_run_registry above).
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/' ~ py_project_root ~ '/' ~ run_registry_root ~ ' && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ py_project_root ~ '/' ~ run_registry_root ~ '/. ' ~ _copier_conf.dst_path ~ '/' ~ py_project_root ~ '/' ~ run_registry_root ~ '/') if (scaffold_full_project and include_run_registry and py_project_root != '' and primary_backend_language in ['python', 'both']) else 'true' }}"
+  # scripts/ — Python repo tooling (check_imports.py, the AIT-51 unimported-module
+  # guard). Separate merge, not part of the block above: it only belongs in a render
+  # with a Python backend, mirroring the ai_source_root merge's own condition. A
+  # typescript-only project gets the TS twin (check-unimported.mjs) under its own
+  # project root instead. Directory → merge (idempotent on re-render).
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/scripts && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/scripts/. ' ~ _copier_conf.dst_path ~ '/scripts/') if (scaffold_full_project and primary_backend_language in ['python', 'both']) else 'true' }}"
+  # Same reasoning — railway.toml is rm -f'd above when split_service isn't chosen.
+  # (bare file → mv, overwrites fine on re-render)
+  - "{{ ('mv ' ~ _copier_conf.dst_path ~ '/_scaffold/railway.toml ' ~ _copier_conf.dst_path ~ '/') if (scaffold_full_project and frontend_backend_topology == 'split_service') else 'true' }}"
+  # Same reasoning — promptfoo.config.yaml is rm -f'd by the include_promptfoo
+  # cleanup task below when the toggle is off, so it can't be in the block above.
+  # (bare file → mv)
+  - "{{ ('mv ' ~ _copier_conf.dst_path ~ '/_scaffold/promptfoo.config.yaml ' ~ _copier_conf.dst_path ~ '/') if (scaffold_full_project and include_promptfoo) else 'true' }}"
+  # Separate merge (not part of the block above) — ts_project_root only exists
+  # when has_typescript is true, and the block's expression is built unconditionally
+  # whenever scaffold_full_project is true, so it can't safely reference a variable
+  # that might not be defined. This one short-circuits on has_typescript first.
+  # split_service's TS side is frontend-only (Next.js, not the Express backend
+  # service), so it's excluded here — moved from its own staging dir instead,
+  # by the task below.
+  # Destination (step 2b′): a typescript-only backend lands at backend/, matching
+  # the Python case. Under `both` it keeps its project-named root — Python already
+  # owns backend/, and the two would otherwise collide (the uniformity rule's one
+  # explicit exception). Staging path is unchanged either way.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/' ~ ts_project_root ~ ' && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/' ~ ts_project_root ~ '/. ' ~ _copier_conf.dst_path ~ '/' ~ ts_project_root ~ '/') if (scaffold_full_project and has_typescript and ts_project_root != '' and primary_backend_language in ['typescript', 'both'] and frontend_backend_topology != 'split_service') else 'true' }}"
+  # frontend/ promotion — MUST run before the _scaffold cleanup below, which is
+  # why it sits here rather than with the other TS tasks. Promotes atomically
+  # (a self-contained frontend tree), same class as the two backend roots.
+  # Lands at frontend/ in every topology: split_service differs from single by
+  # deploy config (vercel.json, the Supabase-JWT middleware.ts already in the
+  # tree), not by which files render.
+  #
+  # AIT-70: one task per bundler rather than an inline conditional on the source
+  # path — validate_paths.py resolves `_scaffold/...` literals statically, and a
+  # ternary inside the path reads to it as a directory named "('frontend-vite".
+  # Both destinations are plain frontend/, so nothing downstream can tell which
+  # bundler was chosen from the path alone.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/frontend && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/frontend/. ' ~ _copier_conf.dst_path ~ '/frontend/') if (scaffold_full_project and include_frontend and frontend_bundler != 'vite') else 'true' }}"
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/frontend && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/frontend-vite/. ' ~ _copier_conf.dst_path ~ '/frontend/') if (scaffold_full_project and include_frontend and frontend_bundler == 'vite') else 'true' }}"
+  # supabase/ promotion — same class as frontend/: a self-contained tree that
+  # lands at the repo root, where the Supabase CLI expects to find it.
+  - "{{ ('mkdir -p ' ~ _copier_conf.dst_path ~ '/supabase && cp -R ' ~ _copier_conf.dst_path ~ '/_scaffold/supabase/. ' ~ _copier_conf.dst_path ~ '/supabase/') if (scaffold_full_project and include_supabase_db) else 'true' }}"
+  - "rm -rf {{ _copier_conf.dst_path }}/_scaffold"
+  # MCP server language: python (FastMCP) and typescript (official MCP TS SDK)
+  # are disjoint file trees rendered side by side, then the unchosen one is
+  # pruned here. Both land at mcp_servers/<slug>/ — since py_mcp_server_slug and
+  # ts_mcp_server_slug both default to mcp_server_slug, the survivor is already
+  # at its final path and needs no move. (This replaced an _mcp_ts/ staging tree
+  # + mv, removed 2026-07-19: staging was unnecessary once both trees could be
+  # rendered under mcp_servers/ directly.)
+  - "{{ ('rm -rf ' ~ _copier_conf.dst_path ~ '/mcp_servers/' ~ mcp_server_slug ~ '__unchosen_py ' ~ _copier_conf.dst_path ~ '/mcp_servers/' ~ mcp_server_slug ~ '__unchosen_ts') if include_mcp_server else 'true' }}"
+
+# Migrations run ONLY on `copier update` (never on a fresh copy), after the new
+# render lands. Unversioned entries run on every update; the shell guards below
+# make each one idempotent (a no-op once the tree is already restructured), so
+# no version tag is required — this repo doesn't tag releases yet.
+_migrations:
+  # core/ → core/pipelines/corpus/ restructure. The old render put the corpus
+  # ETL modules at core/*.py; they now live at core/pipelines/corpus/*.py.
+  # copier's 3-way merge adds the new paths but leaves the OLD core/*.py behind
+  # whenever the developer had edited them (an unmodified file copier deletes
+  # cleanly; a hand-edited one it keeps, orphaning it next to the new module and
+  # breaking `from core.models import …`). This migration removes each stale
+  # top-level module ONLY when (a) its replacement now exists under
+  # core/pipelines/corpus/ and (b) the stale file has no uncommitted local
+  # edits — a dirty stale file is left in place and flagged, so a developer's
+  # work is never silently deleted. Idempotent: once core/*.py is gone it's a
+  # no-op. Guarded on `git` being available and the project being a git repo;
+  # outside git we can't tell edited from pristine, so we only warn.
+  - >-
+    sh -c '
+    set -e;
+    corpus="core/pipelines/corpus";
+    [ -d "$corpus" ] || exit 0;
+    in_git=0; git rev-parse --is-inside-work-tree >/dev/null 2>&1 && in_git=1;
+    for f in README.md __main__.py index.py ingestion.py models.py preprocessing.py; do
+      old="core/$f";
+      [ -f "$old" ] || continue;
+      [ -f "$corpus/$f" ] || continue;
+      mod="${f%.py}";
+      if [ "$in_git" = 0 ]; then
+        echo "[migration] WARN: not a git repo, cannot tell edited from pristine — review $old vs $corpus/$f and remove $old by hand.";
+      elif [ -n "$(git status --porcelain -- "$old" 2>/dev/null)" ]; then
+        echo "[migration] WARN: $old has local edits, NOT removed — port them into $corpus/$f, delete $old, and repoint any \"from core.$mod import\" references.";
+      else
+        rm -f "$old" && echo "[migration] removed stale $old (moved to $corpus/$f).";
+      fi;
+    done
+    '
+  # DESIGN.md Key Decisions table ← design.yaml (Q7). The table between the
+  # design-table markers is a VIEW of design.yaml; the prose around it is
+  # human-owned. copier's 3-way merge is the wrong tool here — it would
+  # conflict on every prose edit — so instead this rewrites ONLY the bytes
+  # between the two markers, leaving all other bytes untouched. The script
+  # itself is defensive: missing design.yaml/DESIGN.md, absent or reordered
+  # markers, unparseable yaml, or a discovery stage that isn't `complete` all
+  # warn and no-op rather than touching the file. Idempotent — re-running with
+  # an unchanged design.yaml rewrites identical bytes. Guarded on python3
+  # being available; without it the table simply stays as-is.
+  - >-
+    sh -c '
+    [ -f design.yaml ] || exit 0;
+    [ -f DESIGN.md ] || exit 0;
+    [ -f .claude/scripts/render_design_table.py ] || exit 0;
+    command -v python3 >/dev/null 2>&1 || {
+      echo "[migration] WARN: python3 not found — DESIGN.md decisions table not regenerated from design.yaml.";
+      exit 0;
+    };
+    python3 .claude/scripts/render_design_table.py .
+    '

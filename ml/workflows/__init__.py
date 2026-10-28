@@ -1,21 +1,29 @@
-"""Step 15 — end-to-end workflows composing the individual steps.
+"""End-to-end workflows — frame in, scored comparison out.
 
-Everything below this package is a step that can be tested in isolation. This is
-where they are wired together into the one call a run script makes.
+One function per family. Each takes a DataFrame and returns a `RunResult` that
+the reporting layer turns into HTML, with every intermediate decision (column
+types, splitter, sampler, threshold) made explicitly and recorded on the result
+rather than left implicit in the caller's notebook.
 """
 
 from __future__ import annotations
 
-from ml.workflows.classification import (
-    ModelRun,
+from ml.workflows.base import (
+    ModelResult,
     RunResult,
     TransformLeakageError,
-    run_classification,
+    build_pipeline,
 )
+from ml.workflows.classification import run_classification
+from ml.workflows.clustering import run_clustering
+from ml.workflows.prediction import run_prediction
 
 __all__ = [
-    "ModelRun",
+    "ModelResult",
     "RunResult",
     "TransformLeakageError",
+    "build_pipeline",
     "run_classification",
+    "run_clustering",
+    "run_prediction",
 ]

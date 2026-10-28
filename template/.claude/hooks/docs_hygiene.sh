@@ -1,0 +1,1 @@
+../../../.claude/hooks/docs_hygiene.sh

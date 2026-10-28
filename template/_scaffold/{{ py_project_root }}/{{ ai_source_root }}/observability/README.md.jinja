@@ -1,0 +1,56 @@
+# {{ py_project_root }}/{{ ai_source_root }}/observability/ — tracing, feedback, cost
+
+LLM tracing for the agentic system. Two parallel layers:
+
+**Layer 1 — Langfuse / Langsmith provider** (selected at scaffold time:
+`{{ observability_provider }}`, swap with `copier update -d observability_provider=…`):
+
+- `observability.py` — the provider factory. **Only this file may instantiate a
+  tracing client.** `.claude/hooks/sdk_lint.sh` (B3) flags bare `Langfuse(` /
+  `langsmith.Client(` anywhere else. Do not rename it — the hook exempts this
+  filename specifically.
+- `tracing.py` — what call sites use: `trace_span()`, `record_feedback()`,
+  `record_cost()`.
+- `settings.py` — pydantic-settings, reads `.env`.
+
+```python
+from observability.tracing import trace_span, record_cost
+
+with trace_span("agent.retrieve", node="retrieve"):
+    docs = retriever.invoke(query)
+record_cost(settings.model, input_tokens=1_200, output_tokens=340)
+```
+
+**Layer 2 — OTel span instrumentation** (agent-observability.md, always-on for
+agent-shaped projects). Five typed span context managers covering the required
+span types:
+
+- `spans.py` — `invoke_agent_span`, `chat_span`, `execute_tool_span`,
+  `retrieve_span`, `eval_item_span`.
+
+```python
+from observability.spans import invoke_agent_span, chat_span, execute_tool_span
+
+with invoke_agent_span(agent_id="my_agent", session_id=sid) as root:
+    with chat_span(model=settings.model, input_tokens=n, output_tokens=m):
+        response = llm.invoke(messages)
+    with execute_tool_span(tool_name="search", inputs=query):
+        results = search(query)
+```
+
+Exporter: console by default (zero-config dev/CI). Set
+`OTEL_EXPORTER_OTLP_ENDPOINT` in `.env` to switch to an OTLP collector in prod.
+The OTLP SDK package (`opentelemetry-exporter-otlp-proto-grpc`) is listed but
+commented out in `pyproject.toml` — uncomment when deploying to prod.
+
+Tracing never breaks the caller: with no credentials, a missing SDK, or
+`observability_provider=none`, `get_tracer()` returns a `NoOpTracer` and every
+helper degrades to a warning log. OTel span helpers catch all exceptions and
+emit a warning log — a dead backend never takes the agent down.
+{% if data_sensitivity in ["restricted", "secret"] %}
+**Redact before trace (data_sensitivity={{ data_sensitivity }}).** `redact()` runs
+inside `trace_span()` and all OTel span helpers before attributes reach the
+provider — raw field values must never leave the process (CLAUDE.md, DESIGN.md).
+Add domain-sensitive field names to `REDACTED_FIELDS` in `tracing.py`; never add
+a span path that skips it.
+{%- endif %}

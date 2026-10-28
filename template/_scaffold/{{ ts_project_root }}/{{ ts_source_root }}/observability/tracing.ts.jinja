@@ -1,0 +1,225 @@
+/**
+ * OTel span helpers for the {{ project_name }} TS agent.
+ *
+ * Span types (agent-observability.md):
+ *   invoke_agent  — full agent turn (root span)
+ *   chat          — single LLM call
+ *   execute_tool  — one tool call
+ *   retrieve      — RAG / search query
+ *   eval_item     — one eval-harness row
+ *
+ * Exporter: console by default (zero-config local dev/CI).
+ *           OTLP when OTEL_EXPORTER_OTLP_ENDPOINT is set (prod).
+ *
+ * Usage:
+ *   const span = startInvokeAgentSpan({ agentId: "my_agent", sessionId });
+ *   try { ... } finally { span.end(); }
+ *
+ * Or with the async helper:
+ *   const result = await withSpan("invoke_agent", attrs, async (span) => { ... });
+ */
+
+import {
+  BasicTracerProvider,
+  BatchSpanProcessor,
+  ConsoleSpanExporter,
+} from "@opentelemetry/sdk-trace-base";
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+// Span comes from the API, not sdk-trace-base: tracer.startSpan() returns the API
+// interface, and the SDK's concrete Span class is not assignable to it.
+import type { Attributes, Span } from "@opentelemetry/api";
+
+const TRACER_NAME = "{{ project_slug }}.agent";
+
+// ---------------------------------------------------------------------------
+// Provider bootstrap
+// ---------------------------------------------------------------------------
+
+function buildProvider(): BasicTracerProvider {
+  const provider = new BasicTracerProvider();
+  const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT ?? "";
+
+  if (endpoint) {
+    try {
+      // Dynamic import keeps the OTLP exporter optional (not bundled in dev)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-grpc");
+      provider.addSpanProcessor(new BatchSpanProcessor(new OTLPTraceExporter()));
+      console.debug(`[otel] OTLP exporter ready: ${endpoint}`);
+    } catch {
+      console.warn("[otel] OTLP exporter not available — falling back to console.");
+      provider.addSpanProcessor(new BatchSpanProcessor(new ConsoleSpanExporter()));
+    }
+  } else {
+    provider.addSpanProcessor(new BatchSpanProcessor(new ConsoleSpanExporter()));
+    console.debug("[otel] console exporter ready (set OTEL_EXPORTER_OTLP_ENDPOINT for OTLP)");
+  }
+
+  return provider;
+}
+
+let _tracer: ReturnType<typeof trace.getTracer> | null = null;
+
+try {
+  const provider = buildProvider();
+  provider.register();
+  _tracer = trace.getTracer(TRACER_NAME);
+} catch (err) {
+  console.warn("[otel] init failed — all spans are no-ops:", err);
+}
+
+// ---------------------------------------------------------------------------
+// Core helper
+// ---------------------------------------------------------------------------
+
+/** Run an async callback inside a named span. Span ends after callback. */
+export async function withSpan<T>(
+  spanName: string,
+  attributes: Attributes,
+  fn: (span: Span | null) => Promise<T>,
+): Promise<T> {
+  if (!_tracer) {
+    return fn(null);
+  }
+  const span = _tracer.startSpan(spanName, { attributes });
+  try {
+    const result = await fn(span);
+    span.setStatus({ code: SpanStatusCode.OK });
+    return result;
+  } catch (err) {
+    span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+    throw err;
+  } finally {
+    span.end();
+  }
+}
+
+/** Start a span manually. Caller must call span.end(). */
+export function startSpan(spanName: string, attributes: Attributes): Span | null {
+  if (!_tracer) { return null; }
+  return _tracer.startSpan(spanName, { attributes });
+}
+
+// ---------------------------------------------------------------------------
+// Typed span starters — one per span type
+// ---------------------------------------------------------------------------
+
+export interface InvokeAgentAttrs {
+  agentId: string;
+  sessionId: string;
+  userId?: string;
+  model?: string;
+  promptVersion?: string;
+}
+
+export function startInvokeAgentSpan(attrs: InvokeAgentAttrs): Span | null {
+  const attributes: Attributes = {
+    operation_name: "invoke_agent",
+    agent_id: attrs.agentId,
+    session_id: attrs.sessionId,
+    "gen_ai.system": "anthropic",
+  };
+  if (attrs.userId) { attributes["user_id"] = attrs.userId; }
+  if (attrs.model) { attributes["gen_ai.request.model"] = attrs.model; }
+  if (attrs.promptVersion) { attributes["prompt_version"] = attrs.promptVersion; }
+  return startSpan("invoke_agent", attributes);
+}
+
+export interface ChatAttrs {
+  model: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  maxTokens?: number;
+  temperature?: number;
+  finishReason?: string;
+}
+
+export function startChatSpan(attrs: ChatAttrs): Span | null {
+  const attributes: Attributes = {
+    operation_name: "chat",
+    "gen_ai.request.model": attrs.model,
+  };
+  if (attrs.inputTokens !== undefined) { attributes["gen_ai.usage.input_tokens"] = attrs.inputTokens; }
+  if (attrs.outputTokens !== undefined) { attributes["gen_ai.usage.output_tokens"] = attrs.outputTokens; }
+  if (attrs.maxTokens !== undefined) { attributes["gen_ai.request.max_tokens"] = attrs.maxTokens; }
+  if (attrs.temperature !== undefined) { attributes["gen_ai.request.temperature"] = attrs.temperature; }
+  if (attrs.finishReason) {
+    attributes["gen_ai.response.finish_reasons"] = attrs.finishReason;
+    if (attrs.finishReason === "max_tokens") {
+      console.warn("[otel] chat span: finish_reason=max_tokens — truncated output (wasted spend)");
+    }
+  }
+  return startSpan("chat", attributes);
+}
+
+export interface ExecuteToolAttrs {
+  toolName: string;
+  toolVersion?: string;
+  inputHash?: string;
+  retryCount?: number;
+}
+
+export function startExecuteToolSpan(attrs: ExecuteToolAttrs): Span | null {
+  const attributes: Attributes = {
+    operation_name: "execute_tool",
+    "tool.name": attrs.toolName,
+    "tool.version": attrs.toolVersion ?? "1",
+    is_error: false,
+  };
+  if (attrs.inputHash) { attributes["input_hash"] = attrs.inputHash; }
+  if (attrs.retryCount !== undefined) { attributes["retry_count"] = attrs.retryCount; }
+  return startSpan("execute_tool", attributes);
+}
+
+export interface RetrieveAttrs {
+  /** Pass query hash only at high data sensitivity — never raw PII. */
+  query: string;
+  backend?: string;
+  topK?: number;
+  resultCount?: number;
+}
+
+export function startRetrieveSpan(attrs: RetrieveAttrs): Span | null {
+  const attributes: Attributes = {
+    operation_name: "retrieve",
+    query: attrs.query, // redact before passing if data_sensitivity is high
+  };
+  if (attrs.backend) { attributes["retrieval.backend"] = attrs.backend; }
+  if (attrs.topK !== undefined) { attributes["retrieval.top_k"] = attrs.topK; }
+  if (attrs.resultCount !== undefined) { attributes["retrieval.result_count"] = attrs.resultCount; }
+  return startSpan("retrieve", attributes);
+}
+
+export interface EvalItemAttrs {
+  evalId: string;
+  query: string;
+  backend?: string;
+  model?: string;
+  score?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+export function startEvalItemSpan(attrs: EvalItemAttrs): Span | null {
+  const attributes: Attributes = {
+    operation_name: "eval_item",
+    "eval.id": attrs.evalId,
+    "eval.query": attrs.query,
+  };
+  if (attrs.backend) { attributes["eval.backend"] = attrs.backend; }
+  if (attrs.model) { attributes["gen_ai.request.model"] = attrs.model; }
+  if (attrs.score !== undefined) { attributes["eval.score"] = attrs.score; }
+  if (attrs.inputTokens !== undefined) { attributes["gen_ai.usage.input_tokens"] = attrs.inputTokens; }
+  if (attrs.outputTokens !== undefined) { attributes["gen_ai.usage.output_tokens"] = attrs.outputTokens; }
+  return startSpan("eval_item", attributes);
+}
+
+/** Convenience: hash a string for use as input_hash in tool spans. */
+export function inputHash(payload: unknown): string {
+  const str = JSON.stringify(payload) ?? String(payload);
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}

@@ -1,0 +1,59 @@
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    anthropic_api_key: str = ""
+    rag_model: str = "claude-haiku-4-5-20251001"
+    rag_port: int = 8011
+
+    # Set explicitly rather than inheriting SDK defaults — see the LangGraph
+    # chat agent's settings.py for the full rationale. The SDK already retries
+    # 408/409/429/5xx with exponential backoff; do NOT add another retry loop.
+    # Worst-case wall-clock is llm_timeout_seconds * (llm_max_retries + 1).
+    llm_timeout_seconds: float = 30.0
+    llm_max_retries: int = 2
+    llm_max_tokens: int = 4096
+    # Always defaults to "memory" — see the LangGraph chat agent's settings.py for why
+    # (checkpointer construction is eager at graph-compile time, so defaulting to
+    # "postgres" would break `make test`/import without a live Postgres reachable).
+    rag_checkpointer: str = "memory"  # memory | postgres
+    postgres_dsn: str = ""  # used by the postgres checkpointer{% if vector_backend == "postgres" %} and the postgres vector_backend{% endif %}
+
+    # Named rag_vectordb_path (not vectordb_path) — lg_agent's Settings also has a
+    # field named vectordb_path, and pydantic-settings binds both to the identically-
+    # named env var VECTORDB_PATH regardless of which class declares it. Same name
+    # here would silently point both agents' separate, incompatible-schema DuckDB
+    # files at whichever one env var happened to be set.
+    rag_vectordb_path: str = "data/stores/rag_vectordb.duckdb"
+    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model_revision: str = ""
+
+    retrieval_top_k: int = 5
+    confidence_threshold: float = 0.25
+    # No generation_temperature: thinking-by-default models (Opus 5, Fable 5,
+    # Opus 4.8/4.7, Sonnet 5) reject temperature/top_p/top_k with a 400, and the
+    # reject list grows with each release. Steer with the prompt instead.
+
+    vector_backend: str = "{{ vector_backend }}"
+{%- if vector_backend == "opensearch" %}
+    opensearch_hosts: str = "127.0.0.1:9200"
+    opensearch_index: str = "rag_chunks"
+    opensearch_user: str = ""
+    opensearch_password: str = ""
+    opensearch_use_ssl: bool = False
+    opensearch_verify_certs: bool = True
+{%- endif %}
+{%- if vector_backend == "postgres" %}
+    postgres_table: str = "rag_chunks"
+{%- endif %}
+
+    wandb_api_key: str = ""
+    wandb_project: str = "{{ project_slug }}"
+    data_sensitivity: str = "{{ data_sensitivity }}"
+
+
+settings = Settings()

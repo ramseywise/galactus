@@ -1,0 +1,52 @@
+# supabase/ — {{ project_name }}'s application database
+
+Postgres is the application database here, and **tenant isolation is enforced in
+the database, not the application layer**. That is the whole point of this
+directory: an API bug can leak data only if a policy also allows it.
+
+## Layout
+
+| Path | Holds |
+|------|-------|
+| `migrations/` | Ordered, immutable schema changes. Never edit an applied migration — add a new one. |
+| `tests/rls.test.sql` | pgTAP suite asserting every policy's allow *and* deny branch. |
+| `config.toml` | Local stack config (`supabase start`). |
+
+## Local workflow
+
+```bash
+supabase start                  # boots Postgres + Auth + Studio in Docker
+supabase db reset               # re-applies every migration from scratch
+supabase test db                # runs tests/rls.test.sql
+```
+
+`supabase db reset` is the one that matters during development — it proves the
+migration chain still applies cleanly from empty, which is the only thing
+production will ever do.
+
+## Rules
+
+1. **Every domain table gets `organization_id`, `enable row level security`,
+   AND `force row level security`.** ENABLE alone is bypassed by the table
+   owner, so a missing policy stays invisible whenever the app connects as the
+   owning role.
+2. **Every policy needs a paired allow-test and deny-test** in
+   `tests/rls.test.sql`. RLS is the only code in the system that fails *open* —
+   a missing policy returns another tenant's rows rather than raising.
+3. **Never edit an applied migration.** Add `000N_description.sql`. The numbers
+   are the contract with every environment that already ran the earlier ones.
+4. **`SECURITY DEFINER` functions must set `search_path`.** Without it, a caller
+   can prepend a schema and have the function run against tables they control.
+5. **Policy helpers go through `user_org_ids()` / `is_org_admin()`,** not inline
+   subqueries — a role-model change should land in one place.
+
+## Relationship to the other Supabase pieces
+
+This is distinct from the two other ways this template touches Supabase:
+
+- **Auth** — the frontend's Supabase client and (in `split_service`) the
+  backend's JWT middleware. That establishes *who* the caller is; the policies
+  here decide *what they may see*.
+- **`vector_backend=postgres`** — pgvector as a RAG store. Same engine,
+  unrelated concern; those tables are not part of the tenancy model unless you
+  add `organization_id` to them yourself.

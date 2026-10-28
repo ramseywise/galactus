@@ -1,0 +1,119 @@
+/**
+ * {{ project_name }} — Vercel AI SDK agent loop.
+ *
+ * TS-native equivalent of the Python agents' graph.py/main.py combo: one
+ * streamText() call with a tool registry and automatic multi-step tool-calling
+ * (stopWhen: stepCountIs(settings.maxSteps)), returning a UIMessageStream
+ * response the caller (handler.ts) turns into an HTTP Response.
+ *
+ * Modules wired here
+ * ------------------
+ * - traceTools.ts   : wrapToolsWithSpans() wraps each tool's execute() with an
+ *                     execute_tool OTel span that brackets real execution time
+ *                     and records is_error on throw (via tracing.ts helpers)
+ * - tracing.ts      : startChatSpan in onFinish (token-attributed OTel summary span)
+ * - stallDetector.ts: recordOutput + recordToolCall in onStepFinish; throws
+ *                     StallDetectedError before maxSteps is exhausted
+ * - contextBudget.ts (pure parts): trackUsage + shouldCompact in onFinish;
+ *                     logs utilisation and warns when the context window is near full
+ * - guardrails/tools.ts: wrapToolsWithContentFilter() runs guard layer 2 over every
+ *                     tool result before it re-enters the prompt (indirect
+ *                     injection). Layers 1 and 3 live in handler.ts.
+ *
+ * Modules intentionally NOT wired here (see their module-level comments)
+ * -----------------------------------------------------------------------
+ * - verificationLoop.ts : consumes the stream internally — incompatible with
+ *                         the streaming HTTP response that handler.ts requires
+ * - compactHistory()    : needs retained mutable history; handler.ts is
+ *                         stateless per request (see contextBudget.ts comment)
+ */
+
+import {
+  convertToModelMessages,
+  stepCountIs,
+  streamText,
+  type StreamTextResult,
+  type ToolSet,
+  type UIMessage,
+} from "ai";
+import { getModel } from "../../model/gateway.js";
+import { settings } from "./settings.js";
+import { tools } from "./tools/index.js";
+import { startChatSpan } from "../../observability/tracing.js";
+import { wrapToolsWithSpans } from "../../observability/traceTools.js";
+import { wrapToolsWithContentFilter } from "../../guardrails/tools.js";
+import { createStallDetector } from "./stallDetector.js";
+import { trackUsage, shouldCompact } from "./contextBudget.js";
+
+const SYSTEM_PROMPT = "You are a helpful assistant for {{ project_name }}.";
+
+// `async` since AI SDK v7: convertToModelMessages returns a promise there, and
+// streamText's `messages` is typed Array<ModelMessage> — it does not await a
+// promise passed in its place. So the await has to happen here, which makes
+// every caller await runAgent (api/handler.ts, verificationLoop.ts, tests).
+// The return type is written out rather than inferred: tsconfig sets
+// `declaration: true`, and the inferred type mentions an `Output` type the AI
+// SDK does not export, which fails the .d.ts emit (TS4058). The type parameters
+// are <TOOLS, RUNTIME_CONTEXT, OUTPUT>; RUNTIME_CONTEXT is `any` because this
+// call passes no runtime context and streamText infers it as such.
+export async function runAgent(
+  messages: UIMessage[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<StreamTextResult<ToolSet, any, never>> {
+  const stallDetector = createStallDetector();
+
+  return streamText({
+    model: getModel(),
+    system: SYSTEM_PROMPT,
+    messages: await convertToModelMessages(messages),
+    // Both tool wrappers compose here, innermost first:
+    //   wrapToolsWithContentFilter — guard layer 2, scrubs injection text out of
+    //     every tool result before it re-enters the prompt (see guardrails/tools.ts)
+    //   wrapToolsWithSpans — brackets each tool's execute() with an execute_tool
+    //     OTel span: real start/end times, is_error on throw (see traceTools.ts)
+    //
+    // Order matters. The span must enclose the filter so the recorded duration
+    // covers the work actually done on the call, and so a throw from either the
+    // tool or the filter is marked on the span. Swapping them would report a
+    // tool as fast and successful while the filter was still running or failing.
+    tools: wrapToolsWithSpans(wrapToolsWithContentFilter(tools)),
+    // No temperature: Claude Opus 5 and the other thinking-by-default models
+    // reject temperature/top_p/top_k with a 400, and the reject list grows with
+    // each release. Steer with SYSTEM_PROMPT instead.
+    stopWhen: stepCountIs(settings.maxSteps),
+
+    onStepFinish(step) {
+      // Stall detection — throws StallDetectedError on repeated tool calls or outputs.
+      // Tool spans are handled by wrapToolsWithSpans (pre-execution), not here.
+      stallDetector.recordOutput(step.text);
+      for (const tc of step.toolCalls) {
+        stallDetector.recordToolCall(tc.toolName, tc.input);
+      }
+    },
+
+    onFinish(event) {
+      // Token-attributed chat span
+      const span = startChatSpan({
+        model: getModel().modelId,
+        inputTokens: event.usage.inputTokens ?? undefined,
+        outputTokens: event.usage.outputTokens ?? undefined,
+        finishReason: event.finishReason,
+      });
+      span?.end();
+
+      // Context-budget tracking (pure — logs utilisation, warns near threshold)
+      const usage = {
+        promptTokens: event.usage.inputTokens ?? 0,
+        completionTokens: event.usage.outputTokens ?? 0,
+      };
+      trackUsage(usage);
+      if (shouldCompact(usage)) {
+        // History compaction requires persistent session state — not available
+        // in this stateless handler.  Log so the caller can act if needed.
+        console.warn(
+          "[agent] context budget threshold reached; compact history in your session layer",
+        );
+      }
+    },
+  });
+}

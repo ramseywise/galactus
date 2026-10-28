@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+
+from core.pipelines.corpus.index import build_index
+from core.pipelines.corpus.ingestion import load_raw_articles
+from core.pipelines.corpus.preprocessing import clean_and_dedupe, write_jsonl
+
+CORPUS_DIR = Path("data/raw_corpus")
+PROCESSED_PATH = Path("data/processed/articles_clean.jsonl")
+
+
+def preprocess() -> None:
+    articles = load_raw_articles(CORPUS_DIR)
+    cleaned = clean_and_dedupe(articles)
+    write_jsonl(cleaned, PROCESSED_PATH)
+    print(f"Wrote {len(cleaned)} articles to {PROCESSED_PATH}")
+
+
+def ingest() -> None:
+    if not PROCESSED_PATH.exists():
+        preprocess()
+    db_path = os.environ.get("VECTORDB_PATH", "data/stores/vectordb.duckdb")
+    if db_path != ":memory:":
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    build_index(PROCESSED_PATH, db_path)
+    print(f"Built FTS index at {db_path}")
+
+
+{% if include_rag_agent %}def rag_ingest() -> None:
+    """Embeds the same preprocessed corpus into rag_agent's vector store
+    (backend chosen by settings.vector_backend)."""
+    if not PROCESSED_PATH.exists():
+        preprocess()
+    from agents.rag_agent.build_index import build_index as build_vector_index
+    from agents.rag_agent.settings import settings
+
+    n = build_vector_index(PROCESSED_PATH)
+    print(f"Embedded {n} articles into the {settings.vector_backend} backend")
+
+
+{% endif %}def main() -> None:
+    parser = argparse.ArgumentParser(prog="core")
+    parser.add_argument("command", choices=["preprocess", "ingest"{% if include_rag_agent %}, "rag-ingest"{% endif %}])
+    args = parser.parse_args()
+    if args.command == "preprocess":
+        preprocess()
+{% if include_rag_agent %}    elif args.command == "ingest":
+        ingest()
+    else:
+        rag_ingest(){% else %}    else:
+        ingest(){% endif %}
+
+
+if __name__ == "__main__":
+    main()

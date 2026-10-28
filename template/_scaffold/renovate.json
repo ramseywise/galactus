@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "matchPackageNames": ["langgraph", "langchain-core", "langchain-mcp-adapters", "google-adk", "wandb"],
+      "matchUpdateTypes": ["major", "minor"],
+      "automerge": false,
+      "description": "Fast-moving AI framework deps — review before merging, don't automerge even minors."
+    },
+    {
+      "matchManagers": ["pep621"],
+      "matchDepNames": ["python"],
+      "enabled": false,
+      "description": "Disable Python version bumps — requires_python is a deliberate copier answer, not something to drift via renovate."
+    }
+  ]
+}

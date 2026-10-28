@@ -1,0 +1,82 @@
+#!/usr/bin/env node
+/**
+ * {{ project_name }} MCP server.
+ *
+ * Run in STDIO mode (for Claude Desktop, Claude Code, or any MCP client):
+ *   npm run dev
+ *
+ * TypeScript counterpart to the Python FastMCP scaffold — same tool
+ * (search_articles), same retrieval HTTP contract, different SDK. See
+ * .claude/skills/mcp-builder/reference/node_mcp_server.md.
+ */
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+
+const HTTP_TIMEOUT_MS = Number(process.env.MCP_HTTP_TIMEOUT ?? "30") * 1000;
+const RAG_AGENT_URL = process.env.RAG_AGENT_URL ?? "http://localhost:8011";
+
+const server = new McpServer({
+  name: "{{ mcp_server_name }}",
+  version: "0.1.0",
+});
+
+const SearchArticlesInputSchema = z.object({
+  query: z.string().describe("Natural language search query."),
+});
+
+server.registerTool(
+  "search_articles",
+  {
+    title: "Search articles",
+    description:
+      "Search the project's knowledge base for relevant articles. Calls the retrieval backend's " +
+      "/api/v1/retrieval endpoint (retrieval only, no answer synthesis) — see " +
+      "the /api/v1/retrieval contract{% if include_rag_agent %} in {{ py_project_root }}/{{ ai_source_root }}/agents/rag_agent/main.py. Requires rag_agent " +
+      "running (`make rag-up`){% else %} — point RAG_AGENT_URL at your custom RAG service{% endif %}; RAG_AGENT_URL overrides the default http://localhost:8011.",
+    inputSchema: SearchArticlesInputSchema.shape,
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  },
+  async ({ query }: z.infer<typeof SearchArticlesInputSchema>) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${RAG_AGENT_URL}/api/v1/retrieval`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ thread_id: `mcp-${randomUUID()}`, query }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        return {
+          content: [{ type: "text" as const, text: `[retrieval backend unavailable: HTTP ${res.status}]` }],
+        };
+      }
+      const data = (await res.json()) as { context?: string; confidence?: number };
+      const context = data.context || "(no matching articles found)";
+      const confidence = (data.confidence ?? 0).toFixed(2);
+      return {
+        content: [{ type: "text" as const, text: `${context}\n\n[confidence: ${confidence}]` }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: "text" as const, text: `[retrieval backend unavailable: ${String(err)}]` }],
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+);
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error("{{ mcp_server_name }} MCP server running via stdio");
+}
+
+main().catch((error) => {
+  console.error("Server error:", error);
+  process.exit(1);
+});

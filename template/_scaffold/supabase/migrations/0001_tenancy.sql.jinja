@@ -1,0 +1,139 @@
+-- Organization-scoped tenancy — the starter schema for {{ project_name }}.
+--
+-- This migration establishes the authorization model everything else builds on:
+-- a row belongs to an organization, and a user may read it only if they are a
+-- member of that organization. Get this right once, here, and every table added
+-- later is a five-line policy rather than a fresh security design.
+--
+-- The pattern (org + membership + SECURITY DEFINER helper) is deliberate:
+-- owner-scoped models (`owner_id = auth.uid()`) look simpler but cannot express
+-- "my teammate can see this", and retrofitting orgs later means rewriting every
+-- policy at once.
+
+create extension if not exists "uuid-ossp";
+
+-- ---------------------------------------------------------------------------
+-- Tables
+-- ---------------------------------------------------------------------------
+
+create table organizations (
+  id         uuid primary key default uuid_generate_v4(),
+  name       text not null check (char_length(name) <= 256),
+  created_at timestamptz not null default now()
+);
+
+create table organization_members (
+  id              uuid primary key default uuid_generate_v4(),
+  organization_id uuid not null references organizations (id) on delete cascade,
+  user_id         uuid not null references auth.users (id) on delete cascade,
+  role            text not null check (role in ('owner', 'admin', 'member')),
+  created_at      timestamptz not null default now(),
+  constraint organization_members_org_user_key unique (organization_id, user_id)
+);
+
+-- Every policy filters by the current user's memberships, so this index is on
+-- the hot path of essentially every query in the system.
+create index organization_members_user_id_idx on organization_members (user_id);
+
+-- FORCE, not just ENABLE: without it the table owner bypasses RLS, so a policy
+-- bug stays invisible whenever the app connects as the owning role.
+alter table organizations enable row level security;
+alter table organizations force row level security;
+alter table organization_members enable row level security;
+alter table organization_members force row level security;
+
+-- ---------------------------------------------------------------------------
+-- Helper functions
+-- ---------------------------------------------------------------------------
+
+-- The set of organization IDs the current user belongs to. Policies use this as
+-- `organization_id in (select user_org_ids())`.
+--
+-- SECURITY DEFINER breaks RLS recursion: policies on org-scoped tables call
+-- this function, which reads organization_members. Running as invoker would
+-- trigger organization_members' own policies and recurse.
+--
+-- `set search_path` is not optional on a SECURITY DEFINER function — without it
+-- a caller can prepend a schema and have this run against tables they control.
+create or replace function user_org_ids()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select organization_id from organization_members
+  where user_id = auth.uid()
+$$;
+
+-- Role check, routed through the same single indirection so a role model change
+-- lands in one place rather than in every policy.
+create or replace function is_org_admin(org_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from organization_members
+    where user_id = auth.uid()
+      and organization_id = org_id
+      and role in ('owner', 'admin')
+  )
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Policies
+-- ---------------------------------------------------------------------------
+
+create policy organizations_select on organizations
+  for select using (id in (select user_org_ids()));
+
+create policy organizations_update on organizations
+  for update using (is_org_admin(id)) with check (is_org_admin(id));
+
+create policy organization_members_select on organization_members
+  for select using (organization_id in (select user_org_ids()));
+
+create policy organization_members_write on organization_members
+  for all using (is_org_admin(organization_id))
+  with check (is_org_admin(organization_id));
+
+-- ---------------------------------------------------------------------------
+-- Example domain table — delete or rename, but keep the shape
+-- ---------------------------------------------------------------------------
+--
+-- Every domain table follows this template: an organization_id FK, RLS enabled
+-- AND forced, and policies expressed via user_org_ids() / is_org_admin(). A
+-- table without organization_id is a table outside the tenancy model — that is
+-- occasionally right (a global lookup table) and usually a bug.
+
+create table items (
+  id              uuid primary key default uuid_generate_v4(),
+  organization_id uuid not null references organizations (id) on delete cascade,
+  title           text not null check (char_length(title) <= 512),
+  created_by      uuid not null references auth.users (id),
+  created_at      timestamptz not null default now()
+);
+
+create index items_organization_id_idx on items (organization_id);
+
+alter table items enable row level security;
+alter table items force row level security;
+
+create policy items_select on items
+  for select using (organization_id in (select user_org_ids()));
+
+create policy items_insert on items
+  for insert with check (
+    organization_id in (select user_org_ids())
+    and created_by = auth.uid()
+  );
+
+create policy items_update on items
+  for update using (organization_id in (select user_org_ids()))
+  with check (organization_id in (select user_org_ids()));
+
+create policy items_delete on items
+  for delete using (is_org_admin(organization_id));

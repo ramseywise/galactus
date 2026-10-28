@@ -1,0 +1,17 @@
+/**
+ * {{ project_name }} — TypeScript backend service entrypoint.
+ *
+ * Minimal Express service with a real /health endpoint — a starting point,
+ * not the point. Mirrors the Python agents' health-check convention
+ * ({{ py_project_root }}/{{ ai_source_root }}/agents/lg_agent/main.py etc.) so both backends are
+ * checkable the same way in infra/CI.
+ */
+
+import { createApp } from "./api/app.js";
+
+const PORT = Number(process.env.PORT ?? 3000);
+
+const app = createApp();
+app.listen(PORT, () => {
+  console.error(`{{ project_slug }}-service listening on http://localhost:${PORT}`);
+});

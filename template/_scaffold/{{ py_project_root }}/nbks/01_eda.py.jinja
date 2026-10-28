@@ -1,0 +1,344 @@
+# %% [markdown]
+# # 01 — EDA
+#
+# The first hour of an ML project. The structure is deliberately
+# **bivariate-first**: every section compares a feature *against the target*
+# rather than cataloguing columns in isolation. That ordering is what makes an
+# hour of looking productive — you are hunting for signal, not producing a data
+# dictionary.
+#
+# Paired file — open with Jupytext, or run as a script. Cells are `# %%`.
+#
+# **Your output from this notebook is the last cell**: the `CATEGORICAL` /
+# `NUMERIC` / `ORDINAL` lists that feed feature selection in
+# `{{ ml_source_root }}/selection/`.
+
+# %%
+import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+REPO_ROOT = Path.cwd().parent if Path.cwd().name == "nbks" else Path.cwd()
+sys.path.insert(0, str(REPO_ROOT / "nbks"))
+
+from _sample_data import sample_frame
+
+# --- Parameters -------------------------------------------------------------
+# Change these four lines to point the notebook at your frame.
+DATA = Path("data/raw/dataset.csv")
+SEP = ","
+TARGET = "target"
+DROP: list[str] = []  # identifiers — never features
+# ----------------------------------------------------------------------------
+
+pd.set_option("display.max_columns", 200)
+
+# %% [markdown]
+# ## Data setup
+#
+# Rows with a missing target are dropped, not imputed. An unlabelled row is not
+# a training example, and filling the label invents outcomes.
+
+# %%
+# Falls back to the synthetic frame when DATA is absent, so this notebook runs on
+# a fresh clone. Point DATA at your own CSV and the fallback disappears.
+if DATA.exists():
+    df = pd.read_csv(DATA, sep=SEP)
+    print(f"raw: {df.shape}  (from {DATA})")
+else:
+    df = sample_frame()
+    print(f"raw: {df.shape}  (SYNTHETIC — {DATA} not found)")
+
+df = df[~df[TARGET].isna()].copy()
+print(f"labelled: {df.shape}")
+df.info()
+
+# %%
+print(df.describe().T)
+
+# %% [markdown]
+# ## Target balance
+#
+# The first number that changes the modelling plan. For a classification
+# target, severe imbalance decides the metric (PR-AUC, not ROC-AUC), the
+# sampling strategy, and whether a threshold can be chosen at all. For a
+# continuous target, read the distribution and skew instead.
+
+# %%
+is_binary = df[TARGET].dropna().nunique() == 2
+
+if is_binary:
+    print(df[TARGET].value_counts(dropna=False))
+    rate = df[TARGET].mean()
+    print(f"\npositive rate: {rate:.2%}")
+    print(f"positives: {int(df[TARGET].sum())}")
+
+    # CV sanity: how many positives land in each fold?
+    for k in (5, 10):
+        print(f"{k}-fold → ~{df[TARGET].sum() / k:.1f} positives per fold")
+else:
+    rate = float("nan")
+    print(df[TARGET].describe())
+    print(f"\nskew: {df[TARGET].skew():.2f}")
+
+# %% [markdown]
+# **Read this before trusting any metric below.** If positives-per-fold is in
+# the single digits, cross-validated scores carry fold-to-fold variance far
+# larger than any model difference you are likely to see. Report the variance,
+# not just the mean.
+
+# %% [markdown]
+# ## Leakage audit — do this BEFORE looking at correlations
+#
+# The single highest-value cell in this notebook, and the one most often
+# skipped. A leaked feature does not raise an error: it returns a great score
+# and reads as success.
+#
+# For every column, ask: **was this value knowable at the moment the prediction
+# would be made?** Anything recorded *because* the outcome happened is leakage,
+# however predictive it looks.
+#
+# The related trap is **outcome vs effect**. If the frame contains actions
+# someone already took — a contact log, a campaign flag, a treatment column — a
+# model trained on the outcome learns "the ones we acted on responded" and
+# recommends acting on everyone. That makes the correct target an *uplift*
+# model, which is a different problem than the one this scaffold sets up.
+
+# %%
+# Columns whose correlation with the target is suspiciously high are leak
+# candidates, not wins. Rank them and inspect the top of the list by hand.
+numeric_all = df.select_dtypes(include=np.number).columns.drop(TARGET, errors="ignore")
+leak_scan = (
+    df[numeric_all]
+    .corrwith(df[TARGET])
+    .abs()
+    .sort_values(ascending=False)
+    .head(15)
+    .rename("abs_corr_with_target")
+)
+print(leak_scan)
+
+# %%
+# Record the verdict explicitly. A column reviewed and kept is different from a
+# column nobody looked at — this list is the difference.
+SUSPECTED_LEAKS: list[str] = [
+    # "column_name",  # why it is suspect — confirm before including
+]
+print(f"excluded as leakage: {SUSPECTED_LEAKS or 'none — but the scan above was reviewed'}")
+
+# %% [markdown]
+# ## Missingness — share and pattern
+#
+# Per-column rates decide impute-vs-drop. **Co-occurrence** decides whether
+# missingness is itself a signal: columns that go missing together usually mean
+# a whole record type is absent, and an indicator captures that where a fill
+# value destroys it.
+
+# %%
+miss = (df.isna().mean() * 100).sort_values(ascending=False)
+miss_present = miss[miss > 0]
+print(f"{len(miss_present)} of {df.shape[1]} columns have missing values\n")
+print(miss_present.round(1).head(25))
+
+# %%
+# Do the high-missing columns go missing together?
+high_miss = miss_present[miss_present > 20].index.tolist()
+if len(high_miss) > 1:
+    fig, ax = plt.subplots(figsize=(9, 7))
+    im = ax.imshow(df[high_miss].isna().corr(), cmap="viridis", vmin=-1, vmax=1)
+    ax.set_xticks(range(len(high_miss)), high_miss, rotation=90)
+    ax.set_yticks(range(len(high_miss)), high_miss)
+    ax.set_title("Missingness co-occurrence (>20% missing)")
+    fig.colorbar(im, ax=ax, shrink=0.6)
+    plt.tight_layout()
+    plt.show()
+else:
+    print("fewer than two high-missing columns — no pattern to plot")
+
+# %% [markdown]
+# ## Feature types
+#
+# Inferred, then **corrected by hand**. The inference is a starting point: an ID
+# read as int64 becomes a numeric feature silently, and a 0–4 status code read
+# as a float becomes a magnitude when it is really a rank.
+
+# %%
+features = [c for c in df.columns if c not in [*DROP, TARGET]]
+X = df[features]
+
+inferred_numeric = X.select_dtypes(include=np.number).columns.tolist()
+inferred_categorical = X.select_dtypes(include=["object", "string", "category"]).columns.tolist()
+inferred_bool = X.select_dtypes(include="bool").columns.tolist()
+
+print(f"numeric     ({len(inferred_numeric)}): {inferred_numeric}")
+print(f"\ncategorical ({len(inferred_categorical)}): {inferred_categorical}")
+print(f"\nbool        ({len(inferred_bool)}): {inferred_bool}")
+
+unclaimed = set(features) - set(inferred_numeric + inferred_categorical + inferred_bool)
+print(f"\nunclaimed by any type: {unclaimed or 'none'}")
+
+# %%
+# Cardinality decides the encoder: low → one-hot, high → target/collapse.
+if inferred_categorical:
+    print(X[inferred_categorical].nunique().sort_values(ascending=False))
+else:
+    print("no categorical columns inferred")
+
+# %% [markdown]
+# ## Bivariate — categorical features vs target
+#
+# Overlay the target subgroups per feature and look for a shape difference.
+# Rate-by-level against the base rate is more readable than two overlaid
+# histograms when the classes are imbalanced — at a low positive rate the
+# positive group is invisible on a shared count axis.
+
+# %%
+cat_to_plot = [c for c in inferred_categorical if X[c].nunique() <= 20]
+if cat_to_plot and is_binary:
+    fig, axes = plt.subplots(
+        len(cat_to_plot), 1, figsize=(11, 3.2 * len(cat_to_plot)), squeeze=False
+    )
+    for col, ax in zip(cat_to_plot, axes.flatten(), strict=False):
+        share = df.groupby(col, dropna=False)[TARGET].mean().sort_values(ascending=False) * 100
+        share.plot(kind="barh", ax=ax, color="#4c72b0")
+        ax.axvline(rate * 100, color="crimson", ls="--", lw=1, label=f"base rate {rate:.1%}")
+        ax.set_xlabel("target rate (%)")
+        ax.set_title(f"{col} — target rate by level")
+        ax.legend(loc="lower right")
+    plt.tight_layout()
+    plt.show()
+else:
+    print("no low-cardinality categoricals to plot (or target is not binary)")
+
+# %%
+# High-cardinality categoricals: inspect the levels rather than plotting them.
+for col in [c for c in inferred_categorical if X[col].nunique() > 20]:
+    print(f"\n--- {col}: {X[col].nunique()} levels, top 10")
+    print(df[col].value_counts().head(10))
+
+# %% [markdown]
+# ## Univariate — numeric distributions
+#
+# Skew and outliers decide scaling and whether a transform is needed.
+
+# %%
+num_to_plot = [c for c in inferred_numeric if c not in SUSPECTED_LEAKS]
+if num_to_plot:
+    ncols = 5
+    nrows = int(np.ceil(len(num_to_plot) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 2.8 * nrows), squeeze=False)
+    for col, ax in zip(num_to_plot, axes.flatten(), strict=False):
+        ax.hist(df[col].dropna(), bins=30, color="#4c72b0")
+        ax.set_title(col, fontsize=9)
+    for ax in axes.flatten()[len(num_to_plot) :]:
+        ax.set_visible(False)
+    plt.tight_layout()
+    plt.show()
+
+# %%
+skew = df[num_to_plot].skew(numeric_only=True).abs().sort_values(ascending=False)
+print("most skewed features (|skew| > 2 usually wants a log/rank transform):")
+print(skew.head(15).round(2))
+
+# %% [markdown]
+# ## Bivariate — numeric features vs target
+#
+# Distribution by target class. With few positives the positive-side
+# distribution is thin — read it as indicative, not conclusive.
+
+# %%
+if num_to_plot and is_binary:
+    ncols = 5
+    nrows = int(np.ceil(len(num_to_plot) / ncols))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows), squeeze=False)
+    for col, ax in zip(num_to_plot, axes.flatten(), strict=False):
+        groups = [g[col].dropna().to_numpy() for _, g in df.groupby(TARGET)]
+        ax.boxplot(groups, tick_labels=[str(v) for v in sorted(df[TARGET].unique())])
+        ax.set_title(col, fontsize=9)
+    for ax in axes.flatten()[len(num_to_plot) :]:
+        ax.set_visible(False)
+    plt.tight_layout()
+    plt.show()
+
+# %% [markdown]
+# ## Correlation between features
+#
+# Clusters here mean redundancy: keep the most interpretable member of each
+# cluster rather than all of them.
+
+# %%
+corr = df[num_to_plot].corr()
+fig, ax = plt.subplots(figsize=(14, 12))
+im = ax.imshow(corr, cmap="RdBu_r", vmin=-1, vmax=1)
+ax.set_xticks(range(len(corr)), corr.columns, rotation=90)
+ax.set_yticks(range(len(corr)), corr.columns)
+ax.set_title("Feature correlation")
+fig.colorbar(im, ax=ax, shrink=0.6)
+plt.tight_layout()
+plt.show()
+
+# %%
+# Name the redundant pairs instead of eyeballing the heatmap.
+upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+pairs = (
+    upper.stack()
+    .rename("corr")
+    .reset_index()
+    .query("abs(corr) > 0.85")
+    .sort_values("corr", key=abs, ascending=False)
+)
+print(f"{len(pairs)} feature pairs correlated above |0.85|:")
+print(pairs.head(25).to_string(index=False))
+
+# %% [markdown]
+# ---
+# ## Handoff — your output from this notebook
+#
+# Fill these in from what you found above. They are the input to feature
+# selection and the training config. A column that appears in none of these
+# lists is silently dropped, so the counts should reconcile against the feature
+# total printed below.
+
+# %%
+CATEGORICAL: list[str] = [
+    # from `inferred_categorical`, minus anything excluded above
+]
+
+NUMERIC: list[str] = [
+    # from `inferred_numeric`, minus SUSPECTED_LEAKS and redundant pairs
+]
+
+ORDINAL: list[str] = [
+    # rank codes that inference read as numeric — these need ordinal treatment,
+    # not magnitude
+]
+
+EXCLUDED: dict[str, str] = {
+    # "column": "why — leakage / redundant / no variance"
+}
+
+_claimed = set(CATEGORICAL) | set(NUMERIC) | set(ORDINAL) | set(EXCLUDED)
+_unaccounted = set(features) - _claimed
+print(f"features total:  {len(features)}")
+print(f"categorical:     {len(CATEGORICAL)}")
+print(f"numeric:         {len(NUMERIC)}")
+print(f"ordinal:         {len(ORDINAL)}")
+print(f"excluded:        {len(EXCLUDED)}")
+print(f"\nUNACCOUNTED ({len(_unaccounted)}): {sorted(_unaccounted)}")
+if _unaccounted:
+    print("\n^ these would be dropped without a decision. Assign each one.")
+
+# %% [markdown]
+# ### Feature engineering — brainstorm before building
+#
+# Before writing a single transform: what do you know about this domain that
+# the data does not say? Ratios that matter, thresholds that are meaningful,
+# time windows that should be compared rather than used raw. Write the
+# candidates down before implementing them:
+#
+# 1.
+# 2.
+# 3.

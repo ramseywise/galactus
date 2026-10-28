@@ -1,0 +1,31 @@
+# mcp_servers/ — MCP adapter layer
+
+MCP servers expose this project's capabilities to MCP hosts (Claude Code,
+Claude Desktop, any MCP client). Design rule: **no business logic here** —
+each tool is a thin client of a REST endpoint owned by a real service, so the
+service stays the single tested, secured surface and MCP protocol churn is
+isolated in this adapter.
+
+## {{ mcp_server_slug }}/
+
+{% if mcp_server_language == "typescript" -%}
+TypeScript server on the official MCP SDK (`npm install`, then run per its
+`package.json` scripts).
+{%- else -%}
+Python FastMCP server (`uv sync`, then `uv run python -m src.server` for
+STDIO mode).
+{%- endif %}
+
+Ships one example tool, `search_articles`, which calls the retrieval backend's
+`POST /api/v1/retrieval` (retrieval only, no answer synthesis).
+{% if include_rag_agent -%}
+The backend is this project's `rag_agent` (`make rag-up`); `RAG_AGENT_URL`
+overrides the default `http://localhost:8011`.
+{%- else -%}
+`include_rag_agent=false`: point `RAG_AGENT_URL` (default
+`http://localhost:8011`) at your own service's compatible
+`/api/v1/retrieval` endpoint.
+{%- endif %}
+
+Extend with `/mcp-builder` (see `.claude/skills/mcp-builder/`), keeping the
+tool-wraps-REST rule.

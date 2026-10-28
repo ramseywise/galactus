@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    anthropic_api_key: str = ""
+    lg_model: str = "claude-haiku-4-5-20251001"
+    lg_port: int = 8010
+
+    # Set explicitly rather than inheriting SDK defaults — the LLM call is the
+    # slowest and most failure-prone hop in the graph, and the plain-HTTP
+    # connectors under integrations/ already pin their own timeouts.
+    # The SDK retries 408/409/429/5xx and connection errors with exponential
+    # backoff; do NOT wrap the client in another retry loop. Worst-case
+    # wall-clock is llm_timeout_seconds * (llm_max_retries + 1) — 90s here.
+    llm_timeout_seconds: float = 30.0
+    llm_max_retries: int = 2
+    # 1024 truncates real answers, and a truncated response is wasted spend
+    # (see observability/spans.py's otel.chat.truncated warning).
+    llm_max_tokens: int = 4096
+{%- if has_corpus_pipeline %}
+    vectordb_path: str = "data/stores/vectordb.duckdb"
+{%- endif %}
+    # Always defaults to "memory" — checkpointer construction happens eagerly at
+    # graph-compile time (unlike vector_backend, which is lazy per-call), so
+    # defaulting this to "postgres" would make `make test`/import fail hard
+    # without a live Postgres reachable. Opt in via LG_CHECKPOINTER=postgres once
+    # POSTGRES_DSN actually points at a reachable database.
+    lg_checkpointer: str = "memory"  # memory | postgres
+    postgres_dsn: str = ""  # used by the postgres checkpointer
+{%- if has_corpus_pipeline %}
+
+    retrieval_top_k: int = 5
+{%- endif %}
+
+    # No generation_temperature: thinking-by-default models (Opus 5, Fable 5,
+    # Opus 4.8/4.7, Sonnet 5) reject temperature/top_p/top_k with a 400, and the
+    # reject list grows with each release. Steer with the prompt instead.
+    mcp_enabled: bool = {{ include_mcp_server }}
+    mcp_server_dir: str = "mcp_servers/{{ mcp_server_slug | default(project_slug) }}"
+
+    wandb_api_key: str = ""
+    wandb_project: str = "{{ project_slug }}"
+    data_sensitivity: str = "{{ data_sensitivity }}"
+
+
+settings = Settings()

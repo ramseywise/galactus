@@ -139,7 +139,7 @@ def classification_metrics(
         "recall": float(recall_score(y_true, y_pred, **kwargs)),
         "f1": float(f1_score(y_true, y_pred, **kwargs)),
         "confusion": confusion_matrix(y_true, y_pred, labels=classes).tolist(),
-        "n_samples": int(len(y_true)),
+        "n_samples": len(y_true),
     }
 
     if is_binary:
@@ -233,7 +233,7 @@ def regression_metrics(y_true, y_pred) -> RegressionMetrics:
         mae=float(mean_absolute_error(y_true, y_pred)),
         mape=mape,
         r2=float(r2_score(y_true, y_pred)),
-        n_samples=int(len(y_true)),
+        n_samples=len(y_true),
     )
 
 

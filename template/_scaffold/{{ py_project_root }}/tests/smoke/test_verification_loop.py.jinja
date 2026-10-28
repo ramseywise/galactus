@@ -1,0 +1,123 @@
+"""Smoke test: verification loop max-retry cap is respected.
+
+Verifies that ``run_with_verification`` never invokes the graph more than
+``max_retries`` times even when the grader always returns a failing score,
+and that the final result contains the attempt count.
+
+No LLM call, no vector DB, no Anthropic key required — the graph and grader
+are fully mocked.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+from agents.{{ lg_agent_dir }}.verification_loop import run_with_verification
+from evals.graders.judges.base import LLMJudge
+from evals.models import EvalInteraction, GraderResult
+
+
+class _AlwaysFailGrader(LLMJudge):
+    """Returns a below-threshold score on every call."""
+
+    def grade(self, interaction: EvalInteraction) -> GraderResult:
+        return GraderResult(
+            interaction_id=interaction.id,
+            metric="smoke_test",
+            grader="always_fail",
+            is_correct=False,
+            score=0.0,
+            reasoning="deliberately failing",
+        )
+
+
+class _AlwaysPassGrader(LLMJudge):
+    """Returns a passing score on every call."""
+
+    def grade(self, interaction: EvalInteraction) -> GraderResult:
+        return GraderResult(
+            interaction_id=interaction.id,
+            metric="smoke_test",
+            grader="always_pass",
+            is_correct=True,
+            score=1.0,
+            reasoning="always passes",
+        )
+
+
+def _make_graph(answer: str = "stubbed answer"):
+    """Return a minimal async-callable fake graph."""
+
+    class _FakeGraph:
+        async def ainvoke(self, state, config):
+            return {"answer": answer, "message": state.get("message", "")}
+
+    return _FakeGraph()
+
+
+@pytest.mark.asyncio
+async def test_max_retry_cap_is_respected() -> None:
+    """Graph is called at most max_retries times when grader always fails."""
+    max_retries = 3
+    call_count = 0
+
+    class _CountingGraph:
+        async def ainvoke(self, state, config):
+            nonlocal call_count
+            call_count += 1
+            return {"answer": "bad answer", "message": state.get("message", "")}
+
+    _result, attempts = await run_with_verification(
+        _CountingGraph(),
+        {"message": "test query"},
+        {"configurable": {"thread_id": "smoke-1"}},
+        grader=_AlwaysFailGrader(),
+        max_retries=max_retries,
+    )
+
+    assert attempts == max_retries, f"Expected exactly {max_retries} attempts, got {attempts}"
+    assert call_count == max_retries, (
+        f"Graph was invoked {call_count} times, expected {max_retries}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_retry_when_grader_passes_first_attempt() -> None:
+    """Loop exits after the first attempt when the grader passes."""
+    result, attempts = await run_with_verification(
+        _make_graph("good answer"),
+        {"message": "test query"},
+        {"configurable": {"thread_id": "smoke-2"}},
+        grader=_AlwaysPassGrader(),
+        max_retries=3,
+    )
+
+    assert attempts == 1
+    assert result["answer"] == "good answer"
+
+
+@pytest.mark.asyncio
+async def test_no_grader_runs_once() -> None:
+    """Without a grader the loop runs exactly once regardless of max_retries."""
+    result, attempts = await run_with_verification(
+        _make_graph("direct answer"),
+        {"message": "test query"},
+        {"configurable": {"thread_id": "smoke-3"}},
+        grader=None,
+        max_retries=5,
+    )
+
+    assert attempts == 1
+    assert result["answer"] == "direct answer"
+
+
+@pytest.mark.asyncio
+async def test_max_retries_validates_minimum() -> None:
+    """max_retries=0 raises ValueError before any graph call."""
+    with pytest.raises(ValueError, match="max_retries must be >= 1"):
+        await run_with_verification(
+            _make_graph(),
+            {"message": "test"},
+            {"configurable": {"thread_id": "smoke-4"}},
+            max_retries=0,
+        )

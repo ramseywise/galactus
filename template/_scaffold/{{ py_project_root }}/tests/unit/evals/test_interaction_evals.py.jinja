@@ -1,0 +1,242 @@
+"""Unit tests for the interaction-eval suite ({{ eval_root }}/).
+
+No LLM calls — grading runs heuristic-only (the graceful-degradation path CI
+exercises); judges are covered through their registry wiring and prompt
+surface only.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from evals.graders.metrics_registry import METRICS
+from evals.models import EvalInteraction, GraderResult
+from evals.pipelines.calibration import calibrate, cohens_kappa
+from evals.pipelines.redaction import redact_interaction, redact_text
+from evals.pipelines.sampling import sample_records
+from evals.reports.builder import build_report
+from evals.reports.renderer import render_html
+
+
+def _interaction(**overrides: object) -> EvalInteraction:
+    base: dict[str, object] = {
+        "id": "t-1",
+        "query": "How do I descale my machine?",
+        "response": "Run the descale cycle with the CLEAN button held for 3 seconds.",
+    }
+    base.update(overrides)
+    return EvalInteraction.model_validate(base)
+
+
+def test_registry_wiring_is_consistent() -> None:
+    assert METRICS, "at least one interaction metric must be enabled"
+    for name, definition in METRICS.items():
+        assert definition.name == name
+        assert definition.judge_cls().metric == name
+        assert definition.targets_key.startswith(name)
+        assert definition.description
+{% if include_metric_escalation %}
+
+class TestEscalationHeuristic:
+    def test_no_ground_truth_returns_none(self) -> None:
+        assert METRICS["escalation"].heuristic(_interaction()) is None
+
+    def test_correct_non_escalation_passes(self) -> None:
+        result = METRICS["escalation"].heuristic(
+            _interaction(escalated=False, escalation_expected=False)
+        )
+        assert result is not None and result.is_correct
+
+    def test_missed_escalation_fails(self) -> None:
+        result = METRICS["escalation"].heuristic(
+            _interaction(escalated=False, escalation_expected=True)
+        )
+        assert result is not None and not result.is_correct
+
+    def test_escalation_inferred_from_phrasing(self) -> None:
+        result = METRICS["escalation"].heuristic(
+            _interaction(
+                response="Please contact support so a technician can take a look.",
+                escalation_expected=True,
+            )
+        )
+        assert result is not None and result.is_correct
+{% endif %}{% if include_metric_friction %}
+
+class TestFrictionHeuristic:
+    def test_direct_answer_passes(self) -> None:
+        result = METRICS["friction"].heuristic(_interaction())
+        assert result is not None and result.is_correct
+
+    def test_hedgy_question_storm_fails(self) -> None:
+        result = METRICS["friction"].heuristic(
+            _interaction(
+                response=(
+                    "I'm not sure, it depends. What model do you have? "
+                    "Have you checked the manual? Maybe? I cannot say."
+                )
+            )
+        )
+        assert result is not None and not result.is_correct
+        assert "hedging" in result.dimensions
+{% endif %}{% if include_metric_intent %}
+
+class TestIntentHeuristic:
+    def test_matching_route_passes(self) -> None:
+        result = METRICS["intent"].heuristic(
+            _interaction(routed_to="maintenance", expected_intent="maintenance")
+        )
+        assert result is not None and result.is_correct
+
+    def test_misroute_fails(self) -> None:
+        result = METRICS["intent"].heuristic(
+            _interaction(routed_to="brewing", expected_intent="billing")
+        )
+        assert result is not None and not result.is_correct
+
+    def test_missing_fields_returns_none(self) -> None:
+        assert METRICS["intent"].heuristic(_interaction(routed_to="brewing")) is None
+{% endif %}{% if include_metric_language %}
+
+class TestLanguageHeuristic:
+    def test_english_answer_to_spanish_query_fails(self) -> None:
+        result = METRICS["language"].heuristic(
+            _interaction(
+                query="¿Cómo cambio el filtro de agua para la máquina?",
+                response="You can change the filter by turning it to the left and pulling it out of the tank.",
+                expected_language="es",
+            )
+        )
+        assert result is not None and not result.is_correct
+
+    def test_matching_language_passes(self) -> None:
+        result = METRICS["language"].heuristic(
+            _interaction(
+                query="¿Cómo cambio el filtro de agua para la máquina?",
+                response="Retire el tanque, gire el filtro usado hacia la izquierda para sacarlo y coloque el nuevo.",
+                expected_language="es",
+            )
+        )
+        assert result is not None and result.is_correct
+{% endif %}
+
+def test_redaction_scrubs_pii() -> None:
+    text = (
+        "Mail jane.doe@example.com or call 555-867-5309; "
+        "SSN 123-45-6789, card 4111 1111 1111 1111, host 192.168.0.1."
+    )
+    redacted = redact_text(text)
+    for label in ("[EMAIL]", "[PHONE]", "[SSN]", "[CARD]", "[IP]"):
+        assert label in redacted
+    assert "example.com" not in redacted
+    assert "4111" not in redacted
+
+
+def test_redact_interaction_covers_query_response_and_metadata() -> None:
+    record = {
+        "id": "t-1",
+        "query": "my email is a@b.com",
+        "response": "noted a@b.com",
+        "metadata": {"note": "call 555-867-5309", "count": 3},
+    }
+    redacted = redact_interaction(record)
+    assert "[EMAIL]" in redacted["query"] and "[EMAIL]" in redacted["response"]
+    assert "[PHONE]" in redacted["metadata"]["note"]
+    assert redacted["metadata"]["count"] == 3
+
+
+def test_sampling_is_seeded_and_stratified() -> None:
+    records = [{"id": str(i), "bucket": "a" if i % 3 else "b"} for i in range(30)]
+    first = sample_records(records, 10, seed=7)
+    second = sample_records(records, 10, seed=7)
+    assert first == second
+    stratified = sample_records(records, 10, seed=7, stratify_by="bucket")
+    assert len(stratified) == 10
+    assert {record["bucket"] for record in stratified} == {"a", "b"}
+
+
+def test_cohens_kappa_bounds() -> None:
+    assert cohens_kappa([]) is None
+    assert cohens_kappa([(True, True), (False, False)]) == 1.0
+    mixed = cohens_kappa([(True, True), (True, False), (False, False), (False, True)])
+    assert mixed is not None and -1.0 <= mixed <= 1.0
+
+
+def test_calibrate_pairs_heuristic_with_judge() -> None:
+    metric = next(iter(METRICS))
+    rows = [
+        {
+            "grades": [
+                {"metric": metric, "grader": "heuristic", "is_correct": True},
+                {"metric": metric, "grader": "judge", "is_correct": True},
+            ]
+        },
+        {
+            "grades": [
+                {"metric": metric, "grader": "heuristic", "is_correct": False},
+                {"metric": metric, "grader": "judge", "is_correct": True},
+            ]
+        },
+    ]
+    stats = calibrate(rows)
+    assert stats[metric]["n"] == 2.0
+    assert stats[metric]["agreement"] == 0.5
+
+
+def test_report_builds_and_renders_per_metric_cards() -> None:
+    metric = next(iter(METRICS))
+    rows = [
+        {
+            "interaction": _interaction().model_dump(),
+            "grades": [
+                GraderResult(
+                    interaction_id="t-1",
+                    metric=metric,
+                    grader="heuristic",
+                    is_correct=True,
+                    score=1.0,
+                ).model_dump()
+            ],
+        }
+    ]
+    report = build_report(rows)
+    assert report.n_interactions == 1
+    html = render_html(report)
+    for name in METRICS:
+        assert name in html
+
+
+def test_grade_pipeline_heuristic_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from evals.pipelines import grade as grade_mod
+
+    monkeypatch.setattr(grade_mod, "REPORTS_OUTPUT_DIR", tmp_path)
+    monkeypatch.setattr(grade_mod, "GRADED_PATH", tmp_path / "graded.jsonl")
+    monkeypatch.setattr(grade_mod, "TARGETS_PATH", tmp_path / "targets.yaml")
+
+    input_path = tmp_path / "interactions.jsonl"
+    record = {
+        "id": "t-1",
+        "query": "How do I descale? My email is a@b.com",
+        "response": "Run the descale cycle.",
+        "routed_to": "maintenance",
+        "expected_intent": "maintenance",
+        "escalated": False,
+        "escalation_expected": False,
+    }
+    input_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+    report = grade_mod.run_grading(
+        input_path=input_path,
+        use_judges=False,
+        redact=True,
+        sample_n=None,
+        seed=42,
+        gate=False,
+    )
+    assert report.n_interactions == 1
+    assert not report.judges_ran
+    graded = (tmp_path / "graded.jsonl").read_text(encoding="utf-8")
+    assert "[EMAIL]" in graded

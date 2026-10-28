@@ -1,0 +1,17 @@
+{
+  "python.defaultInterpreterPath": ".venv/bin/python",
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": ["tests", "-s", "--ignore=tests/integration"],
+  "python.analysis.extraPaths": ["{{ py_project_root }}/{{ ai_source_root }}"],
+  "python.analysis.exclude": ["**/data/**", "**/checkpoints/**", "**/wandb/**"],
+  "notebook.output.scrolling": true,
+  "notebook.output.textLineLimit": 60,
+  "editor.formatOnSave": true,
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  }
+}

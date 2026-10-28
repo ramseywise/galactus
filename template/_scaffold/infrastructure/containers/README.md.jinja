@@ -1,0 +1,71 @@
+# infrastructure/containers
+
+Local Docker Compose setup for the `{{ lg_agent_dir }}` FastAPI chat-agent service (`{{ py_project_root }}/{{ ai_source_root }}/agents/{{ lg_agent_dir }}`).
+
+## Quickstart
+
+```sh
+make setup            # uv sync, creates .env from .env.example
+{%- if has_corpus_pipeline %}
+make corpus-ingest     # builds data/stores/vectordb.duckdb on the HOST (see below)
+{%- endif %}
+make docker-up         # docker compose up --build
+make docker-down       # stop and remove the containers
+```
+
+`docker-up` / `docker-down` are Makefile targets that run:
+
+```sh
+docker compose -f infrastructure/containers/docker-compose.yml up --build
+docker compose -f infrastructure/containers/docker-compose.yml down
+```
+{%- if has_corpus_pipeline %}
+
+## Why corpus ingestion happens on the host, not in the container
+
+`data/` is bind-mounted into the container (`../../data:/app/data`) rather than baked
+into the image, so the DuckDB index you build persists across container rebuilds and
+is easy to inspect/rebuild from the host. That means **you must run
+`make corpus-ingest` on the host before `make docker-up`** — the container does not
+run ingestion itself, and `{{ lg_agent_dir }}`'s `/chat` endpoint will error against an empty
+index (see the warning `main.py` prints on startup if `VECTORDB_PATH` doesn't exist).
+
+This is a reasonable starter pattern for local dev, but not how you'd want to deploy
+for real: a real deployment would either bake a pre-built index into the image at
+build time (fine for a small, infrequently-changing corpus) or run ingestion as a
+one-off init container / job against a shared volume or object store before the
+service starts (better for a corpus that changes independently of the app image).
+{%- endif %}
+
+## Configuration
+
+The container reads its environment from the project root `.env` (via
+`env_file: ../../.env` in `docker-compose.yml`) — the same file `make {{ lg_agent_dir | replace('_', '-') }}-up` uses
+outside Docker. See `.env.example` for the full list of variables
+(`ANTHROPIC_API_KEY`, `LG_MODEL`, `LG_PORT`, {% if has_corpus_pipeline %}`VECTORDB_PATH`, {% endif %}`LG_CHECKPOINTER`).
+
+**Known limitation — changing `LG_PORT`:** the container's *listening* port always
+follows `LG_PORT` from your root `.env` correctly (via `env_file`). However, the
+*host-side* port mapping in `docker-compose.yml` (`"${LG_PORT:-8010}:${LG_PORT:-8010}"`)
+is resolved by Docker Compose's own variable interpolation, which only looks at the
+invoking shell's environment or a `.env` file sitting next to `docker-compose.yml`
+itself — it does not read the root `.env`. If you change `LG_PORT` away from the
+default `8010`, either:
+
+- `export LG_PORT=9001 && make docker-up`, or
+- drop a `infrastructure/containers/.env` with just `LG_PORT=9001` in it.
+
+Otherwise the host mapping silently stays on `8010` while the container listens on
+whatever port you set — a mismatch that will make the service unreachable at the
+old port. This is a known Compose quirk (`env_file` vs. compose-file interpolation
+are separate mechanisms), not a bug in this template; a real deployment would
+likely fix the port with a build/deploy-time value instead of runtime env.
+
+## Files
+
+- `docker-compose.yml` — single `{{ lg_agent_dir }}` service: builds from the project root
+  (needs `src/`, `core/`, `pyproject.toml`, `uv.lock`), mounts `../../data`, exposes
+  `LG_PORT`, and healthchecks `GET /health`.
+- `{{ lg_agent_dir }}/Dockerfile` — `python:{{ python_version }}-slim` + `uv sync --no-dev --frozen`, then
+  runs `uvicorn agents.{{ lg_agent_dir }}.main:app` directly (no `.env` is ever copied into
+  the image — secrets only ever arrive via `docker-compose.yml`'s `env_file`).

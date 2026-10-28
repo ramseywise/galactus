@@ -1,0 +1,91 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+
+/** Global route gate.
+ *
+ * Anything outside `PUBLIC_PATHS` requires a Supabase session. Missing or
+ * invalid session -> 302 to /login?next=<original-path>.
+ *
+ * Uses `@supabase/ssr` to refresh + read the session cookie without an Auth
+ * API hop on every request.
+ */
+
+const PUBLIC_PATHS: { path: string; prefix?: boolean }[] = [
+  { path: "/" },
+  { path: "/login" },
+  { path: "/auth/callback" },
+  { path: "/_next", prefix: true },
+  { path: "/api", prefix: true },
+  { path: "/favicon.ico" },
+];
+
+function isPublic(pathname: string): boolean {
+  for (const entry of PUBLIC_PATHS) {
+    if (entry.prefix) {
+      if (pathname === entry.path || pathname.startsWith(entry.path + "/")) {
+        return true;
+      }
+    } else if (pathname === entry.path) {
+      return true;
+    }
+  }
+  if (/\.(png|jpe?g|gif|svg|ico|webp|avif|css|js|woff2?|ttf|map)$/i.test(pathname)) {
+    return true;
+  }
+  return false;
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+
+  if (isPublic(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Build a response we can mutate cookies on (Supabase ssr writes
+  // refreshed-token cookies back via this object).
+  const response = NextResponse.next({ request: { headers: request.headers } });
+
+  let isSignedIn = false;
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options),
+            );
+          },
+        },
+      },
+    );
+    const { data } = await supabase.auth.getUser();
+    isSignedIn = !!data.user;
+  } catch {
+    // Treat any cookie / network error as "not signed in" rather than
+    // 500-ing the user. They'll land on /login and can retry.
+    isSignedIn = false;
+  }
+
+  if (!isSignedIn) {
+    const next = pathname + (search || "");
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", next);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  return response;
+}
+
+// Match every path except those Next.js manages internally. Per-route
+// public allowlisting still happens inside `middleware()` above.
+export const config = {
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
+};

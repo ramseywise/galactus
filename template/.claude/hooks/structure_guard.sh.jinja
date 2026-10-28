@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# PreToolUse(Write|Edit|Bash) — enforce canonical {{ eval_root }}/ directory layout.
+#
+# Canonical top-level dirs under {{ eval_root }}/: {{ eval_allowed_dirs }}
+# Any other immediate subdirectory (e.g. {{ eval_root }}/runners/, {{ eval_root }}/services/) is blocked.
+
+source "$(dirname "$0")/lib.sh"
+
+ALLOWED_EVALS_DIRS="{{ eval_allowed_dirs }}"
+
+check_path() {
+  local fpath="$1"
+  fpath="${fpath#./}"   # strip leading ./
+
+  # Only care about paths under {{ eval_root }}/
+  [[ "$fpath" == {{ eval_root }}/* ]] || return 0
+
+  # Extract the immediate subdirectory: {{ eval_root }}/<subdir>/...
+  local subdir
+  subdir=$(echo "$fpath" | cut -d'/' -f2)
+  [[ -z "$subdir" ]] && return 0
+
+  for allowed in $ALLOWED_EVALS_DIRS; do
+    [[ "$subdir" == "$allowed" ]] && return 0
+  done
+
+  block "BLOCKED: {{ eval_root }}/$subdir/ is not in the canonical layout.
+Canonical dirs under {{ eval_root }}/: $ALLOWED_EVALS_DIRS
+Move this code into one of the existing subtrees instead of creating a new one."
+}
+
+tool="${CLAUDE_TOOL_NAME:-}"
+
+# Write / Edit / MultiEdit — check file_path
+if [[ "$tool" == "Write" || "$tool" == "Edit" || "$tool" == "MultiEdit" ]]; then
+  fpath=$(claude_path)
+  [[ -n "$fpath" ]] && check_path "$fpath"
+fi
+
+# Bash — look for mkdir calls that target {{ eval_root }}/
+if [[ "$tool" == "Bash" ]]; then
+  cmd=$(claude_command)
+  # Extract any {{ eval_root }}/... path tokens from the command
+  while IFS= read -r candidate; do
+    [[ -n "$candidate" ]] && check_path "$candidate"
+  done < <(echo "$cmd" | grep -oE '{{ eval_root }}/[^ ;|&"\047]+' || true)
+fi
+
+exit 0

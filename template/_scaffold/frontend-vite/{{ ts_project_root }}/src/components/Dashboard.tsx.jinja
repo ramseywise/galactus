@@ -1,0 +1,46 @@
+import { useEffect, useState } from "react";
+
+import { apiFetch } from "../lib/api";
+import { supabase } from "../lib/supabase";
+
+type Health = { status: string };
+
+/**
+ * Placeholder landing view — proves the auth loop and the API seam both work
+ * end to end. Replace the body with the real product surface; keep the
+ * apiFetch call pattern.
+ */
+export function Dashboard() {
+  const [health, setHealth] = useState<Health | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiFetch<Health>("/health")
+      .then(setHealth)
+      .catch((e: Error) => setError(e.message));
+  }, []);
+
+  return (
+    <main className="mx-auto max-w-3xl p-8">
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">{{ project_name }}</h1>
+        <button
+          type="button"
+          onClick={() => supabase?.auth.signOut()}
+          className="rounded border px-3 py-1 text-sm"
+        >
+          Sign out
+        </button>
+      </header>
+
+      <p className="mt-2 text-sm text-neutral-600">{{ project_description }}</p>
+
+      <section className="mt-8">
+        <h2 className="text-lg font-medium">API status</h2>
+        {error ? <p className="text-red-600">{error}</p> : null}
+        {health ? <p>{health.status}</p> : null}
+        {!error && !health ? <p>Checking…</p> : null}
+      </section>
+    </main>
+  );
+}

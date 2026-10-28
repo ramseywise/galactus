@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Lint + test come from the shared reusable workflow in ai-project-template,
+  # so rendered projects and the standalone production repos stay on one
+  # definition. Lint paths are scoped to this project's own source — see the
+  # Makefile's LINT_PATHS comment.
+  ci:
+    uses: ramseywise/ai-project-template/.github/workflows/python-ci.yml@main
+    with:
+      lint-paths: "{{ py_project_root }}/{{ ai_source_root }} core {{ eval_root }} tests"
+      test-command: "uv run pytest tests/unit -q"
+{%- if has_corpus_pipeline or include_interaction_evals %}
+
+  # Informational eval report on every PR — surfaces the numbers so reviewers
+  # see retrieval/interaction quality trend, but NEVER fails on a threshold miss
+  # (no --gate here). Enforcement lives in cd.yml's build-canary gate. Runs on
+  # the free heuristic layer only (no ANTHROPIC_API_KEY needed) — same graceful
+  # degradation as the harness itself.
+  eval-report:
+    # `test` moved into the reusable workflow; the caller job `ci` is what
+    # this can depend on now.
+    needs: [ci]
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: "test-key-not-real"
+      LANGSMITH_TRACING: "false"
+{%- if has_corpus_pipeline %}
+      VECTORDB_PATH: ":memory:"
+{%- endif %}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --group dev
+{%- if has_corpus_pipeline %}
+      # The retrieval grade reads the corpus index — build it first.
+      - run: make corpus-ingest
+      - name: Retrieval eval (informational)
+        run: PYTHONPATH={{ py_project_root }}/{{ ai_source_root }}:. uv run python -m {{ eval_root }}.pipelines.run heuristic
+{%- endif %}
+{%- if include_interaction_evals %}
+      - name: Interaction eval (informational)
+        run: PYTHONPATH={{ py_project_root }}/{{ ai_source_root }}:. uv run python -m {{ eval_root }}.pipelines.grade run --no-judges
+{%- endif %}
+{%- endif %}

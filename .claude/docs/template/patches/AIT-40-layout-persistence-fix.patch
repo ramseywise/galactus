@@ -1,0 +1,58 @@
+diff --git a/.github/workflows/test-render.yml b/.github/workflows/test-render.yml
+index b1c1d1b..260269a 100644
+--- a/.github/workflows/test-render.yml
++++ b/.github/workflows/test-render.yml
+@@ -271,29 +271,41 @@ jobs:
+           uv run pytest tests/unit -q
+
+       # AIT-40 layout persistence: render with use_flat_layout=true (flat, src/
+-      # at root), commit, then run `copier update` without -d and assert src/
+-      # survives and backend/ did NOT appear. This is the load-bearing direction:
+-      # if use_flat_layout is not recorded, update defaults to false (nested)
+-      # and silently relocates src/ → backend/src, which is the original bug.
+-      # copier update needs a tagged commit in the template repo — use HEAD.
+-      - name: Layout persistence — update keeps flat layout
++      # at root), then re-render WITHOUT -d and assert src/ survives and backend/
++      # did NOT appear. This is the load-bearing direction: if use_flat_layout is
++      # not recorded, the re-render defaults to false (nested) and silently
++      # relocates src/ → backend/src, which is the original bug.
++      #
++      # Uses the working-tree re-render form (copier copy --overwrite --vcs-ref
++      # HEAD), for the same two reasons the re-entry step above does — plus one
++      # more this step hit directly:
++      #   1. `copier update` resolves _commit (a bare SHA) via `git describe`,
++      #      and the template repo carries no tags, so it fails with "cannot
++      #      obtain old template references from `.copier-answers.yml`".
++      #   2. `copier update` refuses to run against a dirty repo, and the render
++      #      step leaves an untracked out/ in $GITHUB_WORKSPACE. The resulting
++      #      "Destination repository is dirty" names the destination but is
++      #      actually reporting the template workspace.
++      # copier copy --overwrite --defaults still reads the destination's
++      # .copier-answers.yml for its defaults, so omitting -d use_flat_layout
++      # leaves the recorded answer as the only thing that can produce src/.
++      - name: Layout persistence — re-render keeps flat layout
+         if: matrix.tier == 'test-persistence'
+         working-directory: out
+         run: |
+-          git init -q && git add -A
+-          git -c user.email=ci@ci -c user.name=ci commit -qm "genesis render"
+           grep 'use_flat_layout: true' .copier-answers.yml \
+             || { echo "FAIL: use_flat_layout not recorded in .copier-answers.yml"; exit 1; }
+           grep 'py_project_root' .copier-answers.yml \
+             && { echo "FAIL: py_project_root (when:false) must NOT be in .copier-answers.yml"; exit 1; }
+           test -d src \
+             || { echo "FAIL: src/ did not render for use_flat_layout=true"; exit 1; }
+-          copier update --trust --defaults --vcs-ref HEAD "$GITHUB_WORKSPACE"
++          copier copy --overwrite --vcs-ref HEAD --trust --defaults \
++            "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/out"
+           test -d src \
+-            || { echo "FAIL: src/ was lost after copier update (flat layout not persisted)"; exit 1; }
++            || { echo "FAIL: src/ was lost after re-render (flat layout not persisted)"; exit 1; }
+           test ! -d backend \
+-            || { echo "FAIL: backend/ appeared after update on a flat-layout project"; exit 1; }
+-          echo "OK: flat layout persisted across copier update without re-passing -d"
++            || { echo "FAIL: backend/ appeared after re-render on a flat-layout project"; exit 1; }
++          echo "OK: flat layout persisted across re-render without re-passing -d"
+
+       # ts_project_root defaults to project_slug — "Render Test" → render-test.
+       - name: TS backend — install/lint/typecheck/test/build

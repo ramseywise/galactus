@@ -1,0 +1,51 @@
+# Local dev stack for the {{ lg_agent_dir }} chat-agent service.
+# Invoked by `make docker-up` / `make docker-down` (see Makefile.jinja), which run
+# `docker compose -f infrastructure/containers/docker-compose.yml up/down --build`
+# from the project root.
+#
+# Path-resolution note (verified against docker compose v2.40): `build.context`
+# and `env_file` are resolved relative to THIS FILE's own directory
+# (infrastructure/containers/), not the caller's cwd and not `--project-directory`.
+# Hence `../..` / `../../.env` below both mean "the project root".
+#
+# Footgun to know about: the `${LG_PORT:-8010}` HOST port below is resolved by
+# docker compose's own variable interpolation, which is a *separate* mechanism
+# from `env_file`. Interpolation looks for a `.env` next to this compose file
+# (infrastructure/containers/.env) or the invoking shell's environment — it does
+# NOT read the root `.env` referenced via `env_file` (that only injects vars into
+# the container's runtime environment, e.g. what uvicorn/settings.py see inside
+# the container). Practically: the container will always listen on the LG_PORT
+# from your root .env (via env_file), but if you change LG_PORT away from the
+# 8010 default, the HOST side of the port mapping won't follow unless you also
+# `export LG_PORT=...` before `make docker-up`. See containers/README.md.
+services:
+  {{ lg_agent_dir }}:
+    build:
+      context: ../..
+      dockerfile: infrastructure/containers/{{ lg_agent_dir }}/Dockerfile
+      args:
+        LG_PORT: ${LG_PORT:-8010}
+    env_file:
+      - ../../.env
+    environment:
+      # Belt-and-suspenders default so the container has a sane LG_PORT even if
+      # .env is missing a value for it (settings.py also defaults to 8010).
+      LG_PORT: ${LG_PORT:-8010}
+    ports:
+      - "${LG_PORT:-8010}:${LG_PORT:-8010}"
+    volumes:
+{%- if has_corpus_pipeline %}
+      # Bind-mount data/ so the DuckDB index built by `make corpus-ingest` on the
+      # host is visible inside the container (and survives container restarts)
+      # without baking the corpus/index into the image.
+{%- else %}
+      # Bind-mount data/ so files under data/ on the host are visible inside the
+      # container (and survive container restarts) without baking them into the image.
+{%- endif %}
+      - ../../data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,os; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"LG_PORT\", \"8010\")}/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s

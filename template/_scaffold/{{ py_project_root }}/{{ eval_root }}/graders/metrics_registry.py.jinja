@@ -1,0 +1,87 @@
+"""Central registry of interaction-eval metrics — the single wiring point.
+
+pipelines/grade.py, pipelines/calibration.py, and reports/ discover enabled
+metrics HERE; never hardcode metric names elsewhere. To add a project-specific
+metric: write graders/heuristic/<name>.py (+ optionally graders/judges/<name>.py
+and metrics/<name>.py) and register it below.
+
+Rendered by copier — only the metrics selected in `eval_metrics` at generation
+time appear. Retrieval is not in this registry: it grades against the golden
+QA set via its own pipeline (pipelines/run.py), not against recorded
+interactions.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+
+{% if include_metric_escalation %}from evals.graders.heuristic import escalation as _h_escalation
+{% endif %}{% if include_metric_friction %}from evals.graders.heuristic import friction as _h_friction
+{% endif %}{% if include_metric_intent %}from evals.graders.heuristic import intent as _h_intent
+{% endif %}{% if include_metric_language %}from evals.graders.heuristic import language as _h_language
+{% endif %}{% if include_metric_escalation %}from evals.graders.judges.escalation import EscalationJudge
+{% endif %}{% if include_metric_friction %}from evals.graders.judges.friction import FrictionJudge
+{% endif %}{% if include_metric_intent %}from evals.graders.judges.intent import IntentJudge
+{% endif %}{% if include_metric_language %}from evals.graders.judges.language import LanguageJudge
+{% endif %}{% if include_metric_escalation %}from evals.metrics import escalation as _m_escalation
+{% endif %}{% if include_metric_friction %}from evals.metrics import friction as _m_friction
+{% endif %}{% if include_metric_intent %}from evals.metrics import intent as _m_intent
+{% endif %}{% if include_metric_language %}from evals.metrics import language as _m_language
+{% endif %}from evals.models import EvalInteraction, GraderResult, MetricSummary
+
+
+@dataclass(frozen=True)
+class MetricDefinition:
+    name: str
+    description: str
+    heuristic: Callable[[EvalInteraction], GraderResult | None]
+    judge_cls: type
+    summarize: Callable[[list[GraderResult]], MetricSummary]
+    # targets.yaml key gating this metric in `--gate` runs (judge pass-rate
+    # when judges ran, heuristic pass-rate otherwise).
+    targets_key: str
+
+
+METRICS: dict[str, MetricDefinition] = {
+{%- if include_metric_escalation %}
+    "escalation": MetricDefinition(
+        name="escalation",
+        description="Did the assistant hand off to a human when it should (and only then)?",
+        heuristic=_h_escalation.grade,
+        judge_cls=EscalationJudge,
+        summarize=_m_escalation.summary,
+        targets_key="escalation_pass_rate",
+    ),
+{%- endif %}
+{%- if include_metric_friction %}
+    "friction": MetricDefinition(
+        name="friction",
+        description="Is the response direct and low-friction for the user?",
+        heuristic=_h_friction.grade,
+        judge_cls=FrictionJudge,
+        summarize=_m_friction.summary,
+        targets_key="friction_pass_rate",
+    ),
+{%- endif %}
+{%- if include_metric_intent %}
+    "intent": MetricDefinition(
+        name="intent",
+        description="Was the query routed/classified to the expected intent?",
+        heuristic=_h_intent.grade,
+        judge_cls=IntentJudge,
+        summarize=_m_intent.summary,
+        targets_key="intent_pass_rate",
+    ),
+{%- endif %}
+{%- if include_metric_language %}
+    "language": MetricDefinition(
+        name="language",
+        description="Does the response language match what the user needs?",
+        heuristic=_h_language.grade,
+        judge_cls=LanguageJudge,
+        summarize=_m_language.summary,
+        targets_key="language_pass_rate",
+    ),
+{%- endif %}
+}

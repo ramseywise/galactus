@@ -1,0 +1,149 @@
+# Release Framework — {{ project_name }}
+
+The lifecycle this project moves through: **Discovery → Delivery → Deployment**,
+with a **gate** between each phase and an explicit **handoff** at each gate.
+
+This is the map. It is not a set of files to copy — it is how you *walk* the
+project: at each phase you do the work, produce that phase's artifact, and run
+the phase's gate check before handing to the next. The gates are the checkmarks;
+the skills are the walk-through; the artifacts are what the gates read.
+
+> **One doc, three phases, two gates.** Read this to know *where the project is*
+> and *what has to be true to move it forward*. The per-phase artifacts
+> (`DESIGN.md`, `DELIVERY.md`, `DEPLOYMENT.md`) hold the detail; `LIFECYCLE.md`
+> holds the machine-readable state. This file is the human overview that ties
+> them together.
+
+---
+
+## The lifecycle at a glance
+
+```
+  DISCOVERY  ──G1──►  DELIVERY  ──G2──►  DEPLOYMENT
+  (DESIGN.md)         (DELIVERY.md)      (DEPLOYMENT.md)
+     │                    │                   │
+  what to build       what was built      shipping it
+  and why             and how we know     safely
+```
+
+Each phase has an **artifact** (the human record), a **gate** (readiness
+criteria), and a **handoff** (what the next phase inherits). Phases are
+**re-entrant** — going back is normal, not failure. `/gate-check` re-audits
+against real artifacts every run; it never assumes forward progress.
+
+---
+
+## Phase 1 — Discovery → **G1** → Delivery
+
+**Do:** figure out what to build and why. Deconstruct the problem, scope the MVP,
+make the key decisions (or defer them with a named trigger), set eval targets,
+plan the first milestones.
+
+**Artifact:** `DESIGN.md` — the authoritative design record.
+
+**Skills that drive it:**
+
+| Skill | Produces |
+|---|---|
+| `/proto-scope discovery` | Project Profile (pain-point → shape, for a cold start) |
+| `/proto-scope` | `DESIGN.md` (system-design interview) |
+| `/design-sprint` | initiative backlog (for a larger design effort) |
+| `/define-milestones` | milestone doc — the checkpoints inside the initiative |
+| `/sprint-kickoff` | first-week plan + `TASKS.md` "done-when" criteria |
+| `/rfc` | `RFC.md` — the approval cover-sheet a human signs |
+
+**Gate G1 (discovery exit)** — audited by `/gate-check`, recorded in `LIFECYCLE.md`:
+
+- `design_no_blocking_open_questions` — every DESIGN.md open question resolved or `Deferred(<trigger>)`
+- `eval_targets_defined` — Evaluation table seeded into `{{ eval_root }}/targets.yaml`
+- `base_scaffold_ci_green` — project renders, CI/test workflow passing
+- `milestones_and_m1_tasks_reviewed` — milestones + M1 `TASKS.md` exist and were `/plan-review`ed
+- `rfc_approved` — `RFC.md` `Status: APPROVED` (a **human** sets this line; a session only mirrors it)
+
+**Handoff into delivery:** an approved DESIGN.md, seeded eval targets, and a
+reviewed M1 backlog. Delivery starts from the milestone plan, not a blank page.
+
+---
+
+## Phase 2 — Delivery → **G2** → Deployment
+
+**Do:** build it, and **experiment with evals before deployment is even
+discussed**. Execute milestones, grow the golden set, tune thresholds, land any
+deferred capabilities as their triggers fire.
+
+**Artifact:** `DELIVERY.md` — what got built, the eval evidence, and the handoff
+to deployment.
+
+**Skills that drive it:**
+
+| Skill | Produces |
+|---|---|
+| `/execute-tasks` | milestone implementation from `TASKS.md` |
+| `/code-review` · `/review-pr` | reviewed changes per PR |
+| `/add-capability` | a deferred capability, when its trigger fires (via copier, never hand-copied) |
+| `/security-review` | the security artifact G2 reads |
+
+**Gate G2 (delivery exit)** — audited by `/gate-check`; pre-flighted by `/deploy-check`:
+
+- `eval_gate_green` — `make eval-gate` passes against targets (incl. the margin-over-naive-baseline row)
+- `security_review_clean` — `/security-review` clean at the shipping commit
+- `deployment_target_resolved` — DESIGN.md deployment decision no longer Open/Deferred
+- `runbook_monitoring_documented` — `DEPLOYMENT.md` runbook + operator model filled
+
+**Handoff into deployment:** the shippable commit, the eval baseline it must not
+regress, the guardrail metrics that become rollback triggers, and who operates
+it. This lives in DELIVERY.md's **Handoff to deployment** section.
+
+---
+
+## Phase 3 — Deployment
+
+**Do:** ship the delivered, eval-passing build to real users — staged, measured,
+reversible.
+
+**Artifact:** `DEPLOYMENT.md` — the rollout runbook (canary stages, rollback
+criteria, A/B decision procedure, monitoring checklist).
+
+**Skills that drive it:**
+
+| Skill | Produces |
+|---|---|
+| `/deploy-check` | launch-day pre-flight — audits G2 readiness against real artifacts, reports blockers |
+| `/gate-check` | records the G2 verdict + advances `phase` (with your confirm) |
+
+Deployment has no exit gate — it's the terminal phase — but it **is re-entrant**:
+a rollback returns the project to delivery, and `/gate-check` re-audits.
+
+---
+
+## Who writes what (doc-writer boundary)
+
+Handoffs only work if each doc has one writer. Do not hand-edit an audited file.
+
+| File | Written by | Role |
+|---|---|---|
+| `DESIGN.md` | `/proto-scope` (+ you, as decisions resolve) | design record |
+| `RFC.md` | `/rfc` compiles it; **a human sets `Status: APPROVED`** | approval cover-sheet |
+| `DELIVERY.md` | you, as milestones close | delivery record + handoff |
+| `DEPLOYMENT.md` | you, at G2 and per release | rollout runbook |
+| `LIFECYCLE.md` | **`/gate-check` only** | machine-readable phase/gate state |
+| `RELEASE.md` | you (this map, rarely) | the framework overview |
+
+`/deploy-check` **reads** but never writes `LIFECYCLE.md` — it's the pre-flight;
+`/gate-check` is the recorded verdict. Keeping one writer per status file is why
+the gates can be trusted.
+
+---
+
+## Notes
+
+- **Gates measure readiness; the human calls the move.** `/gate-check` never
+  advances `phase` silently — a green gate produces the handoff *question*
+  ("G1 is green: move to delivery?"), not the move.
+- **You can break this into pieces.** A project can sit in Discovery for weeks,
+  or run Design and Delivery as one push and defer Deployment. The framework is
+  the sequence of gates, not a mandate to do all three at once.
+- **Layered onto an existing repo?** Some checks audit template-owned artifacts
+  (evals, CI). Where the project never adopted that machinery,
+  `/gate-check` marks the check inapplicable rather than blocking the gate — the
+  gate must not fail on machinery that was never there.

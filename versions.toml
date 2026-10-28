@@ -1,0 +1,94 @@
+# Canonical dependency versions across ai-project-template, galactus, and
+# dssg/project-mgmt-ai.
+#
+# Why this file exists (AIT-70): the three repos drifted to `ai@^5` vs `ai@^7`
+# and `zod@^3` vs `zod@^4` — two major versions apart on the SDK that every
+# agent in the fleet calls. Code written against one wouldn't run on another,
+# and nothing surfaced the gap until someone tried to move a file between repos.
+#
+# Direction of authority: this file is canon and consumers pull from it.
+# `tools/template/check-versions.sh` reads the consumer manifests and reports drift; it
+# never writes to them. Bumping a version here is a deliberate act — run the
+# check, then update each consumer on its own branch with its own test run.
+#
+# A version belongs here only if more than one repo depends on it AND a mismatch
+# would actually break something (an API change, a type change, a runtime
+# contract). Dev tooling that merely differs in patch level does not qualify —
+# pinning it here buys churn, not safety.
+
+[meta]
+updated = "2026-08-12"
+issue = "https://github.com/ramseywise/ai-project-template/issues/70"
+
+# ---------------------------------------------------------------------------
+# TypeScript
+# ---------------------------------------------------------------------------
+
+[ts]
+# The AI SDK and its provider packages major together — `ai@7` requires
+# `@ai-sdk/*@4`. Never bump one without the other.
+#
+# v7 breaking change already absorbed by the template: convertToModelMessages
+# is async, so runAgent had to become async and every caller had to await it.
+# streamText's `messages` is typed Array<ModelMessage> and does NOT await a
+# promise passed in its place — the await must happen at the call site.
+ai = "^7.0.56"
+"@ai-sdk/anthropic" = "^4.0.38"
+
+# zod 4 changed error formatting and inference. Pinned because tool schemas
+# cross repo boundaries.
+zod = "^4.4.3"
+
+# Test runner: vitest everywhere, including headless backends (AIT-70 dropped
+# jest). Reuses the vite config's resolve/alias and reads TS with no ts-jest
+# ESM shim.
+vitest = "^3.2.4"
+vite = "^6.4.3"
+
+typescript = "~5.8.2"
+eslint = "^9.14.0"
+
+[ts.frontend]
+react = "^19.0.0"
+"react-dom" = "^19.0.0"
+"@supabase/supabase-js" = "^2.112.2"
+tailwindcss = "^4.1.14"
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+
+[py]
+requires-python = ">=3.12"
+
+anthropic = ">=0.40"
+pydantic = ">=2.9"
+"pydantic-settings" = ">=2.6.0"
+
+# ---------------------------------------------------------------------------
+# Consumers checked by tools/template/check-versions.sh
+# ---------------------------------------------------------------------------
+#
+# Paths are relative to the workspace root (the parent of this repo). A missing
+# consumer is skipped with a note, not an error — not every machine has every
+# repo checked out.
+
+[[consumers]]
+name = "ai-project-template (backend-ts)"
+manifest = "ai-project-template/template/_scaffold/{{ ts_project_root }}/package.json.jinja"
+kind = "npm"
+
+[[consumers]]
+name = "ai-project-template (frontend-vite)"
+manifest = "ai-project-template/template/_scaffold/frontend-vite/{{ ts_project_root }}/package.json.jinja"
+kind = "npm"
+
+[[consumers]]
+name = "dssg/project-mgmt-ai"
+manifest = "dssg/project-mgmt-ai/package.json"
+kind = "npm"
+
+[[consumers]]
+name = "galactus"
+manifest = "galactus/pyproject.toml"
+kind = "pyproject"

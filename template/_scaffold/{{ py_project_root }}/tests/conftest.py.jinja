@@ -1,0 +1,46 @@
+from __future__ import annotations
+{% if has_corpus_pipeline %}
+from pathlib import Path
+
+import pytest
+
+from core.pipelines.corpus.index import build_index
+from core.pipelines.corpus.ingestion import load_raw_articles
+from core.pipelines.corpus.preprocessing import clean_and_dedupe, write_jsonl
+
+# pytest runs from the project root (pythonpath includes "." in pyproject.toml),
+# so this is the same relative path `make corpus-ingest` uses in a real project.
+CORPUS_DIR = Path("data/raw_corpus")
+
+
+@pytest.fixture
+def corpus_dir() -> Path:
+    """Path to the real example corpus shipped with the project."""
+    return CORPUS_DIR
+
+
+@pytest.fixture
+def indexed_db(tmp_path: Path) -> str:
+    """Build a real DuckDB FTS index from the example corpus into a temp file.
+
+    Chains the same pipeline `make corpus-ingest` would run: load raw articles,
+    clean/dedupe them, write the intermediate JSONL, then build the FTS index.
+    Returns the path to the resulting DuckDB file.
+    """
+    articles = load_raw_articles(CORPUS_DIR)
+    cleaned = clean_and_dedupe(articles)
+
+    jsonl_path = tmp_path / "articles.jsonl"
+    write_jsonl(cleaned, jsonl_path)
+
+    db_path = str(tmp_path / "index.duckdb")
+    build_index(jsonl_path, db_path)
+    return db_path
+{% else %}
+# This project has no corpus pipeline, so no shared fixtures are defined here.
+# The `corpus_dir` / `indexed_db` fixtures (a real DuckDB FTS index over an
+# example corpus) exist only in a retrieval shape. If you add retrieval later
+# with `copier update -d include_rag_agent=true`, they'll appear here — don't
+# hand-roll your own `indexed_db`; let the template add it so tests stay aligned
+# with `make corpus-ingest`.
+{% endif -%}

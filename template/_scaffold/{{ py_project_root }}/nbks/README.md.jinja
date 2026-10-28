@@ -1,0 +1,63 @@
+# nbks/ — analysis notebooks
+
+Exploratory analyses kept as plain `.py` scripts in the percent/py:percent
+style (git-diffable{% if has_corpus_pipeline %}, runnable headless via `make nbks-corpus`{% endif %}, openable as
+notebooks in VS Code/Jupytext).
+{% if has_corpus_pipeline %}
+- `corpus_analysis.py` — corpus statistics for the ingested article set
+  (sizes, categories, token distributions) to sanity-check ingestion before
+  trusting retrieval quality numbers.
+{% endif %}
+{%- if is_ml_shaped %}
+### One notebook per stage
+
+Nine notebooks, one per stage of `{{ ml_source_root }}/`, in the order the stages
+run. This is deliberately **not** one pipeline notebook: each one answers a single
+question and can be run, re-run, and argued with on its own. A single
+`run.py`-shaped notebook is what a function library without stage boundaries
+produces, and it is unreviewable — you cannot tell which step made a number move.
+
+| Notebook | Imports | Answers |
+|---|---|---|
+| `00_data_contract.py` | `ml.ingest` | Does the frame match its declared contract? |
+| `01_eda.py` | `ml.transform` | Shape, dtypes, missingness pattern, target balance |
+| `02_bivariate.py` | `ml.transform` | Which features carry signal — and which suspiciously well? |
+| `03_features.py` | `ml.feature_engineering` | Which derived features earn their place? |
+| `04_selection.py` | `ml.selection` | Which candidates exist, and which will actually run? |
+| `05_training.py` | `ml.workflows` | Out-of-fold scores vs the baseline |
+| `06_evaluation.py` | `ml.evaluation` | Metric *spread*, not just the mean |
+
+The chain stops at evaluation. The two stages after it ship as module-and-test
+only, with no notebook yet: choosing an operating point is
+`ml/evaluation/threshold.py` (`choose_threshold`, which reports whether the point
+was picked in-sample), and post-deployment drift is `ml/monitoring/`.
+
+**Logic lives in the module; the notebook holds narrative, calls, and plots.** If
+you write a validation rule or a metric in a notebook, it belongs in a stage
+module with a test — `sys.path` is set to `{{ py_project_root }}/` at the top of
+each one so the import is available.
+
+Each notebook reads `data/raw/dataset.csv` and falls back to a synthetic frame
+(`_sample_data.py`) when that file is absent, so all seven run on a fresh clone.
+The synthetic frame is deliberately awkward — imbalanced target, a planted leak,
+non-uniform missingness, a high-cardinality identifier, and a group column with
+repeats — because a clean frame lets every stage pass without demonstrating what
+the stage is for.
+
+`01_eda.py` is bivariate-first: every section compares a feature *against the
+target* rather than cataloguing columns in isolation. Two of its cells are
+load-bearing and easy to skip. The **leakage audit** runs before any correlation
+work, because a leaked feature does not raise an error — it returns a great score
+and reads as success. The **handoff cell** at the bottom is its actual output: the
+`CATEGORICAL` / `NUMERIC` / `ORDINAL` / `EXCLUDED` lists that feed
+`{{ ml_source_root }}/selection/`. It reconciles its own counts, so a column
+nobody decided about is reported rather than silently dropped.
+{%- endif %}
+{%- if not has_corpus_pipeline and not is_ml_shaped %}
+No notebooks ship for this project shape yet — drop new analyses here as `.py`
+scripts.
+{%- endif %}
+
+Convention: notebooks are read-only consumers of{% if include_core_etl %} `core/` and{% endif %} the data dirs —
+no pipeline logic lives here. Promote anything reusable into a real module
+with tests.

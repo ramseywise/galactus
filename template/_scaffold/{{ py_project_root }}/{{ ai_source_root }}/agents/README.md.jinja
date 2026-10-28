@@ -1,0 +1,32 @@
+# {{ py_project_root }}/{{ ai_source_root }}/agents/ — the AI services
+
+Each subpackage is one deployable agent service: a FastAPI app factory with
+`/health` and versioned `/api/v1/*` routes, its own pydantic `settings.py`
+reading `.env`, and Makefile lifecycle targets (`make <name>-up` /
+`<name>-down` / `<name>-chat`, underscores as dashes).
+
+{% if primary_chat_agent in ["lg_agent", "both"] -%}
+- `{{ lg_agent_dir }}/` — the user-facing chat agent (LangGraph): graph +
+  nodes (`retrieve` → `generate` → `guardrail`), checkpointer-backed
+  conversation state, BM25 retrieval over the `core/pipelines/corpus/` index, MCP tool wiring
+  via `model/mcp.py`.
+{% endif -%}
+{% if primary_chat_agent in ["adk_agent", "both"] -%}
+- `{{ adk_agent_dir }}/` — {% if primary_chat_agent == "both" %}the same assistant role built on Google ADK (comparison implementation){% else %}the user-facing chat agent (Google ADK){% endif %}:
+  router + sub-agents (`direct_agent`, `rag_agent`), prompt files under
+  `prompts/`, FastAPI HTTP edge under `api/`.
+{% endif -%}
+{% if include_rag_agent -%}
+- `rag_agent/` — the retrieval backend (LangGraph + embedding vector store).
+  Serves `POST /api/v1/retrieval` — the contract the MCP `search_articles`
+  tool calls via `RAG_AGENT_URL`. `make rag-up` / `make rag-chat`;
+  `make rag-corpus-ingest` builds its vector store.
+{% endif -%}
+{% if primary_chat_agent == "none" and not include_rag_agent -%}
+(No prebuilt agents were scaffolded — add your own subpackage here following
+the app-factory + `/api/v1` + `settings.py` conventions, or scaffold one with
+`/new-agent`.)
+{% endif %}
+Service-to-service calls go over REST — agents never import each other's
+internals. New agents: `/new-agent` scaffolds an ADK or LangGraph skeleton
+following these conventions.

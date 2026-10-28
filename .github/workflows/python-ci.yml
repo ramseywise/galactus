@@ -1,0 +1,72 @@
+name: Python CI
+
+# Reusable lint+test workflow for the production Python repos (atlas,
+# listen-wiseer, librarian) and for projects rendered from this template.
+# Extracted from template/_scaffold/.github/workflows/ci.yml.jinja so the
+# scaffold and the standalone repos share one definition rather than copies.
+#
+# Consumers pin @main today. Once stable, prefer a tag (@v1) so a bad push
+# here cannot break every consumer at once.
+
+on:
+  workflow_call:
+    inputs:
+      lint-paths:
+        description: >-
+          Space-separated paths for ruff. Read these from the consuming repo's
+          Makefile lint target — layouts differ (librarian is app/etl/tools,
+          not src/core/evals).
+        type: string
+        default: "src core evals tests"
+      test-command:
+        description: Full test invocation, including the runner.
+        type: string
+        default: "uv run pytest tests/unit -q"
+      lint-blocking:
+        description: >-
+          Set false where lint is knowingly red and being paid down, so the
+          errors stay visible without gating merges.
+        type: boolean
+        default: true
+      tests-blocking:
+        description: Same escape hatch as lint-blocking, for the test job.
+        type: boolean
+        default: true
+      python-version:
+        type: string
+        default: "3.12"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    # continue-on-error still reports the failure on the PR; it just does not
+    # block. Note it does NOT turn the check green — a required-status-check
+    # branch rule must name the blocking jobs only.
+    continue-on-error: ${{ !inputs.lint-blocking }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ inputs.python-version }}
+      - run: uv sync --group dev
+      - run: uv run ruff check ${{ inputs.lint-paths }}
+      - run: uv run ruff format --check ${{ inputs.lint-paths }}
+
+  test:
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ !inputs.tests-blocking }}
+    env:
+      # Placeholder credentials — unit tests must not reach a live API. The
+      # in-memory vector path keeps them hermetic.
+      ANTHROPIC_API_KEY: "test-key-not-real"
+      LANGSMITH_TRACING: "false"
+      VECTORDB_PATH: ":memory:"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ inputs.python-version }}
+      - run: uv sync --group dev
+      - run: ${{ inputs.test-command }}

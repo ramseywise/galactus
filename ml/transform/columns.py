@@ -11,6 +11,7 @@ surfaces as a train/serve schema mismatch much later.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -34,6 +35,10 @@ class ColumnPlan:
     unused: tuple[str, ...] = ()
     """Constant columns, all-null columns, and free text — carried explicitly so
     a dropped column is a recorded decision rather than a silent omission."""
+    excluded: tuple[str, ...] = ()
+    """Columns held out of the feature matrix by the caller — split metadata
+    (group and time columns) rather than signal. Kept separate from `unused` so a
+    report can distinguish "we judged this useless" from "this is bookkeeping"."""
     target: str | None = None
     cardinality: dict[str, int] = field(default_factory=dict)
     missing_fraction: dict[str, float] = field(default_factory=dict)
@@ -44,11 +49,7 @@ class ColumnPlan:
     def features(self) -> tuple[str, ...]:
         """Every column the transformer will actually consume."""
         return (
-            self.numeric
-            + self.categorical
-            + self.high_cardinality
-            + self.datetime
-            + self.boolean
+            self.numeric + self.categorical + self.high_cardinality + self.datetime + self.boolean
         )
 
     def describe(self) -> pd.DataFrame:
@@ -61,6 +62,7 @@ class ColumnPlan:
             "datetime": self.datetime,
             "boolean": self.boolean,
             "unused": self.unused,
+            "excluded": self.excluded,
         }
         for bucket, cols in buckets.items():
             for col in cols:
@@ -80,14 +82,29 @@ def infer_column_types(
     df: pd.DataFrame,
     target: str | None = None,
     high_card_threshold: int = DEFAULT_HIGH_CARD_THRESHOLD,
+    exclude: Sequence[str] | None = None,
 ) -> ColumnPlan:
     """Bucket every column of `df` by dtype and cardinality.
 
     The target column, when named, is excluded from every feature bucket — the
     single most direct form of target leakage is leaving the label in `X`.
+
+    `exclude` names columns that are bookkeeping rather than signal — the group
+    and time columns a splitter needs. They belong in the frame the splitter
+    reads and nowhere near the feature matrix: a group column is entity identity,
+    typically near-unique, so inference would bucket it as high-cardinality and
+    the transformer would target-encode borrower identity against the label. That
+    is a leak manufactured by honouring the grouping contract, which is why the
+    exclusion happens here rather than being left to each caller to remember.
     """
     if target is not None and target not in df.columns:
         raise KeyError(f"target {target!r} is not a column of the frame: {list(df.columns)}")
+
+    excluded = tuple(dict.fromkeys(exclude or ()))
+    missing = [col for col in excluded if col not in df.columns]
+    if missing:
+        raise KeyError(f"excluded column(s) {missing} are not columns of the frame")
+    excluded_set = set(excluded)
 
     numeric: list[str] = []
     categorical: list[str] = []
@@ -103,6 +120,9 @@ def infer_column_types(
 
     for col in df.columns:
         if col == target:
+            continue
+        if col in excluded_set:
+            reasons[col] = "excluded by the caller — split metadata, not a feature"
             continue
 
         series = df[col]
@@ -145,6 +165,7 @@ def infer_column_types(
         datetime=tuple(datetime_cols),
         boolean=tuple(boolean),
         unused=tuple(unused),
+        excluded=excluded,
         target=target,
         cardinality=cardinality,
         missing_fraction=missing_fraction,

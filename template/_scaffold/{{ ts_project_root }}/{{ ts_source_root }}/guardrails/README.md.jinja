@@ -1,0 +1,112 @@
+# {{ ts_project_root }}/{{ ts_source_root }}/guardrails/ — input guard, content filter, output filter
+
+Three deterministic guard layers around the agent loop. No provider flag and no
+SDK: these are regex and length checks, independent of `observability_provider`
+(guards don't trace).
+
+- `guards.ts` — the three layers: `checkInput()`, `filterContent()`,
+  `checkOutput()`, plus `guardTurn()` showing the reference ordering, and
+  `guardTextStream()` — layer 3 in its streaming form.
+- `settings.ts` — reads `process.env`. Per-layer off-switches, `maxInputChars`,
+  `refusalMessage`.
+
+This is the TypeScript twin of `{{ py_project_root }}/{{ ai_source_root }}/guardrails/`.
+Same three layers, same fail-open/fail-closed contract; the seams differ only
+because this runtime streams.
+
+## Which layer catches what
+
+| Layer | Runs on | On a hit |
+|---|---|---|
+| `checkInput` | the untrusted user turn, before the model call | **blocks** — returns `refusalMessage` |
+| `filterContent` | tool/retrieval output, before it enters a prompt | **neutralizes** — replaces the matched span, keeps the rest |
+| `checkOutput` | model output, before caller *and* tracer | **scrubs** — replaces leaked values, still delivers the answer |
+
+`filterContent` is the indirect-injection seam: a poisoned tool result is not a
+user turn, so `checkInput` never sees it.
+
+## Where each layer is already wired
+
+The request path calls all three — this is not a library waiting to be adopted.
+Call sites, so you know what to change rather than what to add:
+
+| Layer | Call site | What it guards |
+|---|---|---|
+| `checkInput` | `agent/handler.ts` | the last user turn, before `runAgent` — a blocked turn never reaches the model, so it costs no tokens |
+| `filterContent` | `guardrails/tools.ts`, wired in `agents/*/agent.ts` | every tool result, before it re-enters the prompt |
+| `guardTextStream` | `agent/handler.ts` | the response body, scrubbed in transit |
+
+Layer 2 is wired at the tool boundary rather than in the handler because tool
+output re-enters the prompt *inside* the agent loop, which `chatHandler` never
+sees. `agent.ts` nests the wrappers as
+`wrapToolsWithSpans(wrapToolsWithContentFilter(tools))` so filtering happens
+inside the traced region, not outside it — keep that order when adding a third
+wrapper.
+
+`guardTurn()` is the reference ordering for a new agent, not a function these
+call sites use: they need to branch between layers, which `guardTurn` does not
+allow.
+
+## Layer 3 and the stream
+
+`chatHandler` returns a streaming response, so `checkOutput` cannot simply run
+on a finished string. `guardTextStream()` scrubs each chunk as it passes through
+a `TransformStream`, holding back a `CARRY_CHARS` window so a credential split
+across a chunk boundary is still caught. The full decision — and the two
+rejected alternatives, poisoning the stream and buffering the whole response —
+is in the module header of `guards.ts`.
+
+**The carry window is a bound, not a guarantee.** A credential longer than
+`CARRY_CHARS` that straddles a chunk boundary can slip through. `CARRY_CHARS` is
+sized above the longest pattern this module matches; **raise it whenever you add
+a longer pattern to `SECRET_PATTERNS`.**
+
+The Python twin is non-streaming, so it calls `check_output` on the finished
+answer and needs none of this.
+
+## Fail-open vs fail-closed
+
+A layer switched **off** in settings fails **open** (text passes through
+untouched) — that is an operator decision. A layer that **throws** fails
+**closed** (refusal, or empty content for layer 2) — a crashing guard must not
+become an availability hole that passes traffic unchecked. The two cases are
+deliberately different; keep it that way when extending.
+
+`GuardResult.text` is always the safe value — original when allowed, scrubbed or
+refusal text when not. A call site that ignores `blocked` and uses `text` still
+behaves safely.
+
+Blocked verdicts return `refusalMessage`, never `reasons`. The rule ids are for
+logs, traces, and evals — surfacing them teaches a probing caller what tripped.
+
+## Tests
+
+- `tests/guards.test.ts` — behavioural: do the layers catch what they claim?
+- `tests/guards-wiring.test.ts` — wiring: are the layers actually *called*?
+
+The second exists because `guards.ts` once passed a full behavioural suite while
+being reachable from nothing on any request path. Each wiring test's docstring
+names the exact edit that makes it fail, so deleting a call site turns the suite
+red instead of leaving a passing suite around dead code. Add a case there
+whenever you add a call site.
+
+### Adding a fourth call site
+
+1. Call the layer where untrusted text crosses a boundary, not where it is
+   convenient.
+2. Use `.text` — it is the safe value whether or not the verdict blocked.
+3. Never surface `.reasons` to the caller.
+4. Add a wiring test whose docstring names the deletion that breaks it.
+{% if data_sensitivity in ["restricted", "secret"] %}
+**Order: filter before trace (data_sensitivity={{ data_sensitivity }}).**
+`checkOutput()` runs **before** anything in `observability/` sees the text, so
+the scrubbed string is what reaches the tracing backend — a value the model
+leaked never lands in observability tooling even in redacted form (CLAUDE.md,
+DESIGN.md). Never trace the pre-filter string.
+
+The two mechanisms are complementary, not redundant: the tracer's redaction
+matches **field names** in span attributes; `checkOutput()` matches **value
+shapes** in free prose, where there is no key to match on. Extend `PII_PATTERNS`
+here for domain formats (member ids, case numbers) and the tracer's redacted
+field list there for domain field names.
+{%- endif %}

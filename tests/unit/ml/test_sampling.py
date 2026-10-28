@@ -143,8 +143,7 @@ def test_the_marker_survives_the_slicing_a_fold_does(imbalanced):
     validation = mark_validation(x)
 
     assert is_validation(validation.iloc[:10]), (
-        "a fold indexes into the frame; the marker must survive or the guard is "
-        "trivially bypassed"
+        "a fold indexes into the frame; the marker must survive or the guard is trivially bypassed"
     )
 
 

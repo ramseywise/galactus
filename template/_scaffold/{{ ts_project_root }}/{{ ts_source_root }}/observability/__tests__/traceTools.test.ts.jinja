@@ -1,0 +1,124 @@
+/**
+ * Tests for traceTools.ts — `wrapToolsWithSpans`.
+ *
+ * Verifies that the execute_tool OTel span:
+ *   1. Brackets the tool call (opens before execute, closes after it resolves)
+ *   2. Is marked is_error=true and status=ERROR when execute throws
+ *   3. Always ends even on throw (finally block)
+ *
+ * These tests exercise the real wrapToolsWithSpans implementation with a
+ * controlled startExecuteToolSpan mock so span state is observable.  They
+ * FAIL if the span-bracketing wrapper is removed from traceTools.ts.
+ *
+ * Hoisting note (vitest): tracing.js is mocked so the span object is controlled
+ * without making real OTel calls. `vi.mock` is hoisted above the imports, so its
+ * factory cannot close over a normal `const` — the span stubs live in
+ * `vi.hoisted()` and the subject is imported statically (AIT-70).
+ */
+
+import { vi, describe, it, expect } from "vitest";
+
+import { asToolSet, executeOf } from "../../testing/toolStubs.js";
+import { wrapToolsWithSpans } from "../traceTools.js";
+
+// ---------------------------------------------------------------------------
+// Span mock factory — created fresh per test via mockImplementationOnce
+// ---------------------------------------------------------------------------
+
+function makeSpanMock() {
+  return {
+    setStatus: vi.fn(),
+    setAttribute: vi.fn(),
+    end: vi.fn(),
+    // timestamps set by the mock's start/end hooks
+    startedAt: 0,
+    endedAt: 0,
+  };
+}
+
+// Shared mocks for tracing.ts — hoisted so the vi.mock factory can close over them
+const mocks = vi.hoisted(() => ({
+  startExecuteToolSpan: vi.fn(),
+  inputHash: vi.fn(() => "deadbeef"),
+}));
+
+vi.mock("../tracing.js", () => ({
+  startExecuteToolSpan: mocks.startExecuteToolSpan,
+  inputHash: mocks.inputHash,
+  // Provide other named exports traceTools.ts might import (none currently,
+  // but this guard prevents "not exported" errors if the file grows)
+  startChatSpan: vi.fn(() => ({ end: vi.fn(), setStatus: vi.fn() })),
+}));
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("wrapToolsWithSpans — execute_tool span", () => {
+  it("span brackets execute: opens before it starts, closes after it resolves", async () => {
+    const span = makeSpanMock();
+    // Monotonic counter rather than Date.now(): the property under test is
+    // ordering, and wall-clock millisecond granularity makes a duration
+    // comparison flaky (a 5ms setTimeout can measure as 4ms elapsed).
+    let tick = 0;
+    let spanCreatedAt = 0;
+    let executeStartedAt = 0;
+    let executeEndedAt = 0;
+
+    mocks.startExecuteToolSpan.mockImplementationOnce(() => {
+      spanCreatedAt = ++tick;
+      // Wire end() to record when span closes
+      span.end.mockImplementation(() => { span.endedAt = ++tick; });
+      return span;
+    });
+
+    const slowTool = {
+      execute: async () => {
+        executeStartedAt = ++tick;
+        await new Promise((r) => setTimeout(r, 5));
+        executeEndedAt = ++tick;
+        return "done";
+      },
+    };
+
+    const wrapped = wrapToolsWithSpans(asToolSet({ slow: slowTool }));
+    await executeOf(wrapped.slow)();
+
+    expect(spanCreatedAt).toBeLessThan(executeStartedAt);
+    expect(span.endedAt).toBeGreaterThan(executeEndedAt);
+    expect(span.end).toHaveBeenCalledTimes(1);
+    // Success path: OK status
+    expect(span.setStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 1 }), // SpanStatusCode.OK = 1
+    );
+  });
+
+  it("span ends and is marked error when execute throws", async () => {
+    const span = makeSpanMock();
+    mocks.startExecuteToolSpan.mockImplementationOnce(() => span);
+
+    const failingTool = {
+      execute: async () => { throw new Error("tool-failure"); },
+    };
+
+    const wrapped = wrapToolsWithSpans(asToolSet({ fail: failingTool }));
+    await expect(executeOf(wrapped.fail)()).rejects.toThrow("tool-failure");
+
+    // finally block must always run — span must end
+    expect(span.end).toHaveBeenCalledTimes(1);
+    // Error attributes must be set
+    expect(span.setAttribute).toHaveBeenCalledWith("is_error", true);
+    expect(span.setStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 2 }), // SpanStatusCode.ERROR = 2
+    );
+  });
+
+  it("tools without execute are passed through unchanged", () => {
+    mocks.startExecuteToolSpan.mockClear();
+    const noExec = { description: "no execute", inputSchema: {} };
+    const wrapped = wrapToolsWithSpans(asToolSet({ noExec }));
+    // No execute to wrap — object reference is preserved
+    expect(wrapped.noExec).toEqual(noExec);
+    expect(mocks.startExecuteToolSpan).not.toHaveBeenCalled();
+  });
+});

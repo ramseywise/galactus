@@ -1,0 +1,50 @@
+from __future__ import annotations
+
+import logging
+from functools import lru_cache
+
+from langchain_core.tools import BaseTool
+from langchain_mcp_adapters.client import MultiServerMCPClient
+
+from ..settings import settings
+
+logger = logging.getLogger(__name__)
+
+
+@lru_cache(maxsize=1)
+def _client() -> MultiServerMCPClient:
+    """The only place allowed to instantiate the MCP client directly.
+
+    Spawns the project's own MCP server (mcp_servers/{{ mcp_server_slug | default(project_slug) }}) as a
+    stdio subprocess via its own uv-managed environment — `uv run --project` finds
+    that environment regardless of the caller's cwd, so this works whether the agent
+    is invoked from the repo root or from inside its own package directory.
+    """
+    return MultiServerMCPClient(
+        {
+            "{{ mcp_server_slug | default(project_slug) }}": {
+                "transport": "stdio",
+                "command": "uv",
+                "args": ["run", "--project", settings.mcp_server_dir, "{{ mcp_server_slug | default(project_slug) }}"],
+            }
+        }
+    )
+
+
+async def get_mcp_tools() -> list[BaseTool]:
+    """Fetch the current tool list from the {{ mcp_server_slug | default(project_slug) }} MCP server.
+
+    Returns an empty list (rather than raising) when MCP is disabled or the server
+    is unreachable, so callers can treat it as an optional capability.
+    """
+    if not settings.mcp_enabled:
+        return []
+    try:
+        return await _client().get_tools()
+    except Exception:
+        logger.warning(
+            "MCP server at %s unreachable — continuing without its tools",
+            settings.mcp_server_dir,
+            exc_info=True,
+        )
+        return []

@@ -1,0 +1,41 @@
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class ObservabilitySettings(BaseSettings):
+    """Tracing settings for observability/ -- separate from each agent's own
+    Settings class since tracing isn't agent-specific (any present agent wraps
+    its calls with the same tracer). Same convention as
+    integrations/settings.py.jinja's IntegrationSettings."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # Scaffolded default; swap providers with -d observability_provider=… at
+    # copier update time, or override per-environment here.
+    observability_provider: str = "{{ observability_provider }}"
+
+    # Master off-switch — get_tracer() returns a NoOpTracer when false, so
+    # local dev and CI need no tracing credentials at all.
+    tracing_enabled: bool = {{ 'False' if observability_provider == 'none' else 'True' }}
+
+{%- if observability_provider == "langsmith" %}
+
+    langsmith_api_key: str = ""
+    langsmith_project: str = "{{ project_slug }}"
+{%- else %}
+
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+{%- endif %}
+{%- if data_sensitivity in ["restricted", "secret"] %}
+
+    # data_sensitivity={{ data_sensitivity }}: raw field values must never reach
+    # the tracing backend. redact() in tracing.py runs before every span write;
+    # this stays false unless that contract is deliberately revisited.
+    trace_raw_payloads: bool = False
+{%- endif %}
+
+
+settings = ObservabilitySettings()

@@ -1,0 +1,175 @@
+# %% [markdown]
+# # 06 — Evaluation
+#
+# **Question this notebook answers:** what is the metric *spread*, not just the mean?
+#
+# A single averaged number is the most common way a model comparison misleads. Two
+# models with identical mean PR-AUC are not equivalent if one is stable across folds
+# and the other swings by 0.15 — the second has not been measured, it has been
+# sampled once per fold and averaged.
+#
+# This notebook also states the honest baseline. "PR-AUC 0.02" means nothing until
+# you know the prevalence is 0.02, at which point it means *chance*.
+
+# %%
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path.cwd().parent if Path.cwd().name == "nbks" else Path.cwd()
+sys.path.insert(0, str(REPO_ROOT / "{{ py_project_root }}"))
+sys.path.insert(0, str(REPO_ROOT / "nbks"))
+
+import matplotlib
+
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
+import pandas as pd
+from _sample_data import TARGET, load_frame
+
+from ml.config import settings
+from ml.evaluation.metrics import classification_metrics, pr_curve, roc_curve_points
+from ml.evaluation.splitting import make_splitter
+from ml.selection.registry import get_models
+
+pd.set_option("display.max_columns", 200)
+
+frame, _ = load_frame()
+DROP = ["collections_flag", "customer_id", "opened_at"]
+modelling = frame.drop(columns=[c for c in DROP if c in frame.columns])
+prevalence = float(modelling[TARGET].mean())
+print(f"prevalence: {prevalence:.4f}  <- the honest PR-AUC floor")
+
+# %% [markdown]
+# ## Per-fold scores, computed explicitly
+#
+# Rather than reading a mean out of a run result, this refits per fold so the
+# individual numbers are visible. The spread is the output of this notebook.
+
+# %%
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+GROUP_COL = "household_id"
+y = modelling[TARGET]
+x = modelling.drop(columns=[TARGET])
+
+numeric = [c for c in x.columns if pd.api.types.is_numeric_dtype(x[c]) and c != GROUP_COL]
+categorical = [c for c in x.columns if c not in numeric and c != GROUP_COL]
+
+preprocessor = ColumnTransformer(
+    [
+        ("num", make_pipeline(SimpleImputer(strategy="median"), StandardScaler()), numeric),
+        ("cat", OneHotEncoder(handle_unknown="ignore"), categorical),
+    ]
+)
+
+split_plan = make_splitter(
+    n_splits=settings.n_splits, group_col=GROUP_COL, random_state=settings.random_seed
+)
+
+candidates = get_models("classification", "binary", random_state=settings.random_seed)
+per_fold: dict[str, list[float]] = {name: [] for name in candidates}
+
+for train_idx, test_idx in split_plan.split(x, y, groups=x[GROUP_COL]):
+    x_train = x.iloc[train_idx].drop(columns=[GROUP_COL])
+    x_test = x.iloc[test_idx].drop(columns=[GROUP_COL])
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+    for name, estimator in candidates.items():
+        from sklearn.base import clone
+
+        pipeline = make_pipeline(clone(preprocessor), clone(estimator))
+        pipeline.fit(x_train, y_train)
+        probabilities = pipeline.predict_proba(x_test)[:, 1]
+        metrics = classification_metrics(y_test.to_numpy(), pipeline.predict(x_test), probabilities)
+        per_fold[name].append(metrics.average_precision or float("nan"))
+
+spread = pd.DataFrame(per_fold).T
+spread.columns = [f"fold_{i}" for i in range(spread.shape[1])]
+spread["mean"] = spread.mean(axis=1)
+spread["std"] = spread.iloc[:, :-1].std(axis=1)
+spread["min"] = spread.iloc[:, :-2].min(axis=1)
+spread.round(4).sort_values("mean", ascending=False)
+
+# %% [markdown]
+# ### Reading the spread
+#
+# The `min` column is the one to argue with. A model whose worst fold is near
+# prevalence has a fold on which it learned nothing, and the mean is hiding it.
+
+# %%
+print(f"prevalence (chance PR-AUC): {prevalence:.4f}\n")
+for model in spread.index:
+    worst = spread.loc[model, "min"]
+    verdict = "AT CHANCE on its worst fold" if worst < prevalence * 1.5 else "ok"
+    print(f"{model:20s} worst fold {worst:.4f}  {verdict}")
+
+# %% [markdown]
+# ## Is the difference between two models real?
+#
+# Paired per-fold differences, on identical folds. If the spread of the difference
+# straddles zero, the two models are not distinguishable on this data — regardless
+# of which mean is higher.
+
+# %%
+ranked = spread.sort_values("mean", ascending=False)
+if len(ranked) >= 2:
+    best_name, runner_up = ranked.index[0], ranked.index[1]
+    fold_columns = [c for c in spread.columns if c.startswith("fold_")]
+    differences = spread.loc[best_name, fold_columns] - spread.loc[runner_up, fold_columns]
+    print(f"{best_name} minus {runner_up}, per fold:")
+    print(differences.round(4).to_string())
+    print(f"\nmean difference: {differences.mean():.4f}")
+    print(f"all folds favour {best_name}: {bool((differences > 0).all())}")
+    print(
+        f"exceeds tolerance band ({settings.baseline_tolerance}): "
+        f"{bool(abs(differences.mean()) > settings.baseline_tolerance)}"
+    )
+
+# %% [markdown]
+# ## PR and ROC curves
+#
+# PR-AUC leads under imbalance. The ROC curve is included for comparison precisely
+# because it flatters: it stays high while precision collapses, which is the
+# argument for not leading with it.
+
+# %%
+best_name = ranked.index[0]
+from sklearn.base import clone
+
+final = make_pipeline(clone(preprocessor), clone(candidates[best_name]))
+train_idx, test_idx = next(iter(split_plan.split(x, y, groups=x[GROUP_COL])))
+final.fit(x.iloc[train_idx].drop(columns=[GROUP_COL]), y.iloc[train_idx])
+held_out_probabilities = final.predict_proba(x.iloc[test_idx].drop(columns=[GROUP_COL]))[:, 1]
+held_out_y = y.iloc[test_idx].to_numpy()
+
+pr = pr_curve(held_out_y, held_out_probabilities)
+roc = roc_curve_points(held_out_y, held_out_probabilities)
+
+fig, (left, right) = plt.subplots(1, 2, figsize=(10, 4))
+left.plot(pr.x, pr.y)
+left.axhline(prevalence, linestyle="--", linewidth=1, label=f"chance ({prevalence:.3f})")
+left.set_xlabel("recall")
+left.set_ylabel("precision")
+left.set_title(f"PR — {best_name}")
+left.legend(fontsize=8)
+right.plot(roc.x, roc.y)
+right.plot([0, 1], [0, 1], linestyle="--", linewidth=1)
+right.set_xlabel("false positive rate")
+right.set_ylabel("true positive rate")
+right.set_title(f"ROC — {best_name}")
+fig.tight_layout()
+plt.show()
+
+# %% [markdown]
+# ## Handoff
+#
+# **Output of this notebook:** per-fold spread, the worst-fold verdict, and whether
+# the top two models are actually distinguishable. Next comes the operating point:
+# `ml/evaluation/threshold.py` (`choose_threshold`), where costs finally enter and
+# `ThresholdResult.selection_caveat` says whether the numbers are optimistic.

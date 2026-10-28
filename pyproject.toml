@@ -41,6 +41,8 @@ ml = [
     "catboost>=1.2.10",
     "matplotlib>=3.11.1",
     "pandas>=3.0.5",
+    "pydantic-settings>=2.6.0",
+    "pyyaml>=6.0",
     "scikit-learn>=1.9.0",
     "statsmodels>=0.14.6",
 ]
@@ -52,15 +54,17 @@ ml = [
 
 [tool.uv]
 package = false
+# `ml` is on by default: tests/unit/ml and the runs under runs/ml/ import it, and a
+# group that is not installed turns those into collection errors.
+default-groups = ["dev", "ml"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-# .claude/ ships vendored skills and specs (see CLAUDE.md "Vendoring exception") —
-# rendered payload whose canon lives upstream, not code this project lints.
-# `ml/` is the same case: vendored from ai-project-template's ML payload. Fix lint
-# findings upstream and re-vendor, rather than diverging the copy here.
-extend-exclude = [".claude", "ml"]
+# .claude/ is skills, specs and hooks: prose and shell, not code this project lints.
+# `ml/` and `template/` ship to generated projects, so they are linted under the
+# template's rules by `make lint-render`, not under this config.
+extend-exclude = [".claude", "ml", "template"]
 
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "BLE"]
@@ -112,6 +116,7 @@ testpaths = [
     "runs/ml/fraud/tests",
     "runs/ml/lending/tests",
     "experiments/tests",
+    "tests/unit/ml",
     "runs/_shared/tests",
 ]
 asyncio_mode = "auto"

@@ -1,0 +1,81 @@
+# {{ project_name }}
+
+{{ project_description }}
+
+## Layout
+
+```
+{{ project_slug }}/
+├── {{ py_project_root }}/{{ ai_source_root }}/              Application source
+├── tests/                          Unit, smoke, and integration tests
+{%- if enable_structure_guard %}
+├── {{ eval_root }}/                 Eval suite ({{ eval_allowed_dirs }})
+{%- endif %}
+{%- if include_mcp_server %}
+├── mcp_servers/{{ mcp_server_slug }}/   MCP server — see mcp_servers/{{ mcp_server_slug }}/app/server.py
+{%- endif %}
+{%- if has_typescript %}
+├── {{ ts_source_root }}/            TypeScript/frontend source
+{%- endif %}
+{%- if include_agent_reference_library %}
+├── .agents/skills/                 Tool-agnostic ADK/LangGraph reference library — see .agents/skills/README.md
+{%- endif %}
+{%- if include_dev_companion %}
+├── .claude/docs/companion/          Living "how we work" doc — see .claude/skills/grow-companion/SKILL.md
+{%- endif %}
+```
+
+## Refs (read before writing code here)
+
+<!-- Machine-wide stack conventions; skip any that don't exist on this machine. -->
+- `~/.claude/refs/python.md`, `~/.claude/refs/logging.md`
+{%- if primary_chat_agent in ["lg_agent", "both"] %}
+- `~/.claude/refs/langgraph.md`
+{%- endif %}
+{%- if primary_chat_agent in ["adk_agent", "both"] %}
+- `~/.claude/refs/google-adk.md`
+{%- endif %}
+
+Folder-level refs live in nested CLAUDE.md stubs (auto-load on file access):
+{%- if has_typescript %} `{{ ts_project_root }}/`,{%- endif %}
+{%- if enable_structure_guard %} `{{ eval_root }}/`,{%- endif %}
+{%- if include_ml %} `ml/`{%- endif %}
+
+## Hard Rules
+
+<!-- Add project-specific hard rules here, e.g. confidentiality/naming boundaries, module ownership,
+     directory allowlists. These are enforced by hooks in .claude/hooks/ where automatable —
+     document the ones that can't be — see .claude/hooks/ for the current hook-enforced set. -->
+
+1. Tests live at root `tests/`, not inside `{{ py_project_root }}/{{ ai_source_root }}/`.
+2. `.claude/docs/plans/` and `.claude/docs/reviews/` are scratch/local workspace — never commit them. Promote durable findings into project docs instead.
+{%- if enable_structure_guard %}
+3. Never add top-level directories to `{{ eval_root }}/` beyond: {{ eval_allowed_dirs }}. All new eval code fits in one of these.
+{%- endif %}
+4. Data classification: **{{ data_sensitivity }}**.
+{%- if data_sensitivity in ["restricted", "secret"] %} Never log, print, or trace raw field values from this data — redact before it reaches stdout, error messages, or observability tooling.
+{%- endif %}
+
+## Style
+
+- `from __future__ import annotations` in all modules
+- Type annotations on all signatures; f-strings only
+- `httpx` not `requests`; async-first I/O
+- Pydantic models at API boundaries
+- No magic numbers — named constants or env vars
+
+## Hook-Enforced Standards
+
+**PostToolUse (Write|Edit):** ruff format + check, no `print()` in {{ py_project_root }}/{{ ai_source_root }}/, no bare `except`, no mutable default arguments, no hardcoded model strings, no bare LLM/tracing-client instantiation outside factory files, secrets scan, file size warning >400 lines.
+
+**PreToolUse (Bash):** `git commit` blocked if tests fail or `uv.lock` is out of sync, `.claude/docs/plans/` or `.claude/docs/reviews/` blocked from being staged or committed, `pip install` blocked (use `uv add`), destructive commands blocked.
+
+See `.claude/skills/README.md` for the full skill inventory.
+
+## Commit Convention
+
+```
+<type>: <description>
+```
+
+Types: `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `ci`

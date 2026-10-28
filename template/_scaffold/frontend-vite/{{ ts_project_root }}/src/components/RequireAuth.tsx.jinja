@@ -1,0 +1,48 @@
+import { type ReactNode, useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
+
+import { getCurrentUser, supabase } from "../lib/supabase";
+
+type AuthState = "checking" | "authed" | "anonymous";
+
+/**
+ * Renders children once a session is confirmed, redirects to /login if not.
+ *
+ * The three-state machine matters: without a distinct "checking" state the
+ * first paint happens before getCurrentUser() resolves, so an authenticated
+ * user is bounced to /login and back on every reload.
+ */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const [state, setState] = useState<AuthState>("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getCurrentUser().then((user) => {
+      if (!cancelled) {
+        setState(user ? "authed" : "anonymous");
+      }
+    });
+
+    // Without this subscription the app keeps rendering as authenticated after
+    // a token expires or the user signs out in another tab.
+    const { data } = supabase?.auth.onAuthStateChange((_event, session) => {
+      if (!cancelled) {
+        setState(session ? "authed" : "anonymous");
+      }
+    }) ?? { data: { subscription: null } };
+
+    return () => {
+      cancelled = true;
+      data.subscription?.unsubscribe();
+    };
+  }, []);
+
+  if (state === "checking") {
+    return <p>Loading…</p>;
+  }
+  if (state === "anonymous") {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}

@@ -34,14 +34,6 @@
         ]
       }
     ],
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/hook_parity_check.sh", "timeout": 5 }
-        ]
-      }
-    ],
     "Stop": [
       {
         "matcher": "",

@@ -1,0 +1,64 @@
+from __future__ import annotations
+
+from contextlib import contextmanager
+from unittest.mock import patch
+
+from agents.{{ lg_agent_dir }}.nodes import retrieve as retrieve_module
+from agents.{{ lg_agent_dir }}.nodes.retrieve import retrieve_node
+
+
+def test_retrieve_node_populates_sources_and_snippets(wired_vectordb: str) -> None:
+    result = retrieve_node({"message": "How do I descale the machine?"})
+
+    assert "sources" in result
+    assert "context_snippets" in result
+    assert len(result["sources"]) > 0
+    assert len(result["context_snippets"]) == len(result["sources"])
+
+    top_source = result["sources"][0]
+    assert top_source.id == "descaling"
+    assert top_source.title
+    assert top_source.score > 0
+
+
+def test_retrieve_node_context_snippets_include_title_and_text(wired_vectordb: str) -> None:
+    result = retrieve_node({"message": "warranty coverage"})
+
+    assert len(result["context_snippets"]) > 0
+    snippet = result["context_snippets"][0]
+    assert snippet.startswith("# ")
+
+
+def test_retrieve_node_returns_empty_for_nonsense_query(wired_vectordb: str) -> None:
+    result = retrieve_node({"message": "zzzqqqxxx_no_such_term_exists"})
+
+    assert result["sources"] == []
+    assert result["context_snippets"] == []
+
+
+# ---------------------------------------------------------------------------
+# Wiring test — fails if retrieve_span is removed from retrieve.py
+# ---------------------------------------------------------------------------
+
+
+def test_retrieve_span_wired_into_retrieve_node(wired_vectordb: str) -> None:
+    """retrieve_span must be entered on every retrieve_node call.
+
+    Remove the ``with retrieve_span(...)`` block from nodes/retrieve.py and
+    this test fails: enter_count stays 0.
+    """
+    enter_count: list[int] = []
+    real_retrieve_span = retrieve_module.retrieve_span
+
+    @contextmanager
+    def _spy_retrieve_span(**kwargs):
+        enter_count.append(1)
+        with real_retrieve_span(**kwargs) as span:
+            yield span
+
+    with patch.object(retrieve_module, "retrieve_span", _spy_retrieve_span):
+        retrieve_node({"message": "How do I descale the machine?"})
+
+    assert len(enter_count) >= 1, (
+        "retrieve_span was never entered — spans are not wired into retrieve_node"
+    )

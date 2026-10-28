@@ -1,0 +1,167 @@
+from __future__ import annotations
+
+import logging
+from types import SimpleNamespace
+
+import pytest
+
+from agents.{{ lg_agent_dir }}.model import gateway as llm_module
+from agents.{{ lg_agent_dir }}.settings import settings
+
+
+def test_client_factory_sets_timeout_and_retries_explicitly() -> None:
+    """The factory must pin both, not inherit SDK defaults.
+
+    Drop either kwarg from get_client() and this fails — an unpinned timeout is
+    an unbounded hang on the slowest hop in the graph.
+    """
+    # lru_cache'd, so a client built by an earlier test would mask a regression here.
+    llm_module.get_client.cache_clear()
+    client = llm_module.get_client()
+
+    assert client.timeout == settings.llm_timeout_seconds
+    assert client.max_retries == settings.llm_max_retries
+
+
+def test_async_client_factory_sets_timeout_and_retries_explicitly() -> None:
+    """Same contract for the async factory — agenerate() is the tool-loop path."""
+    llm_module.get_async_client.cache_clear()
+    client = llm_module.get_async_client()
+
+    assert client.timeout == settings.llm_timeout_seconds
+    assert client.max_retries == settings.llm_max_retries
+
+
+def test_max_tokens_default_is_above_the_truncation_cliff() -> None:
+    """1024 truncates real answers, and a truncated answer is wasted spend."""
+    assert settings.llm_max_tokens >= 4096
+
+
+def _fake_client(response: SimpleNamespace) -> SimpleNamespace:
+    return SimpleNamespace(messages=SimpleNamespace(create=lambda **_kwargs: response))
+
+
+def test_empty_content_logs_a_warning_carrying_stop_reason(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A response with no text block returns "" — same as a legitimately empty
+    answer, so the call site can't tell them apart. The warning is the only
+    place that distinction survives; drop it and the failure goes silent.
+    """
+    response = SimpleNamespace(
+        stop_reason="max_tokens",
+        usage=SimpleNamespace(input_tokens=1200, output_tokens=4096),
+        content=[],
+    )
+    monkeypatch.setattr(llm_module, "get_client", lambda: _fake_client(response))
+
+    with caplog.at_level(logging.WARNING, logger=llm_module.__name__):
+        result = llm_module.generate("system", "write me an essay")
+
+    assert result == ""
+    assert "llm.no_text_block" in caplog.text
+    record = next(r for r in caplog.records if r.getMessage() == "llm.no_text_block")
+    assert record.stop_reason == "max_tokens"
+
+
+_SAMPLING_PARAMS = ("temperature", "top_p", "top_k")
+
+
+def _capturing_client(response: SimpleNamespace, sink: dict) -> SimpleNamespace:
+    def _create(**kwargs: object) -> SimpleNamespace:
+        sink.update(kwargs)
+        return response
+
+    return SimpleNamespace(messages=SimpleNamespace(create=_create))
+
+
+def _ok_response() -> SimpleNamespace:
+    return SimpleNamespace(
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=1, output_tokens=1),
+        content=[SimpleNamespace(type="text", text="ok")],
+    )
+
+
+def test_generate_sends_no_sampling_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Thinking-by-default models 400 on temperature/top_p/top_k.
+
+    This asserts on the captured request payload, not on settings. A knob deleted
+    from settings while a literal survives at the call site still ships the 400,
+    and a settings-only assertion would pass through that. The requirement has to
+    be checked where it actually leaves the process.
+    """
+    sink: dict = {}
+    monkeypatch.setattr(llm_module, "get_client", lambda: _capturing_client(_ok_response(), sink))
+
+    llm_module.generate("system", "hello")
+
+    assert sink, "messages.create was never called — the capture proves nothing"
+    for param in _SAMPLING_PARAMS:
+        assert param not in sink, f"{param} reached the Messages API payload"
+
+
+@pytest.mark.asyncio
+async def test_agenerate_sends_no_sampling_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same contract on the async tool-loop path — it is a separate call site."""
+    sink: dict = {}
+    response = _ok_response()
+
+    async def _create(**kwargs: object) -> SimpleNamespace:
+        sink.update(kwargs)
+        return response
+
+    monkeypatch.setattr(
+        llm_module,
+        "get_async_client",
+        lambda: SimpleNamespace(messages=SimpleNamespace(create=_create)),
+    )
+
+    await llm_module.agenerate("system", [{"role": "user", "content": "hello"}])
+
+    assert sink, "messages.create was never called — the capture proves nothing"
+    for param in _SAMPLING_PARAMS:
+        assert param not in sink, f"{param} reached the Messages API payload"
+
+
+def test_rag_agent_generate_sends_no_sampling_params(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The RAG agent has its own client module — fixing one does not fix the other.
+
+    Skipped, not failed, when rag_agent was not rendered — the default answers ship
+    lg_agent alone. CI's rag_agent leg is where this one actually executes.
+    """
+    rag_llm = pytest.importorskip(
+        "agents.rag_agent.model.gateway", reason="rag_agent not rendered in this config"
+    )
+
+    sink: dict = {}
+    monkeypatch.setattr(rag_llm, "get_client", lambda: _capturing_client(_ok_response(), sink))
+
+    rag_llm.generate("system", "hello")
+
+    assert sink, "messages.create was never called — the capture proves nothing"
+    for param in _SAMPLING_PARAMS:
+        assert param not in sink, f"{param} reached the Messages API payload"
+
+
+def test_text_response_logs_usage_and_no_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The happy path: usage accounting at INFO, and nothing at WARNING."""
+    response = SimpleNamespace(
+        stop_reason="end_turn",
+        usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+        content=[SimpleNamespace(type="text", text="an answer")],
+    )
+    monkeypatch.setattr(llm_module, "get_client", lambda: _fake_client(response))
+
+    with caplog.at_level(logging.INFO, logger=llm_module.__name__):
+        result = llm_module.generate("system", "hello")
+
+    assert result == "an answer"
+    usage = next(r for r in caplog.records if r.getMessage() == "llm.usage")
+    assert usage.input_tokens == 10
+    assert usage.output_tokens == 5
+    assert "llm.no_text_block" not in caplog.text

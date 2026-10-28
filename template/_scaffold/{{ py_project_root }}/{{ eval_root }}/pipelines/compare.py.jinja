@@ -1,0 +1,163 @@
+"""Baseline-compare mode for the eval runner.
+
+Loads the previous run's results and flags any metric that dropped more than
+REGRESSION_THRESHOLD (5%) from the baseline. Emits one eval_item OTel span per
+row so regressions are traceable in the exporter backend.
+
+Subcommand wired by the Makefile:
+
+    python -m {{ eval_root }}.pipelines.compare   # == `make eval-compare`
+
+Exit codes:
+  0 — no regressions (or no baseline to compare against — first run is silent)
+  1 — one or more metrics regressed beyond the threshold
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+from evals.pipelines.run import BACKENDS, REPORTS_OUTPUT_DIR, HeuristicReport
+
+REGRESSION_THRESHOLD = 0.05  # 5%
+
+COMPARED_METRICS = [
+    "hit_rate",
+    "mean_reciprocal_rank",
+    "mean_answer_overlap",
+]
+
+
+def _load_report(path: Path) -> HeuristicReport | None:
+    if not path.exists():
+        return None
+    try:
+        return HeuristicReport.model_validate_json(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"warning: could not load {path}: {exc}", file=sys.stderr)
+        return None
+
+
+def _baseline_path(backend: str) -> Path:
+    return REPORTS_OUTPUT_DIR / f"heuristic_results_{backend}_baseline.json"
+
+
+def _current_path(backend: str) -> Path:
+    return REPORTS_OUTPUT_DIR / f"heuristic_results_{backend}.json"
+
+
+def _save_baseline(report: HeuristicReport, backend: str) -> None:
+    """Promote the current run to baseline."""
+    current = _current_path(backend)
+    if current.exists():
+        _baseline_path(backend).write_text(current.read_text(encoding="utf-8"), encoding="utf-8")
+
+
+def compare_backend(backend: str) -> list[str]:
+    """Compare current run against baseline for one backend.
+
+    Returns a list of regression descriptions (empty = no regressions).
+    Emits one eval_item OTel span per compared row when OTel is available.
+    """
+    regressions: list[str] = []
+
+    current = _load_report(_current_path(backend))
+    baseline = _load_report(_baseline_path(backend))
+
+    if current is None:
+        print(
+            f"[{backend}] no current results — run `make eval-heuristic` first.",
+            file=sys.stderr,
+        )
+        return regressions
+
+    if baseline is None:
+        print(
+            f"[{backend}] no baseline found — promoting current run as baseline.",
+        )
+        _save_baseline(current, backend)
+        return regressions
+
+    # Metric-level comparison
+    for metric in COMPARED_METRICS:
+        current_val = getattr(current, metric, None)
+        baseline_val = getattr(baseline, metric, None)
+        if current_val is None or baseline_val is None:
+            continue
+        delta = current_val - baseline_val
+        rel_drop = -delta / max(baseline_val, 1e-9)
+        status = "PASS"
+        if rel_drop > REGRESSION_THRESHOLD:
+            status = "REGRESS"
+            regressions.append(
+                f"{backend}.{metric}: {baseline_val:.3f} -> {current_val:.3f} "
+                f"({rel_drop * 100:.1f}% drop)"
+            )
+        print(f"[{backend}] {metric}: {status} ({baseline_val:.3f} -> {current_val:.3f})")
+
+    # Row-level spans via OTel (best-effort — failures don't fail the compare)
+    try:
+        from observability.spans import eval_item_span
+
+        for row in current.rows:
+            score = row.answer_overlap_ratio
+            with eval_item_span(
+                eval_id=row.id,
+                query=row.question,
+                backend=backend,
+                score=score,
+            ):
+                pass
+    except ImportError:
+        pass  # OTel not installed — skip silently
+
+    return regressions
+
+
+def run_compare(promote: bool = False) -> None:
+    """Compare all backends; exit 1 on any regression."""
+    if not BACKENDS:
+        print(
+            "error: no retrieval backend scaffolded — nothing to compare.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    all_regressions: list[str] = []
+    for backend in BACKENDS:
+        print(f"Comparing {backend}...")
+        all_regressions.extend(compare_backend(backend))
+        print()
+
+    if all_regressions:
+        print("REGRESSIONS DETECTED:", file=sys.stderr)
+        for r in all_regressions:
+            print(f"  {r}", file=sys.stderr)
+        raise SystemExit(1)
+    else:
+        print("No regressions detected.")
+        if promote:
+            for backend in BACKENDS:
+                _save_baseline(
+                    _load_report(_current_path(backend)),  # type: ignore[arg-type]
+                    backend,
+                )
+            print("Promoted current results to baseline.")
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m {{ eval_root }}.pipelines.compare")
+    parser.add_argument(
+        "--promote",
+        action="store_true",
+        help="Promote current run to baseline after a clean comparison.",
+    )
+    args = parser.parse_args()
+    run_compare(promote=args.promote)
+
+
+if __name__ == "__main__":
+    main()

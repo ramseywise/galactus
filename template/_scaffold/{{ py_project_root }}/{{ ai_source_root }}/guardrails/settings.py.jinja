@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class SecuritySettings(BaseSettings):
+    """Guard settings for guardrails/ -- separate from each agent's own Settings
+    class since the guards aren't agent-specific (every agent path runs the same
+    three layers). Same convention as observability/settings.py.jinja."""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # Master off-switch per layer. Guards fail OPEN when disabled and fail
+    # CLOSED on internal error (see guards.py) -- the two are deliberately
+    # different: an operator turning a layer off is a decision, a guard
+    # crashing is not.
+    input_guard_enabled: bool = True
+    content_filter_enabled: bool = True
+    output_filter_enabled: bool = True
+
+    # Longest accepted user turn. Oversized input is the cheapest injection and
+    # cost-blowup vector, so it is rejected before any model call.
+    max_input_chars: int = 8_000
+
+    # Blocked verdicts return this to the caller instead of the model output --
+    # never the reason, which would teach a probing caller what tripped.
+    refusal_message: str = "I can't help with that request."
+{%- if data_sensitivity in ["restricted", "secret"] %}
+
+    # data_sensitivity={{ data_sensitivity }}: the output filter scrubs PII-shaped
+    # strings from model output before it reaches the caller OR the tracer.
+    # Leave true unless the contract in CLAUDE.md is deliberately revisited.
+    scrub_output_pii: bool = True
+{%- endif %}
+
+
+settings = SecuritySettings()

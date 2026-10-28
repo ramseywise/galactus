@@ -1,0 +1,20 @@
+# {{ ts_project_root }}/ — TypeScript backend service
+
+Node/TS service (Express) with the same conventions as the Python side: an
+app factory (`{{ ts_source_root }}/app.ts`, what tests import) split from the
+entrypoint (`{{ ts_source_root }}/index.ts`), a `/health` route, and full
+tooling — eslint flat config, `tsc --noEmit` typecheck, Jest + ts-jest +
+supertest.
+
+Workflow (from the project root): `make ts-install`, then `make ts-dev` /
+`make ts-lint` / `make ts-typecheck` / `make ts-test` / `make ts-build`.
+
+{% if ts_agent_framework == "vercel_ai_sdk" -%}
+`{{ ts_source_root }}/agent/` — a tool-calling agent loop on the Vercel AI
+SDK (`streamText` + `tool()`, Anthropic provider), exposed as a plain
+Request→Response handler wired into this service (POST `/agent/chat`). Its
+eval harness runs with `make ts-agent-eval`. Set `ANTHROPIC_API_KEY` first.
+{%- else -%}
+No LLM code here (`ts_agent_framework=none`) — this is a plain API service;
+the AI lives in the Python agents it fronts or calls.
+{%- endif %}

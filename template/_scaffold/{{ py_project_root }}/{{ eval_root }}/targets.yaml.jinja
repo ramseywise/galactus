@@ -1,0 +1,33 @@
+# Eval metric targets — DESIGN.md's Evaluation table, made executable.
+#
+# Uncomment a metric to activate it. `make eval-heuristic` prints PASS/FAIL per
+# activated metric; `make eval-gate` additionally exits non-zero on any FAIL
+# (wire that into CI once the golden set is real). Keys are either
+# HeuristicReport fields in the eval runner (pipelines/run.py) or the name of
+# a custom grader registered in graders/custom/ (your project's own primary
+# metric — see that package's docstring). Every backend present in the project
+# is held to the same targets.
+#
+# Shipped fully commented out: a fresh project's golden set is example data —
+# set real targets when DESIGN.md's Evaluation section is filled in.
+
+# hit_rate: 0.8
+# mean_reciprocal_rank: 0.6
+# mean_answer_overlap: 0.5
+{%- if include_interaction_evals %}
+
+# Interaction-eval metrics (pipelines/grade.py, `make eval-grade-gate`) —
+# gated on the judge pass-rate when judges ran, heuristic pass-rate otherwise.
+{%- if include_metric_escalation %}
+# escalation_pass_rate: 0.9
+{%- endif %}
+{%- if include_metric_friction %}
+# friction_pass_rate: 0.8
+{%- endif %}
+{%- if include_metric_intent %}
+# intent_pass_rate: 0.9
+{%- endif %}
+{%- if include_metric_language %}
+# language_pass_rate: 0.95
+{%- endif %}
+{%- endif %}

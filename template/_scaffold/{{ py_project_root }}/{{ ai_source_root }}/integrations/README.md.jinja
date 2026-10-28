@@ -1,0 +1,33 @@
+# {{ py_project_root }}/{{ ai_source_root }}/integrations/ — external-system clients
+
+Thin, independently-removable clients for external systems. Shared knobs live
+in `settings.py` (pydantic-settings, reads `.env`). Each module was selected
+at scaffold time (`optional_features` / `external_systems`); add more later
+without hand-rolling auth/retry patterns — copy the shape of an existing one.
+
+{% if include_n8n_webhook -%}
+- `n8n_webhook.py` — HMAC-verified inbound webhook receiver
+  (`POST /webhooks/n8n`), auto-mounted on every present agent's FastAPI app.
+{% endif -%}
+{% if include_calendar_integration -%}
+- `google_calendar.py` — Google Calendar client (pre-obtained OAuth2 refresh
+  token).
+{% endif -%}
+{% if include_composio -%}
+- `composio.py` — third-party app actions (Gmail/Slack/GitHub, hundreds more)
+  via Composio's unified tool API.
+{% endif -%}
+{% if include_web_research -%}
+- `web_research.py` — autonomous web research + reports via GPT-Researcher
+  (needs Python ≤ 3.13 and its own API keys).
+{% endif -%}
+{% if include_meeting_intelligence -%}
+- `meeting_intelligence.py` (+ `clients/`) — meeting transcript → structured
+  action items/decisions via one LLM call.
+{% endif -%}
+{% if include_marketing_integrations -%}
+- `eventbrite.py` / `linkedin.py` / `canva.py` — httpx clients for publishing
+  events, posting updates, generating assets.
+{% endif %}
+Convention: integrations hold I/O + auth only — business logic belongs to the
+agent or pipeline that calls them.
