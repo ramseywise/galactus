@@ -117,6 +117,25 @@ skill copies for now; step 3 removes the duplicates.
   local clone until atlas updates cleanly.
 - Open AIT issues: move the live ones to galactus, close the rest with a link.
 
+## Progress (branch `GAL-43-absorb-template`, nothing pushed)
+
+- Steps 0–4: done.
+- 5.1 hook diet: done (d813531). Per edit: ruff format/fix, docs hygiene, memory guard.
+  Checks run once at Stop via `stop_checks.sh`. Inline guards read stdin; they were dead
+  (`$CLAUDE_TOOL_INPUT` is never set). The friction-log hook still reads env vars.
+- 5.2 `/spike`: done (a3737fa).
+- 5.3 models: done (13df64e). `[models]` in `versions.toml`; stale-ID scan in CI.
+- 5.4 TS-only renders: done (cf9dddc). New derived `has_python`; TS render has its own CI job.
+- 5.5 context diet: done (101e73a). 11 dimensions moved to `review-shared/dimensions/`;
+  `proto-scope` description capped. `new-agent` left: 114-line SKILL.md, refs load on demand.
+- 5.6 dangling refs: done (47e1949).
+- 5.7 `/new` from anywhere: done. `~/.claude/skills/new` → this repo (local machine only).
+- 6 cutover: not started; every item is outward-facing. New blocker: every rendered
+  project's `ci.yml` (and atlas/listen-wiseer/librarian) calls
+  `ramseywise/ai-project-template/.github/workflows/python-ci.yml@main`. ai-project-template
+  is public and galactus is private, so repointing breaks public consumers; private ones
+  need Actions access sharing enabled on galactus.
+
 ## Open decisions
 - D1: Land the staged work via PR before merging (recommended) or park it on `preserve/`?
 - D2: ~~Ship `code-review` as the `/spike` light review, or drop it?~~ Ship it (2026-10-28).

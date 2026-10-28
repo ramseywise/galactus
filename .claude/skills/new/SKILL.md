@@ -21,6 +21,12 @@ Ask real questions, confirm before acting, never silently default. This is a
 scoping-to-scaffold translator, not an onboarding ritual: no phases, growth logs or
 reflection steps.
 
+**Paths are relative to galactus** (`~/workspace/galactus`). This skill is also
+symlinked into `~/.claude/skills/new`, so it can start from any directory: when the
+session is not rooted in galactus, prefix `runs/…`, `pyproject.toml` and the `.` in
+`copier copy … .` with `~/workspace/galactus/`. A run still lands inside galactus,
+never in the current directory.
+
 ## Usage
 
 ```
