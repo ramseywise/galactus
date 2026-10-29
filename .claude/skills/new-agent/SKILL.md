@@ -39,7 +39,7 @@ templates; framework/scaffold docs are workflow guides.
 
 ### Step 2 — Decide the framework (if not given)
 
-Read `.claude/skills/framework-selection/SKILL.md` and walk its decision table with
+Read `~/workspace/galactus/.claude/skills/framework-selection/SKILL.md` and walk its decision table with
 the user, or infer from project context (existing agent code, deployment target
 mentioned) and confirm before proceeding. Do not silently default.
 
@@ -48,24 +48,24 @@ request/response agent, and its templates assume a turn that ends. A duplex desi
 needs a voice runtime that owns turn-taking and barge-in; what this skill can scaffold
 is the *graph behind it*, called per finalized turn — so pick that framework from the
 same table and scaffold only that half, saying plainly which half is missing. Read
-`agent-voice.md` before designing the audio loop.
+`~/workspace/galactus/.claude/specs/agent-voice.md` before designing the audio loop.
 
 ### Step 3 — Scaffold
 
 **If framework == `adk`:**
-1. Read `.claude/skills/adk-scaffold/SKILL.md` and follow it exactly — it drives
+1. Read `~/workspace/galactus/.claude/skills/adk-scaffold/SKILL.md` and follow it exactly — it drives
    requirement-gathering, `DESIGN_SPEC.md`, and the `agent-starter-pack` CLI invocation.
-2. Then read `.claude/skills/adk-dev-guide/SKILL.md` for the development workflow
+2. Then read `~/workspace/galactus/.claude/skills/adk-dev-guide/SKILL.md` for the development workflow
    before writing any agent logic.
 
 **If framework == `langgraph`:**
-1. Read `.claude/skills/langgraph-scaffold/SKILL.md` and follow it — it drives
+1. Read `~/workspace/galactus/.claude/skills/langgraph-scaffold/SKILL.md` and follow it — it drives
    requirement-gathering, `DESIGN_SPEC.md`, and the file scaffold.
-2. Read `.claude/skills/langgraph-fundamentals/SKILL.md` before writing graph code.
+2. Read `~/workspace/galactus/.claude/skills/langgraph-fundamentals/SKILL.md` before writing graph code.
 3. If the spec calls for cross-turn memory, also read
-   `.claude/skills/langgraph-persistence/SKILL.md`.
+   `~/workspace/galactus/.claude/skills/langgraph-persistence/SKILL.md`.
 4. If the spec calls for approval/pause-for-input steps, also read
-   `.claude/skills/langgraph-human-in-the-loop/SKILL.md`.
+   `~/workspace/galactus/.claude/skills/langgraph-human-in-the-loop/SKILL.md`.
 
 ### Step 4 — Apply capability templates
 

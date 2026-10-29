@@ -127,8 +127,8 @@ Claude reads only the relevant reference file.
 - Reference specific to *invoking this skill correctly* → bundle it in `references/`. It
   versions with the skill, can't drift from it, and travels when the skill moves.
 - Reference about a *stack or tool many skills touch* (Python idioms, ADK/Vercel-SDK
-  patterns, logging conventions) → do NOT copy it in. It lives once in `.claude/specs/`
-  and is pulled in on demand via the repo's `Refs:` line. Copying a stack ref into a
+  patterns, logging conventions) → do NOT copy it in. It lives once — `~/.claude/refs/`
+  globally, or a repo's `.claude/specs/` — and is pulled in on demand via the repo's `Refs:` line. Copying a stack ref into a
   skill is how copies go stale — the same failure mode as duplicating a global skill.
 
 When in doubt: "would another skill want this exact file?" Yes → shared ref. No → bundle.

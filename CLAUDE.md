@@ -52,7 +52,7 @@ plan, and CROSS attacks any artifact from any band.
 | Review | `/proto-review` | before the first commit | verdict against `## Plan` |
 | Cross | `/assumption-audit` | any artifact resting on load-bearing guesses | ranked assumptions + cheapest check |
 | Cross | `/war-game` | a plan about to ship | attack findings + mitigations + go/no-go |
-| Cross | `/fog` | a design that must handle not-knowing | ranked collapse sites |
+| Cross | `/fog` | a design that must handle not-knowing | ranked collapse sites (global; owned by guacamayo) |
 
 **FRAME is a band, not a sequence.** Entered by intent, not in fixed order. The chain when
 starting from nothing is `/proto-scope discovery` → `/proto-scope` → `/proto-design`, but
