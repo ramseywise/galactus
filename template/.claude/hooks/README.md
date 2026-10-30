@@ -31,3 +31,10 @@ Commit-time gates (run tests before `git commit`) are wired inline in
 `.claude/settings.json`, not as separate scripts here. Git-level enforcement
 for humans without Claude Code lives in `.pre-commit-config.yaml`, reading the
 same `[tool.ruff]` config.
+
+**Why this set differs from galactus's root hooks.** A rendered project must enforce on
+a machine that has no galactus checkout, so it ships its own guards: `risky_git_guard.sh`
+here, where galactus root has `destructive_cmd_guard.sh`. On a machine that also
+registers galactus's repo-agnostic guards globally (`destructive_cmd_guard`,
+`pip_guard`, `secrets_scan`), `secrets_scan.sh` fires twice per write. That is
+harmless, since both copies are the same file and the check is idempotent.

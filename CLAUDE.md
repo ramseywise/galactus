@@ -132,9 +132,10 @@ looks, so they are not invocable.
 ## Canon lives here
 
 `.claude/skills/`, `.claude/specs/` and `.claude/hooks/` in this repo are the canonical
-copies. `~/.claude/` holds none of them (it was emptied in the 2026-09 machine move) and is
-not upstream of anything here. The one exception points the other way:
-`~/.claude/skills/new` is a symlink into this repo, so `/new` works from any directory.
+copies. `~/.claude/` holds none of them and is not upstream of anything here. Links point
+the other way: `~/.claude/skills/new` is a symlink into this repo, so `/new` works from any
+directory, and the convention refs in `~/.claude/refs/` are symlinks into `.claude/specs/`, so a
+bare `Refs: python.md` in any repo's CLAUDE.md reads the copy here. Edit specs here.
 
 **The template ships from the same files.** Every shared skill or hook under
 `template/.claude/` is a symlink into the root `.claude/` (copier follows symlinks, so a

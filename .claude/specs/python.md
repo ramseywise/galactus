@@ -24,7 +24,7 @@
 ## Don'ts (the review dimensions check these as findings, not just prose)
 
 - No hardcoded paths, secrets, or hyperparameters — config files / env vars only
-- No pandas, no stdlib `logging`, no `print()` in `src/`
+- No pandas, no stdlib `logging`, no `print()` in `src/` (logging: see `logging.md`)
 - No mutable default arguments
 - No bare `except` clauses (or `except Exception: pass` that swallows failures)
 - No network call without a timeout (`httpx` client/request timeout)

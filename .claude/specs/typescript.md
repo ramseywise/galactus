@@ -6,13 +6,13 @@
 - Prefer `fetch` over axios for HTTP; use `Response` streaming for agent output
 - No `any` — use `unknown` + type narrowing
 - Env vars server-side only — never `NEXT_PUBLIC_` or `VITE_` prefix for secrets/API keys
-- Agent state (ADK session, conversation history) → Supabase, not in-memory
+- Agent/session state (ADK session, conversation history) → the database, not in-memory
 - Error boundaries at route level in Next.js/React
 
 ## Don'ts (the review dimensions check these as findings, not just prose)
 
-- No API keys in client bundles — Vercel Functions / Next.js API routes only
-- No `console.log` in production paths — use structured logging or remove
+- No API keys in client bundles — Next.js API routes / server functions only
+- No `console.log` in production paths — use the repo's logger (see `logging.md`) or remove
 - No `require()` in new code — ESM imports only
 - No implicit `any` via `as any` casts
 - No unhandled promise rejections — `await` in try/catch or `.catch()` every promise
