@@ -88,8 +88,13 @@ ids = [
   "claude-haiku-4-5", "claude-sonnet-4", "claude-sonnet-4-5", "claude-sonnet-4-6",
   "claude-opus-4-6", "claude-opus-4-7", "claude-opus-4-8",
 ]
-# Files allowed to name a stale ID: price tables keep old rows on purpose.
-allow = ["template/llm_kit/llm_kit.py"]
+# Files allowed to name a stale ID: price tables keep old rows on purpose, and
+# docs that quote a stale ID as evidence or as a correction are history, not use.
+allow = [
+  "template/llm_kit/llm_kit.py",
+  ".claude/specs/models.md",
+  ".claude/docs/plans/2026-10-30-setup-hygiene.md",
+]
 
 # ---------------------------------------------------------------------------
 # Consumers checked by tools/template/check-versions.sh
