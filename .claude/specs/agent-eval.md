@@ -2,6 +2,8 @@
 
 **Durable question:** How do we know a change made it better, and at what confidence? What is unit-testable vs. only eval-testable in a nondeterministic system?
 
+Course: `generative-ai/08-eval/notes/09-reading-results.md`, `generative-ai/08-eval/notes/06-evaluating-agents.md` (confidence versus noise; grading agent trajectories)
+
 *Contract + seam only. Harness specifics, grader calibration results, and gate thresholds stay project-local. Promoted from an earlier grader-interface and gate-contract design (interface and ladder shape only — per-gate thresholds are project-specific).*
 
 ---

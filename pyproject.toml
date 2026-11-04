@@ -118,6 +118,7 @@ testpaths = [
     "experiments/tests",
     "tests/unit/ml",
     "runs/_shared/tests",
+    "evals/prototyping/tests",
 ]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root

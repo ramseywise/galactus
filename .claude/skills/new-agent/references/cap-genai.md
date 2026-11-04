@@ -15,6 +15,13 @@ A native function must be describable to a model as a JSON-Schema-typed callable
 
 > **Spec note:** `_build_schema()` extracts param descriptions by regexing the docstring with `rf"{param_name}\s*:\s*(.+)"` — this matches the wrong line in most real docstrings. `_resolve_json_type()` collapses unknown types to `"string"` and cannot express nested objects, arrays-of-T, or enums. The schema emitted uses `input_schema` (Anthropic format), which is not compatible with OpenAI `parameters` or Gemini `function_declarations` despite the comment claiming otherwise. Prefer the runtime-native schema derivation listed above.
 
+## Start here
+The smallest course example is one standard-library file: a key-free agent loop with a tool registry, schemas, `check_args`, `dispatch`, parallel calls and eight failure scenarios.
+- Source: [`generative-ai/03-agentic-foundations/practice/tool_agent.py`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/generative-ai/03-agentic-foundations/practice/tool_agent.py)
+- Verify: `uv run tool_agent.py`, run from `generative-ai/03-agentic-foundations/practice/`. Runs and exits 0 and prints a table of scenarios; no assertions, so a pass says nothing about correctness.
+- Covers: one agent's tool schemas, argument checks, dispatch, and what the model sees when a call fails. Does not cover: a schema builder or a registry shared across agents. No TS equivalent: `01-typescript-sdk/03-function-calling.ts` needs an API key and was not run; for TS with assertions see the sandbox lab in `cap-mcp`.
+- **Go further only if** tools are shared across agents and need a schema builder and a common registry, not one agent's inline dispatch; then use the templates below.
+
 ## File: {OUTPUT_DIR}/tool_registry.py
 
 ```python

@@ -2,6 +2,8 @@
 
 **Durable question:** When audio flows both directions at once, what replaces the turn boundary — and what is the budget for every hop between the caller speaking and the caller hearing?
 
+Course: `ai-engineering/08-multimodal-engineering/notes/04-speech-and-voice-agents.md`, `generative-ai/07-agentic-applications/notes/03-real-time-multimodal-agents.md` (latency budget, barge-in; full-duplex)
+
 *Tooling-agnostic. Applies only to duplex designs: audio (or any stream) flowing both directions concurrently. If the design is request → response → done, this spec does not apply and `agent-architecture.md §1` does.*
 
 **Status (2026):** Realtime voice practice is moving fast, and three things below are genuinely unsettled — endpointing thresholds, barge-in state serialization, and audio observability attributes have no standard. Where that is the case this spec says so and requires an explicit local design rather than inventing a number. Treat undated claims as current to 2026-08.

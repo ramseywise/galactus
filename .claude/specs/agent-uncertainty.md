@@ -2,6 +2,8 @@
 
 **Durable question:** What does this system do when it does not know — and how does it tell the difference between not knowing and being confidently wrong?
 
+Course: `generative-ai/08-eval/notes/04-graders.md`, `ai-engineering/04-loop-engineering/notes/07-autonomy-ladder.md` (abstention scoring; escalation thresholds, descent)
+
 *Tooling-agnostic. Organised around decision-making-under-uncertainty (fog of war, minimax, OODA, least commitment); every rule below is stated in engineering terms. The strategic frame names the shape — it is not the argument.*
 
 **This is our convention, not an industry standard.** The quadrant model and the collapse rule are local inventions. The underlying ideas are borrowed from military decision theory, where they are old and well tested; their application to agent design here is ours.

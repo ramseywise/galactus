@@ -2,6 +2,8 @@
 
 **Durable question:** What goes in the context window, in what order, and what gets evicted first? How does a long-running agent stay under the window without losing decisions?
 
+Course: `ai-engineering/02-context-engineering/notes/01-why-context-is-finite.md`, `ai-engineering/02-context-engineering/notes/05-compression-compaction.md` (finite window; what survives compaction)
+
 *Tooling-agnostic. Generalizes an earlier session-level context-health rule from sessions to agents. For framework-specific compaction nodes see `cap-compaction.md` (payload).*
 
 ---

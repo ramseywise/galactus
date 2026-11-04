@@ -2,6 +2,8 @@
 
 **Durable question:** What makes a tool call gateable, auditable, and parallel-safe? When should a capability become an MCP server rather than an in-process tool?
 
+Course: `ai-engineering/03-harness-engineering/notes/03-tool-design.md`, `ai-engineering/03-harness-engineering/notes/04-execution-boundaries.md` (tool contracts, idempotency; permission gates)
+
 *Tooling-agnostic. For LangGraph tool patterns see `langgraph.md`. For MCP server scaffolding see `cap-mcp.md` (payload).*
 
 ---

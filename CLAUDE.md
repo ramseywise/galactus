@@ -45,7 +45,7 @@ plan, and CROSS attacks any artifact from any band.
 | Frame | `/proto-scope discovery` | a pain point, no design vocabulary yet | Project Profile |
 | Frame | `/proto-scope` | scope not yet pinned | `DESIGN.md` |
 | Frame | `/proto-design` | a requirement needs an agent spec | five-layer spec |
-| Build | `/proto-research` | spec exists, unknowns remain | `## Research`, `Track:` |
+| Build | `/proto-research` | spec exists, unknowns remain | `## Research`, `Track:`; grounds findings in the course via Librarian (`### Course grounding`, hook-enforced at `RESEARCHED`) |
 | Build | `/proto-plan` | research reviewed | `## Plan` |
 | Build | `/proto-refine` | plan written | the only writer of `REFINED` / `READY` |
 | Build | `/proto-execute` | plan is `READY` | code; flips `Status:` |

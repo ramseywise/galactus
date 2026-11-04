@@ -60,7 +60,7 @@ echo "=== Valid members pass silently (exit 0, no warning) ==="
 # EXECUTED and SUPERSEDED carry their required companion fields.
 declare -a VALID=(
   "RESEARCH|Status: RESEARCH\n"
-  "RESEARCHED|Status: RESEARCHED\n"
+  "RESEARCHED|Status: RESEARCHED\n\n## Research\n\n### Course grounding\n- query: \`q\` (domain=course) → 1 hits\n"
   "PLANNED|Status: PLANNED\n"
   "REFINED|Status: REFINED\n"
   "READY|Status: READY\n"
@@ -560,6 +560,115 @@ RACE_N=$(wc -l < "$GALACTUS_TRANSITION_LOG")
   && pass "the ledger lock is released, not leaked" \
   || fail "the ledger lock is released, not leaked"
 
+echo "=== Course grounding is required at RESEARCHED ==="
+# Keyed on the state, because /proto-research creates its doc at RESEARCHED with no
+# From:. Both directions matter: the rule fires only at RESEARCHED, and an outage is
+# recorded rather than blocked, so research never stalls on Librarian.
+
+G_HEAD="Status: RESEARCHED\n\n## Research\n\n"
+G_TAIL="\n### Findings\n- something\n\n## Plan\n"
+
+# label|body under ## Research
+declare -a G_OK=(
+  "query line|### Course grounding\n- query: \`evals\` (domain=course) → 3 hits\n  - used: course/evals/notes/01\n"
+  "zero-hit query line|### Course grounding\n- query: \`evals\` (domain=course) → 0 hits — no course coverage for evals\n"
+  "unavailable line, em dash|### Course grounding\nLibrarian: unavailable — MCP tools missing\n"
+  "unavailable line, hyphen|### Course grounding\nLibrarian: unavailable - MCP tools missing\n"
+)
+i=0
+for entry in "${G_OK[@]}"; do
+  i=$((i+1))
+  write_doc "g-ok-$i.md" "$G_HEAD${entry#*|}$G_TAIL"
+  run "$PLANS/g-ok-$i.md"
+  assert_exit0 "grounding accepted: ${entry%%|*}"
+  [ -z "$LAST_MSG" ] && pass "silent — ${entry%%|*}" || fail "warned on ${entry%%|*}: $LAST_MSG"
+done
+
+# label|body under ## Research|expected substring in the rejection
+declare -a G_BAD=(
+  "no section|### Scope\nsomething\n|requires \`### Course grounding\`"
+  "empty heading|### Course grounding\n|needs a non-empty"
+  "prose only|### Course grounding\nDid not get to it.\n|needs a non-empty"
+  "unavailable, em dash, no reason|### Course grounding\nLibrarian: unavailable —\n|needs a non-empty"
+  "unavailable, hyphen, blank reason|### Course grounding\nLibrarian: unavailable -   \n|needs a non-empty"
+  "unavailable, no separator|### Course grounding\nLibrarian: unavailable\n|needs a non-empty"
+  "query line with no query|### Course grounding\n- query:\n|needs a non-empty"
+)
+i=0
+for entry in "${G_BAD[@]}"; do
+  i=$((i+1))
+  label="${entry%%|*}"; rest="${entry#*|}"
+  write_doc "g-bad-$i.md" "$G_HEAD${rest%|*}$G_TAIL"
+  run "$PLANS/g-bad-$i.md"
+  assert_blocked "grounding rejected: $label"
+  want="${rest##*|}"
+  case "$LAST_MSG" in
+    *"$want"*) pass "explains — $label" ;;
+    *) fail "no reason matching '$want' — $label (got: ${LAST_MSG:-<empty>})" ;;
+  esac
+done
+
+# The rejection has to teach the fix, so it names both accepted forms.
+case "$LAST_MSG" in
+  *"- query:"*"Librarian: unavailable — <reason>"*) pass "the rejection names both accepted forms" ;;
+  *) fail "the rejection names both accepted forms (got: ${LAST_MSG:-<empty>})" ;;
+esac
+
+# Boundaries: the section has to be in the right place, and a query elsewhere must
+# not satisfy it.
+write_doc "g-wrong-parent.md" "Status: RESEARCHED\n\n## Research\n\n### Findings\nx\n\n## Plan\n\n### Course grounding\n- query: \`q\` → 1 hits\n"
+run "$PLANS/g-wrong-parent.md"
+assert_blocked "section under a different ## heading"
+
+write_doc "g-no-research.md" "Status: RESEARCHED\n\n### Course grounding\n- query: \`q\` → 1 hits\n"
+run "$PLANS/g-no-research.md"
+assert_blocked "section with no ## Research above it"
+
+write_doc "g-fenced.md" "Status: RESEARCHED\n\n## Research\n\n\`\`\`\n### Course grounding\n- query: \`q\` → 1 hits\n\`\`\`\n"
+run "$PLANS/g-fenced.md"
+assert_blocked "section only inside a fence"
+
+write_doc "g-fenced-line.md" "Status: RESEARCHED\n\n## Research\n\n### Course grounding\n\`\`\`\n- query: \`q\` → 1 hits\n\`\`\`\n"
+run "$PLANS/g-fenced-line.md"
+assert_blocked "real heading whose only query line is fenced"
+
+write_doc "g-next-section.md" "Status: RESEARCHED\n\n## Research\n\n### Course grounding\n\n### Findings\n- query: \`q\` → 1 hits\n"
+run "$PLANS/g-next-section.md"
+assert_blocked "a query line in the next ### section does not count"
+
+write_doc "g-sub-heading.md" "Status: RESEARCHED\n\n## Research\n\n### Course grounding\n#### Core question\n- query: \`q\` → 1 hits\n"
+run "$PLANS/g-sub-heading.md"
+assert_exit0 "a #### inside the section does not end it"
+
+# The rule applies at RESEARCHED and nowhere else. Every doc past this point reached
+# its state some other way or predates the rule, and must stay writable.
+write_doc "g-planned.md" "Status: PLANNED\n\n## Research\n\n### Findings\nx\n"
+run "$PLANS/g-planned.md"
+assert_exit0 "PLANNED with no section — the rule is keyed on RESEARCHED"
+
+write_doc "g-research.md" "Status: RESEARCH\n\n## Research\n"
+run "$PLANS/g-research.md"
+assert_exit0 "RESEARCH with no section — research still under way"
+
+# A fenced RESEARCHED is an example, not the doc's state.
+write_doc "g-fenced-status.md" "Status: PLANNED\n\n\`\`\`\nStatus: RESEARCHED\n\`\`\`\n"
+run "$PLANS/g-fenced-status.md"
+assert_exit0 "a fenced Status: RESEARCHED does not trigger the rule"
+
+# A rejected origin edge is not recorded, and an accepted one still is.
+: > "$GALACTUS_TRANSITION_LOG"
+write_doc "g-edge-bad.md" "Status: RESEARCHED\nFrom: RESEARCH\n"
+run "$PLANS/g-edge-bad.md"
+assert_blocked "RESEARCH -> RESEARCHED with no section"
+[ "$(ledger_count RESEARCH RESEARCHED)" -eq 0 ] \
+  && pass "ledger does NOT record an ungrounded RESEARCHED edge" \
+  || fail "ledger does NOT record an ungrounded RESEARCHED edge"
+write_doc "g-edge-ok.md" "Status: RESEARCHED\nFrom: RESEARCH\n\n## Research\n\n### Course grounding\nLibrarian: unavailable — down\n"
+run "$PLANS/g-edge-ok.md"
+[ "$(ledger_count RESEARCH RESEARCHED)" -eq 1 ] \
+  && pass "ledger records a grounded RESEARCHED edge" \
+  || fail "ledger records a grounded RESEARCHED edge"
+
 echo "=== spike/* branches skip validation; other branches do not ==="
 # Spikes carry no plan doc by design, so the state machine stands down there. The
 # control case on a feature branch proves the skip is the branch, not the fixture.
@@ -572,6 +681,14 @@ assert_exit0 "invalid Status on a spike/* branch"
 git -C "$SPIKE" checkout -q -b GAL-1-feature
 run "$SPIKE/.claude/docs/plans/s.md"
 [ "$LAST_RC" -eq 2 ] && pass "same doc on a feature branch is rejected" || fail "same doc on a feature branch exited $LAST_RC (must be 2)"
+
+# Same shape for course grounding, with the skip proved in both directions.
+printf 'Status: RESEARCHED\n' > "$SPIKE/.claude/docs/plans/g.md"
+run "$SPIKE/.claude/docs/plans/g.md"
+assert_blocked "RESEARCHED with no section on a feature branch"
+git -C "$SPIKE" checkout -q -b spike/grounding
+run "$SPIKE/.claude/docs/plans/g.md"
+assert_exit0 "RESEARCHED with no section on a spike/* branch"
 
 echo
 echo "RESULT: $PASS passed, $FAIL failed"

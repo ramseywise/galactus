@@ -8,6 +8,13 @@ Evaluation examples must be convertible to an instruction-tuning format (instruc
 
 > **Known bug — bf16 / dtype mismatch:** `trainer.py` hardcodes `bf16=True` in `TrainingArguments` while computing `dtype` conditionally on `torch.cuda.is_available()`. These disagree on CPU-only machines and will fail at training time. Fix: set `bf16=torch.cuda.is_available()`.
 
+## Start here
+The smallest course example is a block in a note: `LoraConfig` and `get_peft_model` on a tiny random Llama, with no model download, printing how few parameters a LoRA trains.
+- Source: [`generative-ai/01-llm-fundamentals/notes/09-peft-and-fine-tuning-in-practice.md:L88-L97`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/generative-ai/01-llm-fundamentals/notes/09-peft-and-fine-tuning-in-practice.md#L88-L97)
+- Verify: save the block as `lora_block.py`, then `uv run --no-project --with peft --with transformers --with torch python lora_block.py`, run from any empty folder. The first install is large. No assertions; run with peft 0.21.2, transformers 5.14.1 and torch 2.13.0 already installed, the output matched the note's printed output (65,536 of 3,201,280 trainable, 2.0472%).
+- Covers: the LoRA config and what it freezes. Does not cover: dataset conversion, Trainer, eval. `ai-engineering/08-multimodal-engineering/practice/vlm_finetune_lab.py` is a full pipeline but needs about 0.5 GB and was not run.
+- **Go further only if** you have a real dataset to convert, split and train, and need eval and publishing around the adapter; then use the templates below.
+
 ## File: {OUTPUT_DIR}/finetune/dataset.py
 
 ```python

@@ -23,6 +23,14 @@ Every agent turn must produce a trace span with: model name, token counts (input
 - **Tool call spans**: each tool call gets a child span under the turn span with `gen_ai.tool.name` and `gen_ai.tool.call.id`.
 - **Error spans**: set `span.set_status(StatusCode.ERROR, description=str(exc))` and record the exception. Never swallow errors silently — an un-traced error is an undiagnosed error.
 
+## Start here
+The smallest course example is a block in a note that traces one agent turn as agent, retriever and generation spans, with token and cache usage, using the real Langfuse client on an offline fake.
+- Source: [`generative-ai/06-observability/notes/01-tracing-with-langfuse.md:L153-L184`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/generative-ai/06-observability/notes/01-tracing-with-langfuse.md#L153-L184)
+- Verify: `uv run --no-project --with 'langfuse>=5' --with pandas --with numpy --with langgraph --with langchain --with anthropic --with 'mcp>=2' --with matplotlib python check_blocks.py 01-tracing`, run from `generative-ai/06-observability/practice/`. Compares each block's output with the note's printed output and exits 1 on a difference; no assertions on the spans themselves. Run with langfuse 5.0.4 already installed: 11 blocks ok. The linked block is `block 3`. Look for its `ok` line, because a mistyped filter or a missing `notes/` folder also prints `failures: 0` and exits 0.
+- Layout: `check_blocks.py` reads `../notes/` and imports `support_agent/` from `practice/`, so keep the pillar's folders together.
+- Covers: one trace per turn, session and metadata propagation, exclusive token and cache buckets. Does not cover: `AgentSpan`, GenAI semconv, a real OTLP exporter, structlog. Python only.
+- **Go further only if** you need the GenAI semconv attributes, a real OTLP exporter or structured logs rather than Langfuse-on-OTel; then use the templates below.
+
 ## File: {OUTPUT_DIR}/observability.py
 
 ```python

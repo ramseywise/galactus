@@ -2,6 +2,8 @@
 
 **Durable question:** What can the agent not do, and where is that enforced? What does a hostile input or a compromised tool get access to?
 
+Course: `ai-engineering/09-safety-and-security/notes/01-threat-model.md`, `ai-engineering/09-safety-and-security/notes/02-prompt-injection-and-jailbreaks.md`, `ai-engineering/09-safety-and-security/notes/04-tool-and-execution-sandboxing.md` (hostile input, enforced boundaries, sandboxing)
+
 *Promoted and generalized from an earlier five-layer safeguards model (May 2026). That model held across ADK + LangGraph + TS implementations — the durability test for convention promotion.*
 
 **Agent security status (2026):** No consensus defense against prompt injection. Write the boundary/threat model (what has access to what), not a recipe. This section will need re-review as practice settles.

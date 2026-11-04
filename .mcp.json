@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "librarian": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${LIBRARIAN_DIR:-/Users/ramsey-wise/workspace/librarian}",
+        "python",
+        "app/mcp_server/server.py"
+      ]
+    }
+  }
+}

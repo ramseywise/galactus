@@ -2,6 +2,8 @@
 
 **Durable question:** When does the agent decide vs. the harness decide? What loop shape fits this task, and how are subagents coordinated?
 
+Course: `ai-engineering/04-loop-engineering/notes/02-loop-shapes.md`, `ai-engineering/03-harness-engineering/notes/07-orchestration.md` (loop shape; subagent coordination)
+
 *Tooling-agnostic. For LangGraph-specific binding see `langgraph.md`.*
 
 ---

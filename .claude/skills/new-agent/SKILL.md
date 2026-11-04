@@ -69,6 +69,19 @@ same table and scaffold only that half, saying plainly which half is missing. Re
 
 ### Step 4 — Apply capability templates
 
+Before generating a capability, look for a worked example. If it maps to a pattern from the manifest vocabulary
+(`retrieval`, `judge`, `loop`, `graph`, `tool-agent`, `guardrail`, `budget`, `finetune`, `eval`),
+read `<pillar>/practice/manifest.yaml` from the course checkout at
+`${LEARN_AI_DIR:-~/workspace/learn-ai-engineering}`, using `search_wiki(query, domain="course")` to find
+the pillar when it is not obvious. Take the entry with the matching `pattern` and, among twins, the
+project's `language`. When its `verified_by` is not `none`, start from its `path` (relative to the pillar;
+`verified_by` runs from its `practice/` folder). That is a reference to start from: only `licence: course`
+code may be copied, and even that has no stated licence yet, so never present it as free to redistribute.
+If the checkout or Librarian is absent, say so and proceed.
+
+When a `references/cap-*.md` ref has a `## Start here` section, start from the example it links and move to
+the ref's templates only when its `Go further only if` condition holds.
+
 For each capability the agent needs, read the matching `references/cap-*.md` and
 generate the corresponding files. Available capabilities:
 
