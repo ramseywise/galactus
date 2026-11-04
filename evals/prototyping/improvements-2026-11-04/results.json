@@ -1,0 +1,120 @@
+{
+  "case": "rag-runbook-search",
+  "generator_model": "claude-opus-5-5",
+  "judge_model": "claude-sonnet-5-5",
+  "note": "One output per arm. Judges have no tools. Not a full-run result.",
+  "arms": {
+    "baseline": {
+      "scope_fit": [
+        "FAIL",
+        "FAIL",
+        "FAIL",
+        "PASS",
+        "PASS"
+      ],
+      "extra_components": [
+        "3",
+        "4",
+        "3",
+        "3",
+        "4"
+      ],
+      "deferred_components": [
+        "2",
+        "1",
+        "2",
+        "2",
+        "1"
+      ],
+      "claim_support": {
+        "PASS": 13,
+        "FAIL": 10,
+        "CANNOT_GRADE": 26
+      }
+    },
+    "preflight": {
+      "scope_fit": [
+        "FAIL",
+        "FAIL",
+        "PASS",
+        "FAIL",
+        "FAIL"
+      ],
+      "extra_components": [
+        "4",
+        "4",
+        "6",
+        "6",
+        "6"
+      ],
+      "deferred_components": [
+        "3",
+        "3",
+        "3",
+        "3",
+        "3"
+      ]
+    },
+    "arma": {
+      "scope_fit": [
+        "FAIL",
+        "FAIL",
+        "FAIL",
+        "FAIL",
+        "FAIL"
+      ],
+      "extra_components": [
+        "3",
+        "4",
+        "4",
+        "3",
+        "3"
+      ],
+      "deferred_components": [
+        "4",
+        "4",
+        "5",
+        "5",
+        "4"
+      ],
+      "claim_support": {
+        "PASS": 17,
+        "CANNOT_GRADE": 24,
+        "FAIL": 5
+      },
+      "generator_cost_usd": 4.39,
+      "generator_minutes": 8.5
+    },
+    "armb": {
+      "scope_fit": [
+        "PASS",
+        "PASS",
+        "PASS",
+        "FAIL",
+        "PASS"
+      ],
+      "extra_components": [
+        "2",
+        "1",
+        "2",
+        "1",
+        "1"
+      ],
+      "deferred_components": [
+        "11",
+        "5",
+        "8",
+        "6",
+        "6"
+      ],
+      "claim_support": {
+        "PASS": 15,
+        "FAIL": 7,
+        "CANNOT_GRADE": 9
+      },
+      "generator_cost_usd": 4.9,
+      "generator_minutes": 25.4
+    }
+  },
+  "judge_cost_usd": 6.03
+}

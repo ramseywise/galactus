@@ -463,6 +463,15 @@ Decided by Ramsey 2026-11-04: run one case first; D3 is deferred. War-game items
 
 Extra components are judged and reported, but one case cannot count as an improvement.
 
+**Full-run rule, rewritten 2026-11-04 before any full-run output exists. It replaces the conditions below.** Evidence: `.claude/docs/plans/2026-11-04-prototyping-improvements-before-d1.md`.
+- The seven other cases are the held-out set. `rag-runbook-search` was used for tuning and is excluded from every improvement claim.
+- The claim is "the new skill against the old skill". It cannot credit course grounding alone.
+- Generators on both sides have Bash, under the sandbox in the improvements plan. Run 2 baseline repeats on the old skill for generator noise.
+- Every count and verdict gets 5 judges. One judge per case is not usable: on one output, scope fit split 2 to 3.
+- Improvement needs mean extra components to fall by more than the noise, and mean deferred components to rise by less than extras fall. Scope fit is reported, never a gate. Claim support must be judged on both sides with one setup, against the commit each output was written from.
+- Estimated cost: about $32 for seven cases and $9 for two repeats, at arms A and B's average of $4.65, plus judges.
+- Not started. As of this rewrite, arm B misses the deferred rule on the tuning case, so it needs Ramsey's decision first.
+
 **Full run, only if Ramsey asks for it after the preflight.**
 - The other seven cases run once. No re-run to improve a number. A run that fails on infrastructure may be repeated, and is reported as repeated.
 - First re-run two baseline cases on the baseline skill, to measure the noise in extra components.

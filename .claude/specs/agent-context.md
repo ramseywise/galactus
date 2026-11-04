@@ -75,7 +75,7 @@ Isolation (subagents) is the highest-cost lever — use it when context collisio
 
 **Fixed `k` is a bug in both directions** — it over-fills simple queries (rot) and under-fills complex ones (missing evidence). Scale retrieval depth to task complexity: a simple factual lookup wants few chunks (*"more is pure dilution"*); comparison and synthesis want more; ambiguous or exploratory work wants **retrieve wide, rerank hard, send narrow**.
 
-**Pre-retrieval pipeline ordering** — each stage narrows the candidate set, so cheap filters go first:
+**Pre-retrieval pipeline ordering** — each stage narrows the candidate set, so cheap filters go first. This fixes the order, not the contents: start with what the task needs, and add a stage, a reranker included, when a measured failure calls for it:
 
 ```
 metadata filter → vector search → rerank (cross-encoder) → dedup

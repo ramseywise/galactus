@@ -446,6 +446,7 @@ def test_cannot_grade_is_not_a_pass_and_is_counted_separately(
         scored_setup["judgments"],
         {
             run.components_prompt_id("only-case"): "<critique>None.</critique><count>0</count>",
+            run.deferred_prompt_id("only-case"): "<critique>None.</critique><count>0</count>",
             scored_setup["scope_id"]: good_reply("PASS"),
             first: good_reply("PASS"),
             second: good_reply("CANNOT_GRADE"),
@@ -581,7 +582,7 @@ def test_judgments_directory_matches_emitted_prompt_names(
     replies = tmp_path / "replies"
     replies.mkdir()
     for prompt in prompts_dir.glob("*.txt"):
-        is_count = prompt.name.startswith(run.EXTRA_COMPONENTS)
+        is_count = prompt.name.startswith((run.EXTRA_COMPONENTS, run.DEFERRED_COMPONENTS))
         (replies / prompt.name).write_text(
             "<critique>None.</critique><count>0</count>" if is_count else good_reply("FAIL")
         )
@@ -602,6 +603,7 @@ def test_no_cited_claims_is_na_and_counted_not_a_perfect_score(
         {
             scored_setup["scope_id"]: good_reply("PASS"),
             run.components_prompt_id("only-case"): "<critique>None.</critique><count>0</count>",
+            run.deferred_prompt_id("only-case"): "<critique>None.</critique><count>0</count>",
         },
     )
     code, report = score(scored_setup, capsys)
@@ -789,15 +791,53 @@ def test_parse_count_is_strict():
 
 
 def test_components_summary_never_counts_an_ungraded_case_as_zero():
-    def score(value):
-        return run.CaseScore("c", "rag", "small", extra_components=value)
-
-    summary = run._components_summary(
-        [score(2), score(4), score("CANNOT_GRADE"), score(run.MISSING)]
-    )
+    summary = run._components_summary([2, 4, "CANNOT_GRADE", run.MISSING])
     assert (summary["total"], summary["graded"], summary["mean"]) == (6, 2, 3.0)
     assert summary["cannot_grade"] == 1
     assert summary["missing_judgments"] == 1
+
+
+def test_deferred_components_are_scored_apart_from_extra_components(
+    scored_setup: dict, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (scored_setup["outputs"] / "only-case.md").write_text("### Recommendation\nUse one call.\n")
+    write_judgments(
+        scored_setup["judgments"],
+        {
+            scored_setup["scope_id"]: good_reply("PASS"),
+            run.components_prompt_id("only-case"): "<critique>None.</critique><count>1</count>",
+            run.deferred_prompt_id("only-case"): "<critique>a, b, c</critique><count>3</count>",
+        },
+    )
+    code, report = score(scored_setup, capsys)
+    assert code == 0
+    assert report["evidence"]["extra_components"]["total"] == 1
+    assert report["evidence"]["deferred_components"]["total"] == 3
+    assert report["per_case"][0]["deferred_components"] == 3
+
+
+def test_missing_deferred_count_makes_the_run_incomplete(
+    scored_setup: dict, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (scored_setup["outputs"] / "only-case.md").write_text("### Recommendation\nUse one call.\n")
+    write_judgments(
+        scored_setup["judgments"],
+        {
+            scored_setup["scope_id"]: good_reply("PASS"),
+            run.components_prompt_id("only-case"): "<critique>None.</critique><count>0</count>",
+        },
+    )
+    code, report = score(scored_setup, capsys)
+    assert code == 1
+    assert report["evidence"]["deferred_components"]["missing_judgments"] == 1
+
+
+def test_adding_the_deferred_judge_left_the_baseline_judges_unchanged():
+    baseline = json.loads((Path(run.__file__).parent / "baseline-2026-11-04.json").read_text())
+    current = run._sha256(
+        run.SCOPE_FIT_JUDGE + run.EXTRA_COMPONENTS_JUDGE + run.CLAIM_SUPPORT_JUDGE
+    )
+    assert current == baseline["judges"]["prompt_sha256"]
 
 
 def test_missing_component_count_makes_the_run_incomplete(
