@@ -102,6 +102,16 @@ generate the corresponding files. Available capabilities:
 | `cap-streaming.md` | Streaming responses |
 | `cap-vision.md` | Vision/multimodal |
 
+Blank templates for agents that run across sessions or in a loop. Fill them in only when the design calls for one:
+
+| Reference | Use |
+|-----------|-----|
+| `references/harness/` | Startup script, feature list and schema, progress log, session handoff |
+| `references/loop/` | Maker and checker prompts, loop contract, loop state |
+| `references/generate-then-verify.py` | LangGraph generate, validate, review graph with an attempt bound |
+
+Keep the source comment on anything copied from these. `references/THIRD_PARTY.md` lists origins and licences.
+
 ### Step 5 — Core files + infra
 
 Read and apply these references for every agent:

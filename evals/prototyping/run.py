@@ -110,7 +110,9 @@ LINE_WINDOW = 30
 SMALL_INTEGER_LIMIT = 10
 """Bare integers below this are structural counts ("3 options"), not quantitative claims."""
 
-_NO_CLAIM_SECTIONS = frozenset({"scope", "sources", "references", "bibliography"})
+_NO_CLAIM_SECTIONS = frozenset(
+    {"scope", "sources", "references", "bibliography", "course grounding"}
+)
 """Sections that list what was read. A path listed there is not a claim about the path."""
 
 _SECRET_NAME_RE = re.compile(r"(^\.env)|(\.pem$)|(\.key$)|credential|secret", re.IGNORECASE)

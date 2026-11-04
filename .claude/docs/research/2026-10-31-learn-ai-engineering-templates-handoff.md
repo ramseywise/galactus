@@ -3,10 +3,10 @@
 On 2026-10-31 the `templates/` folders in `learn-ai-engineering/ai-engineering/<pillar>/` were
 deleted. The course notes now carry the essential parts inline. The files below are candidates for
 this repo's Copier template. All of them are still in learn-ai-engineering history at commit
-`6ee939f`. To recover one:
+`e837ad89^`, on main. (`6ee939f` is on no branch and can be pruned.) To recover one:
 
 ```bash
-git -C ~/workspace/learn-ai-engineering show 6ee939f:<path> > <dest>
+git -C ~/workspace/learn-ai-engineering show e837ad89^:<path> > <dest>
 ```
 
 **Port?** means: **yes** = worth adding; **maybe** = overlaps something already here, so check first; **no** = left out on purpose.
@@ -65,3 +65,12 @@ The suggested destinations are relative to `template/`.
 | `eval.yml` | GitHub Actions workflow: smoke, regression and nightly evals | maybe | `.github/workflows/` |
 
 01 Prompt engineering had no templates.
+
+## Ported 2026-11-04
+
+Homes above were checked against the repo. `new-agent` no longer ships in the template, and no loop or eval skill exists, so nothing here reaches rendered projects.
+
+- **Ported to `.claude/skills/new-agent/references/`:** `harness/` (`init.sh`, `feature_list.json`, `feature_list.schema.json`, `progress.md`, `session-handoff.md`), `loop/` (`maker-prompt.md`, `checker-prompt.md`, `loop-contract.md`, `loop-state.md`) and `generate-then-verify.py`. Notices are in `references/THIRD_PARTY.md`. Maker and checker went in as references, not `.claude/agents/`, so they are not offered as subagents.
+- **Dropped:** `control_loop.py` and `scoring_functions.py`: 3,389 lines copied from davidkimai/Context-Engineering, not a small lab.
+- **Held, no home:** `judge-prompt.md`, `failure-taxonomy.md`, `judge-calibration.md`, `gate-contract.md`, `evalset.schema.json`. No eval skill exists to hold them.
+- **Maybe rows:** not ported. `prompts/*.md`: skip, generic. `AGENTS.md`: skip, overlaps `CLAUDE.md.jinja`. `clean-state-checklist.md`: fold into `session-handoff.md` if wanted. `evaluator-rubric.md`: revisit with the eval templates. `ralph.sh`: skip, overlaps stop hooks. `fan-out-merge.py`: revisit if a fan-out agent needs it. `graph-update.schema.json`: skip until a shared KG exists. `eval.yml`: revisit with the eval templates.

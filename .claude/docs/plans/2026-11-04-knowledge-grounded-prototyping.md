@@ -447,9 +447,50 @@ notes that justify it, found via Librarian search; nothing else in the specs cha
 
 Defaults set by the orchestrator, pending Ramsey's review: link-only, and no code-stage eval. These replace C2's inlining and hash check. See `.claude/docs/decisions/2026-11-04-knowledge-grounded-prototyping-wargame.md`.
 
-- **C1: not run.** Held for decisions on destinations and third-party notices (WG-002, WG-003).
+- **C1: narrowed, per Ramsey 2026-11-04.** Ported the harness and loop templates and `generate-then-verify.py` to `.claude/skills/new-agent/references/`, with per-file notices and `THIRD_PARTY.md`. The two Context-Engineering files are dropped, and the eval templates are held because no home exists. Details are at the end of the handoff doc.
 - **C2: done for 9 refs whose example was run:** hitl, genai, mcp, guardrails, observability, langchain, compaction, finetune, rlhf. Links are pinned to course commit `826a59943764619151f9c05dfd78a485b6e4271b`, and no course code is inlined. Labels state what ran, not "tested" (WG-007). Unchanged: rag, forecast and cluster (example not run), streaming (weak match), batch, kg, a2a, search and vision (no example). The `review` agent was not run; the diff (additions only) and all 11 links were checked directly.
 - **C3: done for 11 specs.** `agent-runtime.md` says `Course: none found`, which is a gap for the course.
+
+#### D1 rule, written before any run (2026-11-04)
+
+Decided by Ramsey 2026-11-04: run one case first; D3 is deferred. War-game items: WG-001, WG-004, WG-006, WG-012.
+
+**Preflight: one case, `rag-runbook-search`, chosen before any output exists.** It is not evidence about the skill. It passes only if all of these hold:
+1. The snapshot has the new skill and has no `evals/`, no plan docs and no `.git`.
+2. The output has at least one `- query:` line, and no `Librarian: unavailable` line.
+3. Every `- query:` line matches a new row in Librarian's `logs/retrieval.jsonl`, so grounding really happened.
+4. The output shows no sign of the eval or the plan: no `minimum_solution`, `extra_components` or plan file name.
+
+Extra components are judged and reported, but one case cannot count as an improvement.
+
+**Full run, only if Ramsey asks for it after the preflight.**
+- The other seven cases run once. No re-run to improve a number. A run that fails on infrastructure may be repeated, and is reported as repeated.
+- First re-run two baseline cases on the baseline skill, to measure the noise in extra components.
+- `deferred_components` is added and scored on both baseline and after, since `Go further only if` wording could move the count on wording alone (WG-008).
+- Improvement is claimed only if total extra components fall by more than the measured noise, deferred components do not rise by as much, scope fit stays at 8 of 8 and claim support drops by at most 5 points. Anything else is reported as no evidence. Eight cases still give only a direction.
+
+**Harness:** `run.py` sha256 `be687dd07291f7e1…`, after adding `course grounding` to `_NO_CLAIM_SECTIONS`. No baseline output has that section, so baseline scores do not change.
+
+**Baseline provenance, recovered from its session transcript:** generators `claude-opus-5-5`, judges `claude-sonnet-5-5`. The base commit was not recorded. The outputs are now in `evals/prototyping/baseline-outputs-2026-11-04/`. Raw judge files are still only in a temp folder.
+
+**Known differences from the baseline:** generators run through `claude -p`, not a subagent, because the Librarian server has to be passed explicitly to a snapshot outside the approved project. They have no Bash, and their prompt allows Librarian in place of forbidding it.
+
+**Preflight result (2026-11-04): passed all four checks. Not evidence about the skill.** Files are in `evals/prototyping/preflight-2026-11-04/`.
+
+| `rag-runbook-search` | Baseline | Preflight |
+|---|---|---|
+| Extra components | 4 | 4 |
+| Scope fit | PASS | FAIL (reranker proposed with no stated need) |
+| Words | 4,175 | 5,800 |
+
+- All 8 `- query:` lines match new rows in Librarian's log, and the 8 notes it reports reading match 8 `read_page` rows. Generator cost was $4.08 over 8.4 minutes.
+- One judge per metric and no repeat, so the noise is unknown. Claim support (87 prompts) was not judged.
+- Librarian returned its `DEGRADED RETRIEVAL` notice on the first search, so the index was behind the files during this run.
+- The snapshot's copy of `plan_status_validate.sh` names this plan's file in a comment. The plan itself was absent, and the output shows no sign of it.
+- The server was passed with `--mcp-config`. `claude mcp list` still shows it pending approval in `galactus/`.
+- The full run has not been requested.
+
+**D3 deferred, per Ramsey 2026-11-04.** It needs Librarian and course changes (WG-011).
 
 ### Phase D — prove it (needs B, C)
 

@@ -826,3 +826,17 @@ def test_line_shorthand_in_the_same_sentence_follows_the_nearest_file():
         "docs/b.md:3",
         "docs/b.md:4",
     }
+
+
+def test_course_grounding_section_makes_no_claims() -> None:
+    """Grounding lists what was read, so its `- used:` lines are not claims about the source."""
+    output = (
+        "### Course grounding\n"
+        "- query: retrieval design\n"
+        "- used: `notes/01-chunking.md`\n\n"
+        "### Findings\n"
+        "Chunking helps, per `notes/01-chunking.md`.\n"
+    )
+    claims = run.extract_claims(output)
+    assert len(claims) == 1
+    assert "Chunking helps" in claims[0].text
