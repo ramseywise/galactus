@@ -1,0 +1,17 @@
+<critique>
+The minimum is heading chunks, one hybrid store, RRF, one LLM call, a threshold abstention, a nightly re-index and a small eval set. The components below go beyond it.
+
+1. Cross-encoder reranker (stage 5). It is a separate model, and the document makes it part of the baseline.
+2. Post-generation verification check (stage 8, F5). A separate code module resolves each strict claim to a source span and blocks the answer on failure. The minimum has nothing after the LLM call.
+3. Exact-identifier lookup with an identifier inventory built at index time (stage 3, F2). This is a separate index and lookup path on top of the single keyword and embedding store.
+4. Secret scanning at ingestion (F13). The planner is told to add it as a security control in the ingestion pipeline, so it counts as a separate pipeline stage.
+
+These are not counted:
+- Query parse, scope filter and the typed four-outcome response are functions or settings inside components.
+- The LLM sufficiency check is an "option to test" and is not committed.
+- Contextual retrieval and multi-query rewriting are ablation only.
+- HyDE, the CRAG loop, the agentic loop, the query planner, the semantic cache and managed RAG are rejected or SKIP.
+- Index-lag alerts, reconciliation, tracing and the shadow period are advice or process, not separate things to build.
+- The evaluation set is in the minimum.
+</critique>
+<count>4</count>

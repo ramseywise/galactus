@@ -268,6 +268,56 @@ if epistemic_value is not None:
             "or record why they do not block, then advance"
         )
 
+
+# Course grounding — a doc at RESEARCHED must show it queried the course, or say why
+# it could not (knowledge-grounded-prototyping, Phase B). Keyed on the state, not on
+# From:, because /proto-research's origin write declares no From:.
+#
+# Shape only: the hook cannot tell a query that ran from one that was typed. The
+# unavailable line is what keeps research from stalling on an outage — an outage is
+# recorded, not blocked — so an empty section is the one thing this refuses.
+#
+# These read `lines`, so a fenced example never counts. A `####` stays in the body.
+HEADING_RE = re.compile(r"^ {0,3}#{1,3}[ \t]")
+QUERY_RE = re.compile(r"^[ \t]*-[ \t]+query:[ \t]*\S")
+UNAVAILABLE_RE = re.compile(r"^[ \t]*Librarian:[ \t]+unavailable[ \t]+[—-][ \t]+\S")
+
+
+def section_body(src, parent, heading):
+    """Return the lines under `heading` inside `parent`; None if it is not there.
+
+    `parent` runs to the next `#`/`##` heading, the section to the next `#`/`##`/`###`.
+    An empty section returns [], which the caller must not read as a missing one.
+    """
+    in_parent = False
+    body = None
+    for ln in src:
+        is_heading = HEADING_RE.match(ln)
+        if body is not None:
+            if is_heading:
+                return body
+            body.append(ln)
+            continue
+        if not is_heading:
+            continue
+        text = " ".join(ln.split())
+        if len(text.split()[0]) <= len(parent.split()[0]):
+            in_parent = text == parent
+        elif in_parent and text == heading:
+            body = []
+    return body
+
+
+if token == "RESEARCHED":
+    accepted = "`- query: <text>` or `Librarian: unavailable — <reason>`"
+    body = section_body(lines, parent="## Research", heading="### Course grounding")
+    if body is None:
+        issues.append(
+            f"  Status: RESEARCHED requires `### Course grounding` under `## Research`, holding {accepted}"
+        )
+    elif not any(QUERY_RE.match(ln) or UNAVAILABLE_RE.match(ln) for ln in body):
+        issues.append(f"  `### Course grounding` needs a non-empty {accepted}")
+
 if issues:
     print(f"Plan-doc front matter is not conforming in {path}:", file=sys.stderr)
     for issue in issues:

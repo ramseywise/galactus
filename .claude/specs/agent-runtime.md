@@ -2,6 +2,8 @@
 
 **Durable question:** Stateless function, long-lived process, or managed runtime — and what does each force? Where does spend go, and which lever moves it?
 
+Course: none found (no note covers stateless vs long-lived vs managed hosting)
+
 *Absorbs the stateless-function constraint analysis previously buried in a framework-specific doc. For LangGraph deployment see `langgraph.md`.*
 
 ---

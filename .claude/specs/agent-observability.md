@@ -2,6 +2,8 @@
 
 **Durable question:** What must a trace contain to debug a bad agent run after the fact? How is cost attributed to the agent, route, or user that generated it?
 
+Course: `generative-ai/08-eval/notes/08-tracing-and-observability.md`, `ai-engineering/05-graph-engineering/notes/08-governance-and-production.md` (trace contents; per-node cost attribution)
+
 *Extends structlog mechanics for agent-shaped spans. For tool/framework instrumentation see framework refs.*
 
 **OTel GenAI semconv version note:** This file targets OTel semantic conventions v1.41 (2026). Nearly all `gen_ai.*` attributes carry **Development stability badges** — names can change without a major version bump. Adopt the span shape; pin attribute names loosely and re-verify on upgrade.

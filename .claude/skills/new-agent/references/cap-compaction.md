@@ -24,6 +24,13 @@ A long-running agent must be able to reduce its context window footprint at defi
 - **Rolling window**: keep the last N turns verbatim for coherence; summarize everything before that. N=6 is a reasonable default for most tasks.
 - **Tool-result eviction is cheaper than summarization**: evict completed-step tool results first; call the LLM summarizer only when that's not enough.
 
+## Start here
+The smallest course example is a partial match: a standard-library context budgeter that fits layers into a token budget by truncating and dropping them, with no summarisation.
+- Source: [`ai-engineering/02-context-engineering/practice/context-budgeter-py/budgeter.py`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/ai-engineering/02-context-engineering/practice/context-budgeter-py/budgeter.py)
+- Verify: `uv run test.py`, run from `ai-engineering/02-context-engineering/practice/context-budgeter-py/`. Has assertions: `test.py` passes. The TS twin `context-budgeter/` was not run.
+- Covers: budget limits, reserved output space, truncating and dropping by layer. Does not cover: LLM summarisation, a LangGraph node.
+- **Go further only if** the history no longer fits after eviction and you need an LLM summary of the dropped turns, or the LangGraph node wiring; then use the templates below.
+
 ## File: {OUTPUT_DIR}/compaction.py
 
 ```python

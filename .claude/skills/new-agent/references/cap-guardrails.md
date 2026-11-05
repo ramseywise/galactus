@@ -23,6 +23,13 @@ Every agent that surfaces output to a user must enforce at minimum Layer 1 (pre-
 - **Layer 4 for grounding**: for RAG agents, Layer 4 checks that each claim in the output is traceable to a retrieved passage. If the agent's output references information not in the retrieved context, it fails Layer 4 — surface a `cannot_verify` response, not a hallucination.
 - **Layer 5 friction signals**: escalate on intent classification score below 0.4, content policy flag, repeated clarification requests, or explicit "I'm not sure" from the model. Do not escalate on every borderline case — calibrate the threshold.
 
+## Start here
+The smallest course example is one standard-library file that replays injection payloads against a stub agent with toggleable defences, and prints attack success and utility for each setting.
+- Source: [`ai-engineering/09-safety-and-security/practice/injection_replay.py`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/ai-engineering/09-safety-and-security/practice/injection_replay.py)
+- Verify: `uv run injection_replay.py`, run from `ai-engineering/09-safety-and-security/practice/`. Runs and exits 0; no assertions, so a pass says nothing about correctness. Read the printed rates, which describe this corpus and stub only.
+- Covers: an input filter, an egress allowlist and a provenance policy, roughly layers 1 and 4 of the template, and what each costs in honest tickets broken. Does not cover: routing, grounding or escalation layers, or a checker with assertions. Python only.
+- **Go further only if** you need routing, grounding and escalation layers, not just input and egress filtering; then use the templates below.
+
 ## File: {OUTPUT_DIR}/guardrails.py
 
 ```python

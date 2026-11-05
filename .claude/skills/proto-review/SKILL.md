@@ -2,7 +2,7 @@
 name: proto-review
 description: "Phase 4 review — plan fidelity + multi-reporter code review + DoD assessment + merge verdict. Run BEFORE committing (pre-commit quality gate) so fixes avoid amend/fixup commits. Also usable for PR reviews. Triggers: 'review PR #42', '/proto-review', '/proto-review my-feature', 'check the PR', 'review the diff', 'code-pr 42'."
 skills: [review-shared]
-allowed-tools: Read Grep Glob Bash Agent
+allowed-tools: Read Grep Glob Bash Agent mcp__librarian__read_page
 ---
 
 Review implementation against plan (if one exists) AND review code quality via
@@ -100,6 +100,12 @@ For each plan step:
 | Plan said | Code shows | Tests | Status |
 |-----------|-----------|-------|--------|
 | Step 1: ... | [actual] | PASS/FAIL | Match / Deviation / Missing |
+
+### Course grounding paths
+
+If the plan doc is at or past `RESEARCHED` and has `### Course grounding`, every `used: course/<path>` must
+resolve through `read_page`. An unresolved path is a finding with `merge_impact: important`, not a blocker. A doc
+with no section, or with only the `Librarian: unavailable` line, is not flagged. If Librarian itself is unavailable, the check cannot run: say so in Plan Fidelity and raise no finding on the paths.
 
 ### Stub detection
 

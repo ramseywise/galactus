@@ -2,6 +2,8 @@
 
 **Durable question:** What survives a turn, a session, and a process restart — and where does it live?
 
+Course: `ai-engineering/02-context-engineering/notes/06-memory.md`, `ai-engineering/05-graph-engineering/notes/04-durable-execution-and-interrupts.md` (memory types; state surviving restarts)
+
 *Taxonomy only. Backend-agnostic — implementation (vector store, graph, relational) is contested and project-specific. For LangGraph persistence primitives see `langgraph.md`. For framework state management see respective framework refs.*
 
 ---

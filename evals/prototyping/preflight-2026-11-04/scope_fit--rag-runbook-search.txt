@@ -1,0 +1,19 @@
+<critique>
+The minimum solution is heading chunks, one hybrid store with RRF, one LLM call, threshold abstention, a nightly re-index, and a small eval set. Several parts of the document's pipeline are proposed and go beyond that minimum.
+
+Components that carry a stated need, which I accept:
+- Exact identifier lookup and inventory: the E4022-versus-E4021 near-miss hazard is a specific failure the minimum would have.
+- Post-generation span check: it is tied to the production-risk statement in the request.
+- Typed outcomes: `retrieval_failed` is kept distinct from "not found" because of the repo spec's rule that a dispatch failure must never read as abstention.
+- Evaluation strata: these map to the minimum's eval set.
+- Deferred items: Contextual Retrieval is deferred to an ablation, and HyDE, CRAG, agents, semantic cache and managed RAG are rejected or skipped, so none of these count as proposed.
+
+Components that are proposed, are not part of the minimum, and have no stated need:
+- Cross-encoder reranker (stage 5): it is in the baseline pipeline ("Rerank: A cross-encoder narrows to a variable 3-8 sections"). The justification is only the repo's "retrieve wide, rerank hard" convention and general course material. The document names no failure the minimum would have without it. Its own disconfirming evidence says a reranker cut recall@3 on error codes (0.95 to 0.90) and that no study supports reranker score thresholds. The reranker is also the "best candidate" abstention signal, so it is proposed without a need the request creates.
+- Scope filter on archived and restricted content (stage 2): the document's own assumptions admit there is no evidence of restricted pages ("Evidence: none stated", Low confidence). It is a baseline stage anyway.
+- Extra pipeline additions: the `partial` outcome, nearest-page listing with mismatch labels (F6), keeping a local copy of page text (F10), and secret scanning with a threat model (F13) are recommended without tying them to a failure of the minimum in this request. "Planner: add a threat model" and "keep a copy of page text" rest on the document's own reasoning about generic risk.
+
+The reranker is the clearest case. It is a proposed extra stage whose stated rationale is convention rather than a named failure of the minimum. Because "any proposed component beyond the minimum without a stated need" is enough to fail, the verdict is FAIL.
+</critique>
+
+<verdict>FAIL</verdict>

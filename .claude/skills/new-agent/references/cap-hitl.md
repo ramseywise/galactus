@@ -16,6 +16,13 @@ Execution must be able to (a) suspend at an arbitrary point mid-run, (b) seriali
 
 > **Spec note:** The code below is ~90% LangGraph-specific. Portable pieces: `should_interrupt()`, the interrupt payload shape, and `resume_handler()`'s three-way taxonomy. The `hitl_gate_node` and `make_resume_command` are LangGraph plumbing.
 
+## Start here
+The smallest course example is a 48-line block in a note: a LangGraph graph that pauses at `interrupt()`, edits state while paused, resumes with `Command(resume=)`, then forks from the pause.
+- Source: [`ai-engineering/05-graph-engineering/notes/04-durable-execution-and-interrupts.md:L99-L148`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/ai-engineering/05-graph-engineering/notes/04-durable-execution-and-interrupts.md#L99-L148). Larger: [`ai-engineering/05-graph-engineering/practice/langgraph-graph/graph.py`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/ai-engineering/05-graph-engineering/practice/langgraph-graph/graph.py)
+- Verify: save the block as `gate.py`, then `uv run --no-project --with langgraph python gate.py`, run from any empty folder. No assertions; run with langgraph 1.2.17 already installed, the output matched the note's printed output. Larger lab: `uv run test.py`, run from `ai-engineering/05-graph-engineering/practice/langgraph-graph/`. Has assertions: `test.py` passes.
+- Covers: interrupt, `InMemorySaver`, `thread_id`, `update_state`, resume, fork, and why the code before `interrupt()` runs twice. Does not cover: env-gated approval, an HTTP resume handler, ADK, Managed Agents, Vercel AI SDK. The TS twin `langgraph-graph-ts` was not run.
+- **Go further only if** you need env-gated approval, a resume handler for an HTTP endpoint, or a non-LangGraph runtime; then use the templates below.
+
 ## File: {OUTPUT_DIR}/interrupt.py
 
 ```python

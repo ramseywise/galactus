@@ -27,6 +27,14 @@ Use when the agent needs composable chain logic without a full LangGraph state m
 
 ---
 
+## Start here
+The smallest course example is one script on an offline stub model that writes LCEL directly: chains, parsers, capped batches, structured output, query plans and map-reduce.
+- Source: [`generative-ai/04-agentic-frameworks/practice/01-research-agent/demo_07_lcel.py`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/generative-ai/04-agentic-frameworks/practice/01-research-agent/demo_07_lcel.py)
+- Verify: `uv run --with langchain-core python demo_07_lcel.py`, run from `generative-ai/04-agentic-frameworks/practice/01-research-agent/`. Run with langchain-core 1.7.0 already installed, it exits 0; no assertions, so a pass says nothing about correctness. Its output was not compared with note 07.
+- Layout: the script imports `agent_lcel.py` and `research_lab.py` from its own folder, so keep the folder whole.
+- Covers: LCEL composition with no `chains/` package. Does not cover: wrapping a legacy chain interface. Python only.
+- **Go further only if** you must wrap an existing legacy chain interface rather than write LCEL directly; then use the templates below.
+
 ## File: {OUTPUT_DIR}/chains/__init__.py
 
 ```python

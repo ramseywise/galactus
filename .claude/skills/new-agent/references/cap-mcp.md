@@ -23,6 +23,14 @@ An agent must be able to expose a set of callable tools over the Model Context P
 - **Tool granularity**: each MCP tool should do one thing. Avoid tools with `action: str` parameters that dispatch internally — the model cannot reason about tool capabilities it cannot see separately.
 - **Versioning**: MCP tools are API surfaces. Breaking changes (renamed parameters, changed return shape) require version bumps in the server manifest.
 
+## Start here
+The smallest course example is a hand-written, MCP-shaped JSON-RPC stdio server in Python and TypeScript, with a path jail, a command allowlist, an approval gate on writes and an audit log.
+- Source: [`ai-engineering/03-harness-engineering/practice/tool-server-sandbox-py/server.py`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/ai-engineering/03-harness-engineering/practice/tool-server-sandbox-py/server.py) and [`ai-engineering/03-harness-engineering/practice/tool-server-sandbox/server.ts`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/ai-engineering/03-harness-engineering/practice/tool-server-sandbox/server.ts)
+- Verify: `uv run test.py`, run from `ai-engineering/03-harness-engineering/practice/tool-server-sandbox-py/`. Has assertions: `test.py` passes. `node test.ts`, run from `ai-engineering/03-harness-engineering/practice/tool-server-sandbox/` on Node 22.23. Has assertions: `test.ts` passes. The lab's own script, `npx tsx test.ts`, was not run.
+- Layout: the Python lab needs its TS sibling. `server.py` serves `../tool-server-sandbox/workspace`, and `test.py` fails an assertion if that folder is missing. The TS lab passes alone.
+- Covers: the JSON-RPC protocol over stdio and the boundary around a tool call. Does not cover: FastMCP, the official SDK, or a client.
+- **Go further only if** you need the official SDK or FastMCP transport, a client, or interop with a host you do not control; then use the templates below.
+
 ## File: {OUTPUT_DIR}/mcp_server.py
 
 ```python

@@ -2,7 +2,7 @@
 name: proto-execute
 description: "Phase 3. Implements the active plan doc from .claude/docs/plans/ one step at a time, confirms with user between steps, and updates .claude/docs/CHANGELOG.md when the workflow uses one. Target-repo aware: pass repo:<name> to run against another workspace repo."
 disable-model-invocation: true
-allowed-tools: Read Grep Glob Bash Edit Write
+allowed-tools: Read Grep Glob Bash Edit Write mcp__librarian__search_wiki
 ---
 
 You are a principal engineer implementing an agreed plan. You were not in the research or planning sessions. Do not spawn subagents — run all implementation directly.
@@ -49,6 +49,15 @@ the session's — so that repo's own sessions and /wake find them (pointers, not
    A doc already at `IN_PROGRESS` is a resumption, not a transition: leave `Status:` and
    `From:` as they are.
 3. `git status` + `uv run pytest --tb=no -q` — if baseline tests fail, stop and report
+4. If the plan names a pattern from the manifest vocabulary (`retrieval`, `judge`, `loop`, `graph`, `tool-agent`,
+   `guardrail`, `budget`, `finetune`, `eval`), read `<pillar>/practice/manifest.yaml` from the course checkout at
+   `${LEARN_AI_DIR:-~/workspace/learn-ai-engineering}`, using `search_wiki(query, domain="course")` to find
+   the pillar when it is not obvious. Take the entry with the matching `pattern` and, among twins, the
+   project's `language`. When its `verified_by` is not `none`, start from its `path` (relative to the pillar;
+   `verified_by` runs from its `practice/` folder). That is a reference to start from: only `licence: course`
+   code may be copied, and even that has no stated licence yet, so never present it as free to redistribute.
+   If the checkout or Librarian is absent, say so and proceed.
+   The plan still decides what gets built.
 
 ## Worktree agent dispatch
 

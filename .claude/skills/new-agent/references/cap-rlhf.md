@@ -8,6 +8,13 @@ Pairwise human preferences over agent outputs must be collected with annotator a
 
 > **Version-brittleness flag (UNVERIFIED — must verify before use):** `PPOFinetuner.train_episode()` calls `self._trainer.step(query_tensors, response_tensors, rewards)` and reads `stats["ppo/loss/total"]` — TRL's PPO API changed significantly across versions. In TRL 0.8+, `PPOTrainer.step()` was replaced by `PPOv2Trainer` with a different interface; the stat key `ppo/loss/total` may not exist. **Pin `trl>=0.9` in `pyproject.toml` and verify this signature against the installed version before shipping `ppo_trainer.py`.** Consider using TRL's `DPOTrainer` (more stable API) instead of PPO for reward-model-based fine-tuning unless you specifically need online RL.
 
+## Start here
+The smallest course example is a block in a note: a Bradley-Terry reward model, fitted with numpy to 2000 simulated preference pairs over four answers.
+- Source: [`generative-ai/05-RL/notes/02-rlhf-pipeline.md:L491-L518`](https://github.com/ramseywise/learn-ai-engineering/blob/826a59943764619151f9c05dfd78a485b6e4271b/generative-ai/05-RL/notes/02-rlhf-pipeline.md#L491-L518)
+- Verify: save the block as `bradley_terry.py`, then `uv run --no-project --with numpy python bradley_terry.py`, run from any empty folder. No assertions; the output matched the note's printed output.
+- Covers: the preference likelihood and a table of learned scores. Does not cover: a `PreferenceCollector`, or a TRL reward or PPO example that runs.
+- **Go further only if** you collect real annotator preferences and train with TRL on a GPU; then use the templates below.
+
 ## File: {OUTPUT_DIR}/rlhf/preference_collector.py
 
 ```python

@@ -3,7 +3,7 @@ name: proto-design
 description: "Translate a product requirement into an agent system spec, then stress it before any code exists. Grounds the requirement (consumer, correctness, cost of wrong, and scale), walks the five layers — prompt, context, harness, loop, graph — forcing an explicit answer or named deferral at each, simulates the design against adversarial scenarios, and closes with success metrics. Output is a spec that feeds /proto-research. Triggers: 'design an agent for X', 'spec out X before we build', 'system design for X', 'dry run this design', 'what should this system look like', '/proto-design'."
 job: design
 disable-model-invocation: true
-allowed-tools: Read Grep Glob Write
+allowed-tools: Read Grep Glob Write mcp__librarian__search_wiki mcp__librarian__read_page
 ---
 
 You are running a design dry run: producing an agent spec from a requirement, then
@@ -110,6 +110,12 @@ production.**
 
 Read the matching `.claude/specs/agent-*.md` ref before answering each layer. Each ref
 opens with its durable question — that question is the layer's minimum bar.
+
+**Course grounding.** For each of the five layers, run one `search_wiki(query, domain="course")` and
+`read_page` any hit the answer will rely on. Record them under `Course:` in the spec's `## Grounding`, in the
+form the output format shows. If the Librarian tools are missing or error,
+write the unindented `Librarian: unavailable — <reason>` line instead and carry on. No hook checks this section:
+the plan-status hook looks only at `## Research`, so the record is yours to keep honest.
 
 ### 1. Prompt — the instructions themselves
 
@@ -367,6 +373,14 @@ Requirement: <the user's words, verbatim>
 ## Grounding
 
 Consumer / Correct-means / Cost-of-wrong
+
+Course:
+- query: `<text>` (domain=course) → N hits
+  - used: course/<path>
+- query: `<text>` (domain=course) → 0 hits — no course coverage for <topic>
+
+Or, in place of the query lines:
+Librarian: unavailable — <reason>
 
 ## Scale
 

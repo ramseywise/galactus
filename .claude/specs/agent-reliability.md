@@ -2,6 +2,8 @@
 
 **Durable question:** What happens on tool error, rate limit, refusal, or timeout — and is the run resumable?
 
+Course: `ai-engineering/03-harness-engineering/notes/05-verification-loops.md`, `ai-engineering/05-graph-engineering/notes/04-durable-execution-and-interrupts.md` (failure classes, retries; resume after crash)
+
 *Tooling-agnostic. This is the policy layer; mechanism (checkpointing) is in `agent-memory.md §3` and framework refs.*
 
 ---
