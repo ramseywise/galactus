@@ -1,12 +1,12 @@
 ---
 name: decide-shared
-description: "Shared contracts for the frame/decide capability family — the Job verb taxonomy, the claim schema every capability emits, and the rule separating a capability from a pipeline stage. Preloaded by /assumption-audit and /war-game rather than invoked directly. Load it when writing a new capability skill or when deciding whether a new skill is a capability or a phase."
+description: "Shared contracts for capability skills: Job verbs, claim schema, the capability-vs-phase rule. Preloaded by /assumption-audit and /review-defense; load directly only when writing a new capability skill."
 ---
 
 # decide-shared
 
 The contracts the frame/decide capability skills write against. This skill holds no
-procedure of its own — it exists so that `assumption-audit`, `war-game`, and any later
+procedure of its own — it exists so that `assumption-audit`, `review-defense`, and any later
 capability emit claims a human (or an orchestrating skill) can act on without re-reading
 each skill's private conventions.
 
@@ -55,7 +55,7 @@ The section above sorts *skills* from *phases*. This one sorts **skills from age
 is the question that comes up the moment a skill wants more than one perspective.
 
 The direction is fixed, and every dispatch in this repo already runs it: `/proto-review`
-dispatches three reporters, `/fog` dispatches `fog-advisor`, `/war-game` dispatches one
+dispatches three reporters, `/fog` dispatches `fog-advisor`, `/review-defense` dispatches one
 attacker per angle. **No agent invokes a skill.** Agents may *preload* a shared contract
 (`skills: [review-shared]`) as reference material, which is loading, not calling.
 
@@ -82,7 +82,7 @@ needs one of two things — and the burden of proof is on the agent:
    worked example: withholding the author's justification requires a separate context, because
    a lens that has read the rationale grades the rationale.
 2. **Parallelism** — N instances of the same shape run concurrently over different inputs
-   (`research-scout`, `/war-game`'s per-angle attackers).
+   (`research-scout`, `/review-defense`'s per-angle attackers).
 
 Neither of those is "it feels like a distinct role." **A job title is not a lens.** Splitting
 PM / designer / EM into three agents buys nothing, because they are not adversarial to each
@@ -96,7 +96,7 @@ Two failure modes this rule exists to prevent, in opposite directions:
   findings everywhere, nothing prioritized. This is the overloaded verifier's mirror image:
   *under*-loaded reviewers.
 - **The duplicate lens.** Building an agent for a perspective an existing skill already
-  dispatches inline. Before adding one, grep what is already dispatched — `/war-game`'s angle
+  dispatches inline. Before adding one, grep what is already dispatched — `/review-defense`'s angle
   table covers adversarial, scale, dependency, operational, sequencing, and human. A
   standing agent duplicating one of those violates that skill's own
   *"do not dispatch identical attackers."*

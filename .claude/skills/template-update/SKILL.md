@@ -1,12 +1,6 @@
 ---
 name: template-update
-description: >
-  Guide a scaffolded project through a copier update from the upstream template.
-  Explains what changed, previews diffs, and helps resolve conflicts. Use when:
-  updating a project to latest template, checking what template changes are available,
-  or resolving copier update conflicts. Triggers on: "template update", "update from
-  template", "copier update", "what changed in the template", "pull template changes",
-  "sync with template".
+description: "Walk a generated project through `copier update` from the upstream template: what changed, diff previews, conflict help. Triggers: 'template update', 'copier update', 'sync with template', 'what changed in the template'."
 ---
 
 # template-update

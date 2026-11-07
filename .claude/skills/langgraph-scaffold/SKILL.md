@@ -1,11 +1,6 @@
 ---
 name: langgraph-scaffold
-description: >
-  Scaffold a new LangGraph agent's core files — state schema, graph builder, nodes,
-  checkpointer wiring, tests, and infra. Use when the user wants to build a new
-  LangGraph agent (e.g. "build me a langgraph agent for X") or when /new-agent selects
-  the langgraph framework. Unlike ADK, there is no official scaffolder CLI — this
-  skill hand-writes the file set directly.
+description: "Hand-write a new LangGraph agent's core files (state schema, graph, nodes, checkpointer, tests, infra). Use for 'build me a langgraph agent for X' or when /new-agent picks LangGraph."
 ---
 
 # LangGraph Project Scaffolding Guide

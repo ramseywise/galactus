@@ -8,8 +8,8 @@ not been made yet.
 ## Schema
 
 ```yaml
-id: <source>-<NNN>                # AA-001 (assumption-audit), WG-001 (war-game)
-source: assumption-audit | war-game
+id: <source>-<NNN>                # AA-001 (assumption-audit), RD-001 (review-defense)
+source: assumption-audit | review-defense
 job: frame | size | decide | design | derisk | report
 
 claim:

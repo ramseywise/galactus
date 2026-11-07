@@ -35,83 +35,32 @@ inapplicable. Where the design is request → response → done, ignore it entir
 `langgraph.md`, `python.md`, `typescript.md` are stack bindings — read after the
 `agent-*` refs, never instead of them.
 
-## The pipeline
+## Routing — pick the cheapest thing that answers
 
-Four bands. FRAME decides what to build, BUILD builds it, REVIEW judges it against the
-plan, and CROSS attacks any artifact from any band.
+Decide what a request deserves before reaching for a phase. Most requests deserve no
+pipeline at all. Full band, state-machine and tool reference:
+[.claude/docs/pipeline.md](.claude/docs/pipeline.md) — read it only when entering BUILD.
 
-| Band | Skill | Entered when | Writes |
-|---|---|---|---|
-| Frame | `/proto-scope discovery` | a pain point, no design vocabulary yet | Project Profile |
-| Frame | `/proto-scope` | scope not yet pinned | `DESIGN.md` |
-| Frame | `/proto-design` | a requirement needs an agent spec | five-layer spec |
-| Build | `/proto-research` | spec exists, unknowns remain | `## Research`, `Track:`; grounds findings in the course via Librarian (`### Course grounding`, hook-enforced at `RESEARCHED`) |
-| Build | `/proto-plan` | research reviewed | `## Plan` |
-| Build | `/proto-refine` | plan written | the only writer of `REFINED` / `READY` |
-| Build | `/proto-execute` | plan is `READY` | code; flips `Status:` |
-| Review | `/proto-review` | before the first commit | verdict against `## Plan` |
-| Cross | `/assumption-audit` | any artifact resting on load-bearing guesses | ranked assumptions + cheapest check |
-| Cross | `/war-game` | a plan about to ship | attack findings + mitigations + go/no-go |
-| Cross | `/fog` | a design that must handle not-knowing | ranked collapse sites (global; owned by guacamayo) |
-
-**FRAME is a band, not a sequence.** Entered by intent, not in fixed order. The chain when
-starting from nothing is `/proto-scope discovery` → `/proto-scope` → `/proto-design`, but
-a session that already has a `DESIGN.md` enters at `/proto-design`, and one that already
-has a spec skips FRAME entirely.
-
-**`/new` is the front door, before any band.** It routes AI vs ML and picks where the
-work lands: a run (a subdirectory under `runs/ai/` or `runs/ml/`, which then enters FRAME)
-or a standalone repo rendered from this repo's copier template (`copier.yaml` +
-`template/`, Python or TypeScript). See `TEMPLATE.md` for the template itself.
-
-**`/spike` is the side door.** One question, a `spike/*` branch, no plan doc and no bands,
-then one light review. The plan-doc hooks stand down on `spike/*`; the guards and the Stop
-hook do not. Graduating a spike means entering FRAME with it as evidence.
-
-`runs/_index/` is reserved for run records — one per training execution, a different grain
-from the run directory that produced it, which is why the name is prefixed: `_index` can
-never collide with a run. **Runs do not define the record shape.** It lives in the root
-`experiments/` module, which the template also ships (`record`, `provenance`, `fingerprint`,
-with a `NotApplicable` sentinel so a missing metric never reads as `0.0`); runs consume it.
-Nothing writes here yet — a run's result currently lives as a `summary.json` under its own
-`docs/`, which is why the lending baseline could be overturned but not reproduced.
-
-**BUILD runs in order**, with the plan doc in `.claude/docs/plans/` as the bus between
-phases. `Status:` is a state machine, not a label — a hook rejects values outside
-`RESEARCH → RESEARCHED → PLANNED → REFINED → READY → IN_PROGRESS → EXECUTED → COMPLETE`
-(plus `SUPERSEDED`). One work item per plan doc.
-
-`Track:` is the other validated field — `ml` or `agent`. `/proto-research` is its only
-writer, and it routes on what the work *fits*, not what it is called: fitting a model is
-`ml`, calling one is `agent`. The tracks are not symmetric, so the ambiguous case is asked
-rather than defaulted — an ML problem on the agent track produces a confident metric
-nobody checked.
-
-**CROSS skills are capabilities, not phases.** They take an artifact — plan, spec,
-`DESIGN.md`, diff — and return a judgment. They never write the artifact they attack, never
-appear as a pipeline step, and **never touch `Status:`** — they write to
-`.claude/docs/decisions/`, a different tree from the one `plan_status_validate.sh` guards,
-so the state machine cannot be tripped by a capability. They are also the only skills the
-model may reach for on its own: cheap, read-only, and exactly what should be available the
-moment a load-bearing assumption shows up. `decide-shared` is their shared contract, as
-`review-shared` is for the eleven review dimensions, which live in it as reference files
-(`review-shared/dimensions/`), not as skills.
-
-**Tools, called from inside a band.** These are not phases and have no position:
-
-| Skill | Called by | Does |
+| Request looks like | Do | Runs as |
 |---|---|---|
-| `/ml-transform` | `/proto-research` on `Track: ml` | Profiles a frame; emits the ColumnPlan. Advisory — never transforms silently |
-| `/ml-select` | `/proto-research` on `Track: ml` | The `(family, output)` pair + training config. Refuses to run before profiling |
-| `/new-agent` | `/proto-execute` | Scaffolds an ADK or LangGraph agent |
-| `/template-update` | inside a generated project | Walks a `copier update` from this template |
-| `/mcp-builder` | `/proto-execute` | Reference for writing an MCP server. Vendored; carries its own LICENSE |
-| `/proto-harden` | after `/proto-execute`, before `/proto-review`; or any run about to demo | Walks the marketing-comms hardening checklist against a run dir and fixes gaps in-session. Never touches `Status:` |
-| `/skill-creator` | any | Creates or edits a skill in this repo |
+| Clear bug with a repro, a rename, a one-file change, a question | Just do it. No plan doc | inline |
+| Unfamiliar area, several plausible approaches, answer spread over many files | `research-scout` per angle, in parallel; keep the conclusion, not the dumps | haiku ×N |
+| Work spanning sessions, or touching hooks, `template/`, or the reference run | `/proto-build` — routes research → plan → refine (→ execute → review once `READY`) | sonnet workers |
+| A pain point or idea with no design yet | `/proto-scope` (`discovery` if no design vocabulary) | inline — it is a conversation |
+| A plan or spec resting on a guess | `/assumption-audit` | CROSS |
+| A plan about to ship | `/review-defense` | CROSS |
+| A design that must handle not-knowing | `/fog` | CROSS |
+| "Is this done?" before commit | `/proto-review` | haiku ×dims |
+| An afternoon thesis, a library trial | `/spike` | inline |
+| Where should new work live (run vs repo, AI vs ML) | `/new` (typed) | inline |
 
-Retired skills live in `.claude/skills/archived/`, one `ARCHIVED.md` each explaining what
-moved where and what is worth reviving. They are one directory below where the loader
-looks, so they are not invocable.
+**Human seats are never routed around**, by `/proto-build` or anything else: the goal
+question before a plan, the `Track:` question when ambiguous, the `READY` gate, and the
+commit. Everything else between phases is bookkeeping and belongs in a subagent.
+
+A small plan doc may use the light header (`Status:`, a one-paragraph `Done target:`,
+steps) and go `RESEARCH → PLANNED` without a research phase. A new plan doc carries no
+`From:`; the hook rejects it.
 
 ## Rules
 

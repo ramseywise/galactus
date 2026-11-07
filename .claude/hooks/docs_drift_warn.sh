@@ -31,6 +31,14 @@ if [ "$readme_age" -lt 1800 ]; then
   exit 0
 fi
 
+# Once per README per session: a repeat of the same advisory is tokens, not signal.
+sid=$(jq -r '.session_id // empty' <<<"$_HOOK_INPUT" 2>/dev/null || true)
+if [ -n "$sid" ]; then
+  stamp="${TMPDIR:-/tmp}/claude-docs-drift-${sid}"
+  grep -qxF "$readme" "$stamp" 2>/dev/null && exit 0
+  printf '%s\n' "$readme" >> "$stamp"
+fi
+
 warn "Docs drift: $readme may need updating (code changed in $dir)."
 log_event "docs_drift_warn" 0 "$path"
 exit 0

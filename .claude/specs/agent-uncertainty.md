@@ -189,7 +189,7 @@ That split is deliberate and worth naming, because the first draft of this spec 
 |---|---|
 | Know the rule | This spec |
 | Interrogate a design for how it handles not-knowing | `/fog` |
-| Attack a plan for how it fails | `/war-game` |
+| Attack a plan for how it fails | `/review-defense` |
 | Find the load-bearing guesses | `/assumption-audit` |
 
 The three skills lean on this spec and on `decide-shared`; none of them restates it.

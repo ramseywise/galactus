@@ -1,6 +1,6 @@
 ---
 name: assumption-audit
-description: "Find the load-bearing guesses in a plan, spec, or design before they are built on. Names each assumption, rates it by confidence and decision impact, and gives the cheapest check that would settle it. Callable at any point — before research, after planning, mid-execute when something feels wrong. Triggers on: 'what are we assuming', 'audit the assumptions', 'what could make this wrong', 'stress the premises', '/assumption-audit'."
+description: "Find the load-bearing guesses in a plan, spec or design; rate each by confidence and decision impact and give the cheapest check that settles it. Callable any time. Triggers: 'what are we assuming', 'audit the assumptions', 'what could make this wrong', '/assumption-audit'."
 job: frame
 allowed-tools: Read Grep Glob Bash Write
 ---
@@ -118,7 +118,7 @@ from an audit that failed to run.
   an assumption. If rewording it changes nothing about what gets built, it does not go in
   the report.
 - **Listing risks and calling them assumptions.** "The vendor might go down" is a risk —
-  that is `/war-game`'s job. An assumption is something the plan currently treats as
+  that is `/review-defense`'s job. An assumption is something the plan currently treats as
   *settled* that is not. The test: could you write it as "we are assuming X"?
 - **Padding to look thorough.** Six real load-bearing assumptions beat thirty items of
   which six are real, because the thirty-item version gets skimmed.

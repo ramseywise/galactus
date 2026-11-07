@@ -1,6 +1,9 @@
 # Pipeline orchestration — loops, graphs, and the deterministic spine
 
-Status: PLANNED
+Status: SUPERSEDED
+From: PLANNED
+Superseded-by: `2026-11-07-claude-setup-intent-routing.md` — D1 answered as "a skill that
+dispatches" (`/proto-build`) resting on the existing Python router (`derive-phases`)
 Track: agent
 Issue: #4 (phase 3, follow-on)
 Branch: TBD

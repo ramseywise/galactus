@@ -1,14 +1,6 @@
 ---
 name: proto-scope
-description: >
-  System design interview for a new AI project — produces DESIGN.md capturing problem,
-  actors, MVP scope, and key decisions, feeding /proto-design.
-  Two depths: `discovery` runs a plain-language pain-point conversation for someone
-  without system-design vocabulary and emits a Project Profile; bare runs the full
-  design interview.
-  Triggers on: "scope a project", "design interview", "what should we build",
-  "help me scope", "new project idea", "I have an idea". DSSG-aware (nonprofit
-  projects get platform context automatically).
+description: "Design interview for a new AI project → DESIGN.md (problem, actors, MVP scope, decisions). `discovery` depth runs a plain-language pain-point chat → Project Profile. DSSG-aware. Triggers: 'scope a project', 'what should we build', 'I have an idea', 'new project idea'."
 ---
 
 # /proto-scope

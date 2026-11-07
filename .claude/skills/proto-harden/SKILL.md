@@ -1,6 +1,6 @@
 ---
 name: proto-harden
-description: "Hardening pass for a prototype before demo or review — walks the defect classes distilled from the marketing-comms hardening (seam conformance, runnable demo, service-surface safety, eval falsifiability, doc parity, recurring patterns) against a run directory and fixes the gaps in-session, with tests. Triggers: 'harden the prototype', 'harden this run', 'pre-demo hardening', 'make it demo-ready', '/proto-harden <run-dir>'."
+description: "Pre-demo hardening of a run dir — seam conformance, runnable demo, service-surface safety, eval falsifiability, doc parity — fixing gaps in-session with tests. Triggers: 'harden this run', 'make it demo-ready', 'pre-demo hardening', '/proto-harden <run-dir>'."
 allowed-tools: Read Grep Glob Bash Edit Write
 ---
 

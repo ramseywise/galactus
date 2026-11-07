@@ -37,7 +37,7 @@ family was created to close.
 | `size` | — | **Gap.** Nothing quantifies effort or value |
 | `decide` | `/design-sprint` generates options | **Half.** Options are never costed or compared |
 | `design` | `/design-initiative`, `/design-system`, `/design-prototype` | Covered |
-| `derisk` | `/design-initiative` (failure modes), `/war-game` | Covered |
+| `derisk` | `/design-initiative` (failure modes), `/review-defense` | Covered |
 | `report` | — | **Gap.** Nothing packages a decision for someone absent |
 | `run` | `/workflow-*` | Covered |
 

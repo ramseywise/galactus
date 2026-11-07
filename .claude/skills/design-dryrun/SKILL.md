@@ -1,13 +1,6 @@
 ---
 name: design-dryrun
-description: >
-  Simulate a volunteer walking the full project discovery pipeline with sample
-  nonprofit scenarios. Validates artifact handoffs, checks that the right questions
-  are asked/skipped, and logs friction. Use for: regression testing the skill
-  pipeline after changes, onboarding new skill contributors, validating that
-  /proto-scope discovery → /proto-scope → /new produces coherent results.
-  Triggers on: "/design-dryrun", "test the discovery pipeline", "smoke test skills",
-  "validate the design flow", "run dryrun scenarios".
+description: "Regression-test the discovery pipeline (/proto-scope discovery → /proto-scope → /new) by simulating a nonprofit volunteer; logs handoff friction. Triggers: '/design-dryrun', 'smoke test skills', 'test the discovery pipeline'."
 ---
 
 # /design-dryrun
