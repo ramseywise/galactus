@@ -140,3 +140,31 @@ def test_label_loop_saves_good_and_rejects_bad(tmp_path: Path) -> None:
     assert saved == 1
     assert len(read_gold(out)) == 1
     assert any("NOT SAVED" in p and "verbatim" in p for p in printed)
+
+
+def test_verify_gold_counts_floors_and_rechecks_quotes() -> None:
+    from kg.label import make_row, verify_gold
+
+    body = "Alpha depends on Beta. Gamma reads Delta."
+    good = make_row(
+        page="eval/a.md",
+        body=body,
+        subject="Alpha",
+        subject_type="Concept",
+        relation="depends-on",
+        object="Beta",
+        object_type="Concept",
+        quote="Alpha depends on Beta.",
+        label="positive",
+        labelled_by="t",
+        at="x",
+    )
+    v = verify_gold([good], {"eval/a.md": body})
+    assert v.by_label["positive"] == 1 and v.pages == 1
+    assert not v.failed_quotes and not v.ok  # floors unmet
+    assert any(s.startswith("positive: 1 < 50") for s in v.shortfalls)
+
+    edited = verify_gold([good], {"eval/a.md": "Alpha now needs Beta."})
+    assert edited.failed_quotes and edited.failed_quotes[0][1] == "eval/a.md"
+    missing = verify_gold([good], {})
+    assert missing.failed_quotes[0][2] == "page not in the current corpus"

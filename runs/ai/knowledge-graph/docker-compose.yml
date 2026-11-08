@@ -1,0 +1,20 @@
+# Local Neo4j Community for the Phase B store. `docker compose -f <this file> up -d`, then
+#   NEO4J_URI=bolt://localhost:7687 uv run pytest runs/ai/knowledge-graph/tests -q
+# Override the password with NEO4J_PASSWORD (min 8 chars); the store reads the same variable.
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-kg-local-dev-pw}
+    volumes:
+      - kg_neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$${NEO4J_AUTH#neo4j/}\" 'RETURN 1' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+volumes:
+  kg_neo4j_data:

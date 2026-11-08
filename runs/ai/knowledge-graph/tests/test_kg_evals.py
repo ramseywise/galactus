@@ -179,7 +179,7 @@ def test_judge_jev_without_its_key_refuses_naming_the_variable() -> None:
 def test_store_neo4j_refuses_by_name() -> None:
     proc = run("--dry-run", "--store", "neo4j")
     assert proc.returncode != 0
-    assert "neo4j" in proc.stderr and "Phase B" in proc.stderr
+    assert "neo4j" in proc.stderr and "NEO4J_URI" in proc.stderr
 
 
 def test_scripted_seat_refuses_without_dry_run() -> None:

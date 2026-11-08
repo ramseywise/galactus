@@ -2,7 +2,7 @@
 
 Status: IN_PROGRESS
 From: READY
-Outstanding: Phase A done; /proto-review at the A8 boundary, then Phase B (B1 is Ramsey's labelling)
+Outstanding: B1 gold labelling and ≥20 hand-written retrieval questions (Ramsey); pack approval; spend decision; /proto-review not yet run
 Track: agent
 Epistemic: NO_CONFLICT
 Epistemic-by: fog
@@ -892,6 +892,11 @@ of any proposer.
 **Done when**: counts meet the floors, every quote passes the verbatim gate against the
 current corpus, and the split has ≥ 10 rows in `test`.
 
+**Step B1 — OPEN (Ramsey).** Not a code step. Prerequisite added 2026-11-08: `kg verify-gold`
+did not exist (A8 omission), so it was added to `kg/label.py` (`verify_gold`, `FLOORS`) and
+`kg/cli.py`, with a test in `test_kg_label.py`. On the empty file it reports every floor
+unmet and exits 1.
+
 #### Step B2: Jev seat via OpenRouter, shape-tested, unavailable by name
 **Files**: new `src/kg/judge/jev.py`, `tests/test_judge_jev.py`.
 **What**: `JevSeat` posts to `https://openrouter.ai/api/alpha/decisions` with model
@@ -912,6 +917,20 @@ def available(self) -> tuple[bool, str]:
 build with the seat reported as failed and every candidate `not_run`, producing no reject
 tiers; a response outside `[0, 1]` raises; `evals/run.py --judge jev` without a key refuses naming the variable;
 with a fake key and `MockTransport` the dry run completes.
+
+**Step B2 ✓ DONE — 2026-11-08.** Deviations:
+(1) Test file is `test_kg_judge_jev.py`.
+(2) The request body (`{model, question_type: "noul", input: {triple fields, quote, evidence}}`;
+the response's top-level `probability`) is **unverified against live OpenRouter docs**. It is
+pinned by `REQUEST_SHAPE` in the test and needs checking with one request before any live use.
+(3) An out-of-range probability, NaN included, becomes `NotRun("schema_mismatch: …")` at the
+adapter, as in `ClaudeSeat`, rather than raising in the seat; `Verdict(score=…)` itself still
+raises. Raising would crash the build instead of reporting the candidate not run.
+(4) "Seat reported as failed" has no separate field. The 503-everywhere test shows it through
+`judge_not_run`, zero verdicts, every page in `not_run`, no stored triples and
+`promotable=False`.
+(5) `evals/run.py` takes `jev_client=` (added in B5), so the fake-key MockTransport dry run is
+tested.
 
 #### Step B3: Neo4j store behind the same protocol, parity pre-registered
 **Files**: new `src/kg/store/neo4j.py`, `docker-compose.yml`, `tests/test_store_neo4j.py`,
@@ -941,6 +960,21 @@ non-skipped path).
 loading twice yields the same counts and parity holds on a fixture that deliberately repeats
 one surface form across two pages; `evals/run.py --store neo4j` without a
 URI refuses by name.
+
+**Step B3 ✓ DONE — 2026-11-08.** Verified live against `neo4j:5-community` in Docker: 33
+neo4j tests passed twice, and the container was then brought down. Deviations:
+(1) Test files are `test_kg_store_neo4j.py` and `test_kg_store_parity.py`.
+(2) `hops()` is one bounded Cypher expansion per level (≤ 2), not a single `*1..2` path match.
+SQLite traverses by normalised surface key, so a surface repeated on two pages is one
+waypoint; a path match over per-page nodes cannot cross pages and fails parity on exactly
+the fixture this step asks for.
+(3) Credentials come from `NEO4J_USER`/`NEO4J_PASSWORD`/`NEO4J_DATABASE` in the environment,
+not `config.py`; the local-dev defaults match the compose file and are in `.env.example`.
+(4) Added `search_surface()` over the full-text index.
+(5) Skips are counted in a `pytest_terminal_summary` hook in `tests/conftest.py`, by the skip
+reason string, not by a registered marker. The `neo4j_store` fixture lives in
+`tests/conftest.py`, deletes only `kgtest-` builds, and fails loudly on any other build.
+(6) `evals/run.py --store neo4j` was fixed in B5 to refuse naming `NEO4J_URI`.
 
 #### Step B4: Librarian baseline adapter and hybrid `ask`
 **Files**: new `src/kg/retrieve/__init__.py`, `src/kg/retrieve/librarian_baseline.py`,
@@ -972,6 +1006,19 @@ the baseline refuses with the path named when it is not; `ask` with defaults nev
 `review`-tier passage; an unknown entity returns `entry_miss`, not an empty `ok`; a quote
 edited out of the fixture corpus after the build comes back `stale`; hop depth never exceeds
 `KG_MAX_HOPS`.
+
+**Step B4 ✓ DONE — 2026-11-08.** The live probe integration test ran and passed against
+`~/workspace/librarian`. Deviations:
+(1) Test file is `test_kg_retrieve.py`.
+(2) Entity match without a new store method: candidate surfaces (titles, tags, path stems, 1–4
+word n-grams, capped at 500) are checked with one `store.hops(..., 1, ALL_TIERS)`. "Known"
+means the entity has at least one triple at any tier.
+(3) `AskResult` also carries `graph_status`, so a `degraded` result keeps the graph-side
+outcome, and passages are still returned when Librarian is degraded.
+(4) Serve-time freshness overrides the store's tri-state with fresh or stale; `unverified`
+never comes back from `ask` while the corpus is readable.
+(5) `kg ask` gained `--via-librarian`; without it the argument is an entity, not a query.
+A test checks that nothing in `kg` imports `librarian` outside the probe.
 
 #### Step B5: Retrieval eval — questions, weak gold, recall@5 and latency per arm and store
 **Files**: new `evals/questions.jsonl`, `src/kg/retrieve/weak_gold.py`; edit `evals/run.py`
@@ -1006,6 +1053,22 @@ arms prints recall@5 per question set and per arm with `n`, the paired differenc
 interval, entry-miss rate, p95 per arm, the index build id and the preregistered line; an unavailable
 store or missing Librarian refuses rather than skipping an arm.
 
+**Step B5 ✓ DONE — 2026-11-08** (dry-run complete; live run blocked on a build). Deviations:
+(1) Test files are `test_kg_retrieval_eval.py` and `test_kg_weak_gold.py`; `test_kg_evals.py`
+was edited (unlisted) because its neo4j-refusal assertion expected the old "Phase B" message.
+(2) Weak gold: 79 rows from 530 typed links, none unresolved. The question stem is "What does
+{title} connect to?", over the five bullet-line relations.
+(3) `questions.jsonl` has **0 hand-written rows**. They are Ramsey's to write (≥20, format in
+the `evals/run.py` docstring, not `evals/gold/README.md`). With none, the report prints
+NotApplicable for the hand set and "goal-1 verdict: cannot be read yet".
+(4) The Librarian index id is read from the `<LIBRARIAN_ROOT>/var/index/current` symlink, which
+does not exist here, so a live report would print "unknown"; `artifact.corpus_id()` runs
+only inside Librarian's venv.
+(5) Without `--dry-run`, a missing graph file, Librarian failure or unavailable Neo4j refuses
+by name, so no live retrieval eval can run until a promoted build exists.
+(6) Extra flags: `--questions`, `--db`, `--build-id`, `--latency-runs`. Bootstrap: 2000
+resamples, seed 0.
+
 #### Step B6: Docs, attribution, spend decision record, size report
 **Files**: new `docs/DESIGN.md`, `docs/case-study.md`, `docs/THIRD_PARTY.md`,
 `docs/spend-decision.md`; finish `README.md`; `.env.example` complete.
@@ -1030,6 +1093,16 @@ and the "no live call has been made" state.
 **Done when**: source is ≤ ~3,000 lines (reported, not gated); every CLI command in the README
 runs with `--dry-run`; the full suite passes with the new tests counted; `/proto-harden
 runs/ai/knowledge-graph` is the next command.
+
+**Step B6 ✓ DONE — 2026-11-08.** Deviations:
+(1) Source is **5,192 lines**, over the ~3,000 target (reported, not gated).
+(2) `spend-decision.md` names three controls its checklist assumes but the code lacks:
+`kg build --limit`, a `promote` gate on recorded accept-tier precision (fog FA-004, noted in
+`build.py`), and a force-to-review switch. Until they exist those boxes are operator-enforced.
+(3) `.env.example` gained the Neo4j credentials and `KG_LIVE`.
+(4) Every README command runs (`verify-gold` exits 1 on the empty gold, as intended).
+Full suite: 1633 passed, 42 skipped (33 neo4j, counted); ruff clean.
+Next: `/proto-harden runs/ai/knowledge-graph`, after `/proto-review`.
 
 ### Test Plan
 

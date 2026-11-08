@@ -23,6 +23,7 @@ from kg.judge.seat import JudgeSeat
 from kg.models import NotApplicable
 from kg.profile import BuildRefused, census, estimate_cost, iter_pages, refuse_if_empty
 from kg.propose.proposer import Proposer
+from kg.retrieve import BaselineError
 from kg.route import apply_decisions, render_table
 from kg.store import SqliteStore
 
@@ -39,6 +40,7 @@ COMMANDS = (
     "repeat",
     "ask",
     "label",
+    "verify-gold",
 )
 EXIT_REFUSED = 2
 EXIT_HALTED = 3
@@ -94,10 +96,19 @@ def make_parser() -> argparse.ArgumentParser:
     p.add_argument("page")
     p.add_argument("--n", type=int, default=5)
     p = add("ask", "query the store by entity surface form")
-    p.add_argument("entity")
-    p.add_argument("--k", type=int, default=1)
+    p.add_argument("entity", help="entity surface form, or a free-text query with --via-librarian")
+    p.add_argument("--k", type=int, default=1, help="hops; capped by KG_MAX_HOPS")
+    p.add_argument("--include-review", action="store_true", help="also serve review-tier passages")
+    p.add_argument(
+        "--via-librarian",
+        action="store_true",
+        help="treat ENTITY as a query; Librarian entry rows seed the entity match",
+    )
     p.add_argument("--build", default=None, help="query this build instead of the promoted one")
     add("label", "label gold triples (passes remaining flags to kg.label)")
+    p = add("verify-gold", "count gold rows against the B1 floors and re-check every quote")
+    p.add_argument("path", type=Path)
+    p.add_argument("--domain", default="eval")
     return ap
 
 
@@ -146,7 +157,7 @@ def main(
         make_parser().error(f"unrecognised arguments: {' '.join(extra)}")
     try:
         return _dispatch(args, extra, proposer, seat)
-    except (RefusedError, BuildRefused, NotApproved, ConfigError) as exc:
+    except (RefusedError, BuildRefused, NotApproved, ConfigError, BaselineError) as exc:
         print(f"refused: {exc}", file=sys.stderr)
         return EXIT_REFUSED
 
@@ -158,6 +169,8 @@ def _dispatch(
     if cmd == "label":
         return _label(args, extra)
     settings = _settings(args)
+    if cmd == "verify-gold":
+        return _verify_gold(args, settings)
     if cmd == "profile":
         profile = census(settings.require_corpus_root(), args.domain)
         refuse_if_empty(profile)
@@ -246,17 +259,58 @@ def _dispatch(
             print(f"  missing page: {page}")
         return 0 if not v.stale and not v.missing_pages else 1
     if cmd == "ask":
-        hits = store.passages({args.entity}, args.k, build_id=args.build, current_profile_hash=None)
-        if not hits:
-            print(
-                f"nothing for {args.entity!r}"
-                + ("" if args.build else " (default reads see promoted builds, accept tier, only)")
-            )
-            return 0
-        for h in hits:
-            print(f"[{h.tier} hop{h.hop} {h.freshness}] {h.source_path}: {h.text}")
-        return 0
+        return _ask(args, settings, store)
     raise AssertionError(cmd)
+
+
+def _ask(args: argparse.Namespace, settings: Settings, store: SqliteStore) -> int:
+    from kg.retrieve import ask, make_baseline
+
+    via = args.via_librarian
+    result = ask(
+        store,
+        settings=settings,
+        query=args.entity if via else None,
+        entities=None if via else {args.entity},
+        baseline=make_baseline(settings) if via else None,
+        k=args.k,
+        include_review=args.include_review,
+        build_id=args.build,
+    )
+    print(f"status: {result.status}")
+    if result.degraded:
+        print(
+            f"DEGRADED RETRIEVAL: {', '.join(result.degraded)} (graph side: {result.graph_status})"
+        )
+    if result.status == "entry_miss" or result.graph_status == "entry_miss":
+        print(
+            f"nothing for {args.entity!r}: no such entity in the served build (unknown, not 'no relations')"
+        )
+    elif result.graph_status == "no_hops":
+        print(
+            f"{args.entity!r} is known but has no relations at the served tiers"
+            + ("" if args.include_review else " (accept only; --include-review widens)")
+        )
+    for h in result.passages:
+        print(f"[{h.tier} hop{h.hop} {h.freshness}] {h.source_path}: {h.text}")
+    return 0
+
+
+def _verify_gold(args: argparse.Namespace, settings: Settings) -> int:
+    from kg import label
+
+    rows = label.read_gold(args.path)
+    bodies = {p.path: p.body for p in iter_pages(settings.require_corpus_root(), args.domain)}
+    v = label.verify_gold(rows, bodies)
+    print(f"{v.rows} row(s) over {v.pages} page(s)")
+    print("  by label: " + ", ".join(f"{k}={n}" for k, n in v.by_label.items()))
+    print("  by split: " + ", ".join(f"{k}={n}" for k, n in v.by_split.items()))
+    for rid, page, why in v.failed_quotes:
+        print(f"  quote failed: {rid} {page}: {why}")
+    for s in v.shortfalls:
+        print(f"  below floor: {s}")
+    print("gold OK" if v.ok else "gold NOT ready")
+    return 0 if v.ok else 1
 
 
 def _review_rows(store: SqliteStore, build_id: str):

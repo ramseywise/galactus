@@ -174,6 +174,63 @@ def append_row(path: Path, row: GoldRow) -> None:
         fh.write(row.model_dump_json() + "\n")
 
 
+# B1 floors: what the gold must hold before calibration means anything.
+FLOORS: dict[str, int] = {"positive": 50, "hard_negative": 15, "control": 5}
+MIN_PAGES = 20
+MIN_TEST = 10
+
+
+class GoldCheck(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    rows: int
+    by_label: dict[str, int]
+    by_split: dict[str, int]
+    pages: int
+    failed_quotes: list[tuple[str, str, str]]  # (id, page, reason)
+    shortfalls: list[str]
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed_quotes and not self.shortfalls
+
+
+def verify_gold(rows: list[GoldRow], bodies: dict[str, str]) -> GoldCheck:
+    """Counts per label and split, the B1 floors, and every quote re-checked verbatim.
+
+    `bodies` maps page path to its current normalised body; a page absent from it fails.
+    """
+    by_label = {lab: sum(r.label == lab for r in rows) for lab in LABELS}
+    by_split = {sp: sum(r.split == sp for r in rows) for sp in ("train", "dev", "test")}
+    pages = len({r.page for r in rows})
+    failed: list[tuple[str, str, str]] = []
+    for r in rows:
+        body = bodies.get(r.page)
+        if body is None:
+            failed.append((r.id, r.page, "page not in the current corpus"))
+            continue
+        res = quote_verbatim.check(r.candidate(), body)
+        if not res.passed:
+            failed.append((r.id, r.page, res.reason or "not verbatim"))
+    short = [
+        f"{lab}: {by_label[lab]} < {floor}"
+        for lab, floor in FLOORS.items()
+        if by_label[lab] < floor
+    ]
+    if pages < MIN_PAGES:
+        short.append(f"distinct pages: {pages} < {MIN_PAGES}")
+    if by_split["test"] < MIN_TEST:
+        short.append(f"test split: {by_split['test']} < {MIN_TEST}")
+    return GoldCheck(
+        rows=len(rows),
+        by_label=by_label,
+        by_split=by_split,
+        pages=pages,
+        failed_quotes=failed,
+        shortfalls=short,
+    )
+
+
 def _ends_with_newline(path: Path) -> bool:
     with path.open("rb") as fh:
         fh.seek(-1, 2)
