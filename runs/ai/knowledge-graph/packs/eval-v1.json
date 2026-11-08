@@ -1,0 +1,122 @@
+{
+  "name": "eval",
+  "version": "1",
+  "entity_types": [
+    {
+      "name": "Metric",
+      "definition": "A named quantity computed from evaluation results, with a definable numerator and denominator or formula.",
+      "boundary_examples": [
+        "IN: TPR, TNR, Cohen's kappa, recall@5, expected calibration error, pass rate, corrected pass rate",
+        "OUT: 'quality' or 'accuracy of the system' used loosely with no formula (not named precisely enough)",
+        "OUT: a threshold value such as 0.90 (a number, not a metric)"
+      ]
+    },
+    {
+      "name": "Method",
+      "definition": "A named procedure, practice or protocol for building, running or interpreting an evaluation.",
+      "boundary_examples": [
+        "IN: paired eval comparison, open and axial coding, blind relabel, eval-driven development, LLM-as-judge",
+        "OUT: a file or dataset the procedure uses (that is an Artifact)",
+        "OUT: a software product that implements the procedure (that is a Tool)"
+      ]
+    },
+    {
+      "name": "Artifact",
+      "definition": "A named persisted object an evaluation produces or consumes: a dataset, label file, rubric, fixture, record or report.",
+      "boundary_examples": [
+        "IN: golden set, judge fixture, rubric, append-only label file, version stamp, run record",
+        "OUT: the procedure that creates it (that is a Method)",
+        "OUT: a transient value never written down, such as 'the model's answer'"
+      ]
+    },
+    {
+      "name": "FailureMode",
+      "definition": "A named way an evaluation or the system under evaluation goes wrong or misleads.",
+      "boundary_examples": [
+        "IN: eval contamination, position bias, self-preference bias, feature debt, overfitting to the golden set",
+        "OUT: a fix for the failure (that is a Method)",
+        "OUT: a single observed bug with no general name"
+      ]
+    },
+    {
+      "name": "Tool",
+      "definition": "A named software library, service, framework or model used in or evaluated by the work.",
+      "boundary_examples": [
+        "IN: LightGBM, CatBoost, pytest, LangGraph, ADK, Claude Code",
+        "OUT: a practice the tool supports (that is a Method)",
+        "OUT: a generic category such as 'a vector database' with no named product"
+      ]
+    },
+    {
+      "name": "Role",
+      "definition": "A human or agent seat with a stated responsibility in an evaluation.",
+      "boundary_examples": [
+        "IN: annotator, domain expert, judge, reviewer, simulated user",
+        "OUT: a named person (not a role)",
+        "OUT: a model product named as a product (that is a Tool)"
+      ]
+    }
+  ],
+  "relation_types": [
+    {
+      "name": "measures",
+      "definition": "The subject metric quantifies a property of the object.",
+      "domain": "Metric",
+      "range": "*",
+      "boundary_examples": [
+        "IN: (TPR, measures, LLM-as-judge) from 'TPR measures how often the judge passes a true pass'",
+        "OUT: a metric merely reported alongside the object, with no claim it quantifies it"
+      ]
+    },
+    {
+      "name": "mitigates",
+      "definition": "The subject method reduces the occurrence or impact of the object failure mode.",
+      "domain": "Method",
+      "range": "FailureMode",
+      "boundary_examples": [
+        "IN: (blind relabel, mitigates, self-preference bias)",
+        "OUT: a method that only detects or measures the failure without reducing it"
+      ]
+    },
+    {
+      "name": "requires",
+      "definition": "The subject method cannot be carried out as described without the object.",
+      "domain": "Method",
+      "range": "*",
+      "boundary_examples": [
+        "IN: (judge calibration, requires, human labels)",
+        "OUT: an object that is helpful or recommended but not stated as necessary"
+      ]
+    },
+    {
+      "name": "produces",
+      "definition": "The subject creates the object artifact as an output.",
+      "domain": "*",
+      "range": "Artifact",
+      "boundary_examples": [
+        "IN: (annotator, produces, golden set)",
+        "OUT: an artifact the subject reads or consumes (that is requires)"
+      ]
+    },
+    {
+      "name": "contradicts",
+      "definition": "The text states that the subject method and the object method give conflicting guidance or cannot both hold.",
+      "domain": "Method",
+      "range": "Method",
+      "boundary_examples": [
+        "IN: two practices the page explicitly says are in tension or mutually exclusive",
+        "OUT: two methods that are merely different or alternatives"
+      ]
+    },
+    {
+      "name": "instance-of",
+      "definition": "The subject is a specific kind or named example of the object, and both have the same entity type.",
+      "domain": "*",
+      "range": "*",
+      "boundary_examples": [
+        "IN: (position bias, instance-of, LLM judge bias)",
+        "OUT: a part-whole relation (a step of a method is not an instance of it)"
+      ]
+    }
+  ]
+}

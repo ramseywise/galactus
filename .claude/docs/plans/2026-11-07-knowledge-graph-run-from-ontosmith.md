@@ -1,7 +1,8 @@
 # Knowledge-graph run — adapt the OntoSmith method into galactus
 
-Status: READY
-From: REFINED
+Status: IN_PROGRESS
+From: READY
+Outstanding: Phase A done; /proto-review at the A8 boundary, then Phase B (B1 is Ramsey's labelling)
 Track: agent
 Epistemic: NO_CONFLICT
 Epistemic-by: fog
@@ -438,6 +439,15 @@ nothing, and Step B6 records the live build as the next decision.
 ### Phase A — the pipeline, end to end on the dry-run adapter
 
 #### Step A1: Scaffold the run, register it with pytest, settings that load without a key
+Step A1 ✓ DONE — 2026-11-07. Deviations: (1) no `tests/__init__.py` — it makes the dir a
+package named `tests`, which collides with the root `tests/` package on `pythonpath` "."
+(probed: `ModuleNotFoundError: tests.test_config`); without it, bare basenames collide with
+marketing-comms (`test_config`, `test_contract`, `test_evals`, `fakes`), so every test file
+in this run is named `test_kg_*.py` and the fakes module is `kg_fakes.py`. Later steps' test
+file names take the same prefix. (2) `kg` added to ruff `known-first-party`. (3) Added
+`require_corpus_root()` / `require_librarian_root()` so a missing path refuses by name at use,
+not at load (default 8 says "at load"; checking existence at load would fail every test on a
+machine without Librarian). Tests: `test_kg_config.py` — 16; full suite 1149 passed, 6 skipped.
 **Files**: `pyproject.toml` (testpaths lines 112–121; pythonpath line 127; dependency-groups
 lines 24–35); new `runs/ai/knowledge-graph/src/kg/__init__.py`, `src/kg/config.py`,
 `tests/__init__.py`, `tests/conftest.py`, `tests/fakes.py`, `tests/test_config.py`,
@@ -490,6 +500,15 @@ succeeds with no env set and each `require_*` raises naming its variable; the fu
 still 1133 passed.
 
 #### Step A2: Contract — hash-pinned pack and approval record
+Step A2 — implemented 2026-11-07; **awaiting Ramsey's approval of `packs/eval-v1.json`** (the
+last done-when item). Deviations: (1) relation `domain`/`range` accept `*` (any entity type in
+the pack) — `requires`, `measures`, `produces` and `instance-of` take more than one type, and a
+single-type field could not express them; A3's schema-conform gate treats `*` as unconstrained.
+(2) `require_approved(pack, pack_path)` takes the pack's path, since the approval record lives
+beside the file (`<stem>.approval.json`), not inside the pack. (3) Entity type is
+`FailureMode`, not "Failure mode" (names are identifiers). (4) `PackDrift` / `NotApproved`
+carry `# noqa: N818` to keep the plan's names. Tests: `test_kg_contract.py` — 14 (+1 skipped
+until approval).
 **Files**: new `src/kg/contract/__init__.py`, `src/kg/contract/schema.py`,
 `src/kg/contract/approve.py`, `packs/eval-v1.json`, `tests/test_contract.py`.
 **What**: Pydantic v2 models: `EntityType(name, definition, boundary_examples: list[str])`,
@@ -566,6 +585,32 @@ raises `BuildRefused`; an estimate over the ceiling raises `BuildRefused` with t
 figure in its message; the census over the real `eval/`
 (when `KG_CORPUS_ROOT` is set, else skipped with a printed reason) reports 80 pages.
 
+Step A3 ✓ DONE — 2026-11-07. Deviations:
+- Test files are `test_kg_normalise.py`, `test_kg_census.py`, `test_kg_gates.py` (same
+  basename-collision reason as A1).
+- Normalisation also strips HTML comments (`<!-- auto-linked -->`, in 23 of 80 eval pages)
+  and `[[Target#Heading]]` anchors; the typed-link suffix is stripped only for Librarian's
+  seven canonical link types (copied, not imported), so prose like `[[X]] — a …` keeps its
+  dash. Whitespace collapses within a paragraph but paragraph breaks survive as one blank
+  line: pages are hard-wrapped, so quotes must match across wraps.
+- `NORMALISATION_RULE_HASH` is the sha256 of the whole `normalise.py` file. `profile_hash`
+  covers that rule hash plus sorted `(path, raw-file sha256)`, so a rule change changes
+  the profile hash too.
+- Census also skips `_`-prefixed files (`_index.md`, `_conflicts.md` meta pages); the
+  `private/` check runs on the path relative to the corpus root (on macOS the absolute temp
+  path starts with `/private`, which skipped everything until fixed).
+- Gate signatures follow what each gate needs: `quote_verbatim.check(c, body)`,
+  `attested.check(c)`, `schema_conform.check(c, pack)`, plus `run_gates(c, body, pack,
+  page_path) -> GateReport`; dedupe is `dedupe(triples) -> DedupeResult` over a list.
+  `canonical_key` lives in `models.py` so the store can use the same write key.
+- `estimate_cost` refuses (`BuildRefused`) a model missing from the price table rather than
+  pricing it at $0. Prices are from the claude-api skill table (cached 2026-10-06; Haiku 5.5
+  $0.10/$0.50, Sonnet 5.5 $2/$10 per MTok), with source URL in `prices_table.py`.
+- Real `eval/` census: 80 pages, ~105.5k est tokens, estimate $3.31 (proposer $0.07,
+  judge $3.24).
+- Tests: 42 passed + 1 skipped without `KG_CORPUS_ROOT` (passes with it). Full suite 1205
+  passed, 8 skipped.
+
 #### Step A4: `GraphStore` protocol, SQLite implementation, export, passages
 **Files**: new `src/kg/store/__init__.py`, `src/kg/store/protocol.py`,
 `src/kg/store/sqlite.py`, `src/kg/store/export.py`, `src/kg/store/passages.py`,
@@ -602,6 +647,25 @@ removes that build's rows and no others; `hops(k=2)` returns exactly the two-hop
 five-node fixture and nothing at hop 3; re-writing the same canonical key is idempotent; a
 passage from a build whose profile hash differs from the current corpus reports `unverified`;
 JSONL round-trips.
+
+**Step A4 ✓ DONE — 2026-11-07.** Deviations:
+- Test files named `test_kg_store_sqlite.py`, `test_kg_export.py`, `test_kg_passages.py`
+  (basename-collision convention from A1); unlisted helper `tests/kg_store_helpers.py` added
+  for the shared `put()`/`promoted()` builders.
+- `Tier`, `ALL_TIERS`, `ACCEPT_ONLY`, `SeatLabel`, `Judgement` live in `src/kg/models.py`
+  (unlisted file, declared) so A5/A6 import them without depending on the store.
+- `write_page_result` and `write_triple` take `build_id` first; the plan's signatures omit it
+  but rows must be scoped to a build for FA-001/FA-005.
+- `triples(build_id) -> list[StoredTriple]` added to the protocol: export needs every row of
+  one build regardless of status or tier.
+- `passages()` takes `current_profile_hash=` (freshness needs it); `SqliteStore` takes
+  `corpus_root=` to read the current normalised body. Freshness: `fresh` only on equal
+  hashes; `stale` when the body is readable and the quote is gone; otherwise `unverified`.
+  Surrounding sentence is appended only for `fresh` passages.
+- Hops are undirected over `subject_norm`/`object_norm` (normalised with `norm_surface`),
+  bounded by `HARD_MAX_K = 2`; a triple's `hop` is its nearest endpoint's distance + 1. A
+  non-accept edge does not bridge hops under default tiers (it is filtered inside the CTE).
+- `set_build_status` validates the value only; promote-transition rules are left to A7.
 
 #### Step A5: Proposer and `JudgeSeat` with the Claude adapters, shape-tested only
 **Files**: new `src/kg/propose/__init__.py`, `src/kg/propose/proposer.py`,
@@ -644,6 +708,22 @@ truncated JSON body each become `not_run` with a distinct reason, not a crash an
 `no_candidates`; `Verdict(score=85.0)` raises; the judge prompt contains no proposer
 reasoning; the fakes satisfy both Protocols by `isinstance`.
 
+**Step A5 ✓ DONE — 2026-11-08.** Deviations:
+(1) Test files are `test_kg_proposer.py`, `test_kg_judge_claude.py`, `test_kg_prompts.py`
+(the `test_kg_` prefix, as in A1, avoids a basename clash with marketing-comms).
+(2) `Usage`, `Verdict`, `NotRun` live in `kg/models.py`, and `NotApplicable` is re-exported
+from `experiments.record` rather than redefined; the `Proposer`/`JudgeSeat` Protocols are in
+`propose/proposer.py` and `judge/seat.py`, and the fakes in `tests/kg_fakes.py`.
+(3) `observability.py` (unlisted, already present from A1) gained `AgentSpan`/`span()` and
+quote redaction; the span test uses `structlog.testing.capture_logs()` because marketing-comms'
+global structlog config made a capsys test order-dependent.
+(4) Not-run reasons are prefixed by kind (`model_not_found`, `rate_limited`,
+`api_status_error`, `connection_error`, `refusal`, `truncated`, `no_text_content`,
+`invalid_json`, `schema_mismatch` for the proposer; `sdk_error`, `refusal`, `truncated`,
+`schema_mismatch` for the judge). An out-of-range judge score is a `schema_mismatch` NotRun
+at the adapter; `Verdict(score=85.0)` itself raises.
+(5) Added `tests/fixtures/snippets.jsonl` (8 rows) for prompt tests.
+
 #### Step A6: Priced two-threshold router and review queue
 **Files**: new `src/kg/route/__init__.py`, `src/kg/route/prices.py`, `src/kg/route/tiers.py`,
 `src/kg/route/review_queue.py`, `tests/test_route.py`.
@@ -673,6 +753,20 @@ time; the test pins the course's worked example, not this sketch.)
 **Done when**: the course's worked example reproduces its thresholds; `t_lo < t_hi` for every
 positive price set; the floor point on a fixture hits ≥ 0.90 precision with the smallest
 band; band rate 0.41 raises `BuildHalted`; the risk–coverage curve is monotone in coverage.
+
+**Step A6 ✓ DONE — 2026-11-08.** Deviations:
+(1) The note's path is `data-science/01-classical-ml/notes/13-automate-review-or-reject.md`
+in the course checkout; the `course/` prefix above is stale.
+(2) Thresholds use the note's reviewer-aware form, `p_accept=(h+f·r)/(c·a+f·r)` and
+`p_reject=(r(1-f)-h)/((1-c)a+r(1-f))` over p = P(wrong), so `t_hi = 1-p_accept`, `t_lo = 1-p_reject`;
+the snippet's sketch is not used. When review is never the cheapest route the band collapses
+to a single threshold, so `t_lo < t_hi` holds only for price sets where review can win, and
+the test pins that case rather than "every positive price set".
+(3) Default `wrong_reject` is 3, not 1: at 1 with reviewer 0.95/0.05 review never beats
+reject and the band is empty. Ramsey's call whether to keep it.
+(4) `assign` also sends a label that contradicts the score to review, not only `unclear`.
+(5) `floor_point` returns `NotApplicable` when no point reaches the floor.
+(6) Test file is `test_kg_route.py`.
 
 #### Step A7: Build orchestration, conformance record, CLI
 **Files**: new `src/kg/build.py`, `src/kg/conformance.py`, `src/kg/cli.py`,
@@ -719,6 +813,20 @@ everywhere yields a non-promotable build with `band_rate` reported as `NotApplic
 decisions appear in `docs/decisions/` and survive deleting the store file; the dry-run
 build over the real `eval/` domain completes with 80 pages profiled and zero spend.
 
+**Step A7 ✓ DONE — 2026-11-08.** Deviations:
+(1) `python -m kg.cli` needs `PYTHONPATH=src:../../..`: `kg` is on pytest's pythonpath only and
+the root pyproject has no build system. Making it importable is a pyproject decision left
+to Ramsey; the README documents the prefix.
+(2) `build` is an async `abuild` with a sync `build` wrapper (the seams are async).
+(3) The report is written as a sidecar next to the record; approvals append to
+`approvals.jsonl`; `approve` requires `--by`.
+(4) `verify` checks quotes against current bodies but does not write freshness; freshness
+stays computed at read time in `graph_to_passages`.
+(5) Added `docs/records/.gitkeep` and `docs/decisions/.gitkeep`. Test files are
+`test_kg_build.py`, `test_kg_cli.py`, `test_kg_conformance.py`.
+Real dry run: 80 profiled = 0 proposed + 0 no_candidates + 80 not_run, estimate $3.31,
+cost n/a, promotable NO, exit 0.
+
 #### Step A8: Gold schema, labelling CLI, eval harness with calibration (dry-run)
 **Files**: new `src/kg/judge/calibration.py`, `src/kg/label.py`, `evals/__init__.py`,
 `evals/run.py`, `evals/gold/README.md`, `evals/gold/eval-v1.jsonl` (empty until B1),
@@ -753,6 +861,16 @@ and `cd runs/ai/knowledge-graph && uv run python evals/run.py --dry-run --json`
 separately; a label whose quote is not verbatim is rejected at entry; `--judge jev` without a
 key exits non-zero with the variable named; the dry run prints every metric in the spec's
 Measurement table with its `n` and seat, and `--json` validates against a schema in the test.
+
+**Step A8 ✓ DONE — 2026-11-08.** Deviations:
+(1) `--split all` is accepted for dry runs only; live runs score `test` only.
+(2) `--repeats` defaults to 5 for test–retest. `evals/run.py` carries a small sys.path
+bootstrap (same reason as A7.1) and a `DryRunSeat`.
+(3) The live `--judge claude` path is gated by `KG_LIVE=1` but untested end to end and has no
+spend ceiling of its own; that belongs to the B6 spend decision.
+(4) Test files are `test_kg_calibration.py`, `test_kg_label.py`, `test_kg_evals.py`.
+(5) README (an A1 file) updated with run, eval and `kg approve` instructions.
+Full suite after A8: 1574 passed, 9 skipped; ruff clean.
 
 **Phase A review boundary.** `/proto-review` here, before Phase B. The verifiable state: a
 dry-run build and a dry-run eval both complete over the real `eval/` domain with zero spend,

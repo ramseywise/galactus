@@ -57,3 +57,5 @@ models/
 *.pkl
 *.joblib
 *.cbm
+
+ontosmith/

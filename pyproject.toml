@@ -32,6 +32,9 @@ dev = [
     "ruff>=0.8",
     "seaborn>=0.13.2",
 ]
+kg = [
+    "neo4j>=5",
+]
 # `runs/ml/customer segmentation/` and `tests/unit/ml` import these directly. They
 # already resolved transitively, which meant the POC's imports worked by accident;
 # declaring them makes the dependency real. Contrast `runs/ml/fraud/`, which keeps a
@@ -92,6 +95,7 @@ known-first-party = [
     "guardrails",
     "guards",
     "ingest",
+    "kg",
     "layout",
     "model",
     "models",
@@ -119,9 +123,12 @@ testpaths = [
     "tests/unit/ml",
     "runs/_shared/tests",
     "evals/prototyping/tests",
+    "runs/ai/knowledge-graph/tests",
 ]
 asyncio_mode = "auto"
 # `package = false` means nothing installs `galactus` into the venv, so the import root
 # has to be declared here. `runs/ai/marketing-comms/` is on the path too: `evals/` is a
 # script directory imported as `evals.run` by the case study's `tests/test_evals.py`.
-pythonpath = [".", "runs/ai/marketing-comms/src", "runs/ai/marketing-comms"]
+# `runs/ai/knowledge-graph/src` holds one package, `kg`, so it adds no bare module names.
+pythonpath = [".", "runs/ai/marketing-comms/src", "runs/ai/marketing-comms",
+              "runs/ai/knowledge-graph/src"]
